@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>文章 | 小罗Blog</title>
+  <link rel="stylesheet" href="./styles.css" />
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="./js/supabase-config.js" defer></script>
+  <script src="./js/supabase-client.js" defer></script>
+  <script src="./js/data.js" defer></script>
+  <script src="./js/app.js" defer></script>
+</head>
+<body data-page="articles">
+  <div class="page-glow"></div>
+  <header class="site-header">
+    <a class="brand" href="./index.html"><span class="brand-mark" data-site-logo>罗</span><span data-site-name>小罗Blog</span></a>
+    <button class="nav-toggle" type="button" data-nav-toggle aria-label="打开导航">☰</button>
+    <nav class="top-nav" data-nav>
+      <a href="./index.html">首页</a><a class="active" href="./articles.html">文章</a><a href="./life.html">生活圈</a><a href="./progress.html">进步簿</a><a href="./about.html">关于我</a><a href="./dashboard.html" data-admin-only hidden>后台</a>
+    </nav>
+    <div class="header-actions"><button class="icon-button" type="button" data-theme-toggle>◐</button><a class="ghost-button" href="./login.html" data-guest-only>登录</a><a class="primary-button small" href="./register.html" data-guest-only>注册</a><a class="user-entry" href="./dashboard.html" hidden><span class="user-avatar" data-profile-avatar>罗</span></a></div>
+  </header>
+  <main class="sub-page">
+    <section class="page-title"><p class="eyebrow">ALL POSTS</p><h1>所有文章</h1><p>浏览文章记录。</p></section>
+    <section class="filter-panel glass-card">
+      <form class="filter-grid" data-article-filter>
+        <label><span>搜索</span><input name="q" type="search" placeholder="标题、摘要、标签" /></label>
+        <label><span>分类</span><select name="category" data-category-filter><option value="">全部分类</option></select></label>
+        <label><span>标签</span><select name="tag" data-tag-filter><option value="">全部标签</option></select></label>
+        <button class="primary-button" type="submit">筛选</button>
+      </form>
+    </section>
+    <section class="article-grid list-grid article-list-layout" data-article-list></section>
+    <nav class="pagination" data-pagination></nav>
+  </main>
+  <footer class="site-footer"><p>© 2026 小罗Blog</p></footer>
+</body>
+</html>

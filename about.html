@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>关于我 | 小罗Blog</title>
+  <link rel="stylesheet" href="./styles.css" />
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="./js/supabase-config.js" defer></script>
+  <script src="./js/supabase-client.js" defer></script>
+  <script src="./js/data.js" defer></script>
+  <script src="./js/app.js" defer></script>
+</head>
+<body data-page="about">
+  <div class="page-glow"></div>
+  <header class="site-header">
+    <a class="brand" href="./index.html"><span class="brand-mark" data-site-logo>罗</span><span data-site-name>小罗Blog</span></a>
+    <button class="nav-toggle" type="button" data-nav-toggle aria-label="打开导航">☰</button>
+    <nav class="top-nav" data-nav>
+      <a href="./index.html">首页</a><a href="./articles.html">文章</a><a href="./life.html">生活圈</a><a href="./progress.html">进步簿</a><a class="active" href="./about.html">关于我</a><a href="./dashboard.html" data-admin-only hidden>后台</a>
+    </nav>
+    <div class="header-actions"><button class="icon-button" type="button" data-theme-toggle>◐</button><a class="ghost-button" href="./login.html" data-guest-only>登录</a><a class="primary-button small" href="./register.html" data-guest-only>注册</a><a class="user-entry" href="./dashboard.html" hidden><span class="user-avatar" data-profile-avatar>罗</span></a></div>
+  </header>
+  <main class="sub-page">
+    <section class="about-cover-ui" aria-hidden="true">
+      <div class="about-cover-orbit orbit-one"></div><div class="about-cover-orbit orbit-two"></div>
+      <div class="about-cover-window"><span></span><span></span><span></span><span></span></div>
+      <div class="about-cover-note">XIAOLUO BLOG <i></i> NOTES / LIFE / GROWTH</div>
+    </section>
+    <section class="about-card glass-card">
+      <div>
+        <p class="eyebrow">ABOUT</p>
+        <h1>关于小罗</h1>
+        <p data-profile-bio>欢迎来到小罗博客网站。</p>
+        <div class="about-stats"><span><strong data-about-post-count>0</strong>文章</span><span><strong data-about-moment-count>0</strong>生活圈</span><span><strong data-about-progress-count>0</strong>进步记录</span></div>
+      </div>
+      <div class="about-me"><h3 data-profile-name>小罗</h3><p>记录生活、技术和成长。</p><a class="log-button primary-button" href="./progress.html">查看进步簿</a></div>
+    </section>
+  </main>
+  <footer class="site-footer"><p>© 2026 小罗Blog</p></footer>
+</body>
+</html>

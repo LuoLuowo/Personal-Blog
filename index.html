@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>首页 | 小罗Blog</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Serif+SC:wght@600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="./styles.css" />
+  <link rel="stylesheet" href="./font_fuhbx0kh6gc/iconfont.css" />
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="./js/supabase-config.js" defer></script>
+  <script src="./js/supabase-client.js" defer></script>
+  <script src="./js/data.js" defer></script>
+  <script src="./js/app.js" defer></script>
+</head>
+<body data-page="home">
+  <div class="page-glow"></div>
+  <header class="site-header">
+    <a class="brand" href="./index.html"><span class="brand-mark" data-site-logo>罗</span><span data-site-name>小罗Blog</span></a>
+    <button class="nav-toggle" type="button" data-nav-toggle aria-label="打开导航">☰</button>
+    <nav class="top-nav" data-nav aria-label="主导航">
+      <a class="active" href="./index.html">首页</a>
+      <a href="./articles.html">文章</a>
+      <a href="./life.html">生活圈</a>
+      <a href="./progress.html">进步簿</a>
+      <a href="./about.html">关于我</a>
+      <a href="./dashboard.html" data-admin-only hidden>后台</a>
+    </nav>
+    <div class="header-actions">
+      <button class="icon-button" type="button" data-theme-toggle aria-label="切换日夜模式">◐</button>
+      <a class="ghost-button" href="./login.html" data-guest-only>登录</a>
+      <a class="primary-button small" href="./register.html" data-guest-only>注册</a>
+      <a class="user-entry" href="./dashboard.html" aria-label="用户后台" hidden><span class="user-avatar" data-profile-avatar>罗</span></a>
+    </div>
+  </header>
+
+  <main>
+    <section class="home-hero">
+      <div class="hero-cover" data-hero-cover>
+        <div class="anime-silhouette" aria-hidden="true"><span class="hair hair-left"></span><span class="hair hair-right"></span><span class="face"></span><span class="scarf"></span></div>
+        <div class="poster-notes note-1"></div><div class="poster-notes note-2"></div><div class="poster-notes note-3"></div>
+        <div class="hero-content">
+          <p class="eyebrow">PERSONAL BLOG</p>
+          <h1 data-hero-title>小罗Blog</h1>
+          <p class="quote" data-hero-subtitle>记录生活、技术和成长。</p>
+        </div>
+      </div>
+      <form class="search-card hero-search" data-search-form action="./articles.html">
+        <span class="search-icon">⌕</span>
+        <input name="q" type="search" placeholder="搜索文章、分类或标签" />
+        <button type="submit">搜索</button>
+      </form>
+    </section>
+
+    <section class="dashboard">
+      <article class="profile-widget glass-card reveal-card">
+        <div class="avatar" data-profile-avatar>罗</div>
+        <div>
+          <p class="mini-title">个人简介</p>
+          <h2 data-profile-name>小罗</h2>
+          <p data-profile-bio>欢迎来到小罗博客网站。</p>
+        </div>
+        <ul class="contact-list">
+          <li class="contact-item" data-contact-item="email"><button type="button" data-contact-link="email" aria-label="复制邮箱"><span class="contact-icon contact-icon-email" aria-hidden="true">✉</span><span class="contact-tooltip" data-contact-value="email"></span></button></li>
+          <li class="contact-item" data-contact-item="qq"><button type="button" data-contact-link="qq" aria-label="复制 QQ"><i class="contact-icon iconfont icon-QQ" aria-hidden="true"></i><span class="contact-tooltip" data-contact-value="qq"></span></button></li>
+          <li class="contact-item" data-contact-item="wechat"><button type="button" data-contact-link="wechat" aria-label="微信"><i class="contact-icon iconfont icon-weixin" aria-hidden="true"></i><span class="contact-tooltip" data-contact-value="wechat"></span></button></li>
+          <li class="contact-item" data-contact-item="douyin"><button type="button" data-contact-link="douyin" aria-label="复制抖音账号"><i class="contact-icon iconfont icon-douyin2" aria-hidden="true"></i><span class="contact-tooltip" data-contact-value="douyin"></span></button></li>
+        </ul>
+      </article>
+
+      <article class="glass-card status-card reveal-card">
+        <p class="mini-title">最近状态</p>
+        <h3>持续更新中</h3>
+        <p>内容后续可以在后台维护。</p>
+        <div class="status-line"><span></span><strong>今日能量 82%</strong></div>
+      </article>
+
+      <article class="glass-card music-card reveal-card">
+        <p class="mini-title">音乐</p>
+        <div class="music-main">
+          <div class="record" data-record></div>
+          <div>
+            <h3 data-track-title>有爱就不怕</h3>
+            <p data-track-artist>庄心妍 · 抖音热搜</p>
+          </div>
+          <div class="music-actions">
+            <button type="button" data-music-prev aria-label="上一首">‹</button>
+            <button type="button" data-music-toggle aria-label="播放或暂停">▶</button>
+            <button type="button" data-music-next aria-label="下一首">›</button>
+          </div>
+        </div>
+        <input class="music-range" data-music-seek type="range" min="0" max="100" value="0" aria-label="拖动音乐进度" />
+        <div class="music-time"><span data-current-time>00:00</span><span data-duration>00:00</span></div>
+      </article>
+
+      <article class="glass-card quick-card reveal-card">
+        <p class="mini-title">快捷入口</p>
+        <div class="quick-links">
+          <a href="./life.html">生活圈</a>
+          <a href="./progress.html">进步簿</a>
+          <a href="./editor.html">写文章</a>
+        </div>
+      </article>
+
+      <article class="glass-card clock-card reveal-card">
+        <p class="mini-title">现在时间</p>
+        <time data-live-clock></time>
+        <p data-live-date></p>
+      </article>
+    </section>
+
+    <section class="content-band">
+      <div class="section-heading"><div><p class="eyebrow">LATEST POSTS</p><h2>最新文章</h2></div><a class="text-link" href="./articles.html">查看全部</a></div>
+      <div class="article-grid" data-latest-posts></div>
+    </section>
+    <section class="content-band"><div class="section-heading compact"><div><p class="eyebrow">FEATURED</p><h2>推荐文章</h2></div></div><div class="featured-list" data-featured-posts></div></section>
+  </main>
+
+  <footer class="site-footer"><p>© 2026 小罗Blog · 小罗博客网站</p></footer>
+</body>
+</html>

@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>注册 | 小罗Blog</title>
+  <link rel="stylesheet" href="./styles.css" />
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="./js/supabase-config.js" defer></script>
+  <script src="./js/supabase-client.js" defer></script>
+  <script src="./js/data.js" defer></script>
+  <script src="./js/app.js" defer></script>
+</head>
+<body data-page="register">
+  <div class="page-glow"></div>
+  <main class="auth-page">
+    <section class="auth-card glass-card">
+      <a class="brand" href="./index.html"><span class="brand-mark" data-site-logo>罗</span><span data-site-name>小罗Blog</span></a>
+      <div><p class="eyebrow">CREATE ACCOUNT</p><h1>注册账号</h1><p>注册后可以进入后台管理内容。</p></div>
+      <form class="auth-form" data-auth-form="register">
+        <label><span>邮箱</span><input name="email" type="email" autocomplete="email" required placeholder="you@example.com"></label>
+        <label><span>密码</span><input name="password" type="password" autocomplete="new-password" required placeholder="至少 6 位密码"></label>
+        <label><span>确认密码</span><input name="confirmPassword" type="password" autocomplete="new-password" required placeholder="再次输入密码"></label>
+        <button class="primary-button" type="submit">注册</button>
+      </form>
+      <div class="auth-links"><a href="./login.html">已有账号，去登录</a><a href="./index.html">返回首页</a></div>
+      <p class="form-message" data-form-message></p>
+    </section>
+  </main>
+</body>
+</html>

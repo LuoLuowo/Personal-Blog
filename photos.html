@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>照片墙 | 小罗Blog</title>
+  <link rel="stylesheet" href="./styles.css" />
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="./js/supabase-config.js" defer></script>
+  <script src="./js/supabase-client.js" defer></script>
+  <script src="./js/data.js" defer></script>
+  <script src="./js/app.js" defer></script>
+</head>
+<body data-page="photos">
+  <div class="page-glow"></div>
+  <header class="site-header">
+    <a class="brand" href="./index.html"><span class="brand-mark" data-site-logo>罗</span><span data-site-name>小罗Blog</span></a>
+    <button class="nav-toggle" type="button" data-nav-toggle aria-label="打开导航">☰</button>
+    <nav class="top-nav" data-nav>
+      <a href="./index.html">首页</a><a href="./articles.html">文章</a><a href="./categories.html">分类</a><a href="./life.html">生活圈</a><a class="active" href="./photos.html">照片墙</a><a href="./progress.html">进步簿</a><a href="./about.html">关于我</a><a href="./dashboard.html">后台</a>
+    </nav>
+    <div class="header-actions"><button class="icon-button" type="button" data-theme-toggle>◐</button><a class="ghost-button" href="./login.html" data-guest-only>登录</a><a class="user-entry" href="./dashboard.html"><span class="user-avatar" data-profile-avatar>罗</span></a></div>
+  </header>
+  <main class="sub-page">
+    <section class="page-title centered"><p class="eyebrow">GALLERY</p><h1>照片墙</h1><p>单击相册可查看经历描述。</p></section>
+    <form class="search-card section-search" data-gallery-search><span class="search-icon">⌕</span><input type="search" placeholder="搜索相册标题、地点或关键词" /></form>
+    <section class="album-grid" data-photo-gallery></section>
+  </main>
+  <div class="modal" data-photo-modal aria-hidden="true">
+    <div class="modal-backdrop" data-modal-close></div>
+    <article class="modal-card glass-card" role="dialog" aria-modal="true">
+      <button class="modal-close" type="button" data-modal-close aria-label="关闭">×</button>
+      <div class="modal-photo" data-modal-photo></div>
+      <div class="gallery-carousel-controls"><button type="button" data-gallery-prev aria-label="上一张">‹</button><span data-modal-image-count></span><button type="button" data-gallery-next aria-label="下一张">›</button></div>
+      <p class="mini-title" data-modal-meta></p>
+      <h2 data-modal-title></h2>
+      <p data-modal-description></p>
+    </article>
+  </div>
+  <footer class="site-footer"><p>© 2026 小罗Blog</p></footer>
+</body>
+</html>
