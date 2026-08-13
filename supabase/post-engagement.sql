@@ -29,6 +29,7 @@ create table if not exists public.post_views (
 grant select on public.post_likes, public.post_comments, public.post_views to anon, authenticated;
 grant insert, delete on public.post_likes to authenticated;
 grant insert on public.post_comments to authenticated;
+grant delete on public.post_comments to authenticated;
 grant insert on public.post_views to authenticated;
 grant usage, select on all sequences in schema public to authenticated;
 
@@ -44,9 +45,11 @@ create policy "users manage own likes" on public.post_likes for all to authentic
 drop policy if exists "comments are readable" on public.post_comments;
 drop policy if exists "users add comments" on public.post_comments;
 drop policy if exists "users edit own comments" on public.post_comments;
+drop policy if exists "admin deletes post comments" on public.post_comments;
 create policy "comments are readable" on public.post_comments for select using (true);
 create policy "users add comments" on public.post_comments for insert to authenticated with check (auth.uid() = user_id);
 create policy "users edit own comments" on public.post_comments for update to authenticated using (auth.uid() = user_id) with check (auth.uid() = user_id);
+create policy "admin deletes post comments" on public.post_comments for delete to authenticated using (public.is_blog_admin());
 
 drop policy if exists "views are readable" on public.post_views;
 drop policy if exists "users add own views" on public.post_views;

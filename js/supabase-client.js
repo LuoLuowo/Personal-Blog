@@ -75,6 +75,10 @@
         avatar_url: profile.avatar_url || null,
         home_title: profile.home_title,
         home_bio: profile.home_bio,
+        about_title: profile.about_title || "关于小罗",
+        about_bio: profile.about_bio || "",
+        about_side_bio: profile.about_side_bio || "",
+        announcement: profile.announcement || "",
         contacts: profile.contacts || {},
         updated_at: new Date().toISOString()
       };
@@ -103,6 +107,19 @@
       const { error } = await client.storage.from("xiaoluo-media").upload(path, file, { upsert: false, contentType: file.type });
       if (error) throw error;
       return client.storage.from("xiaoluo-media").getPublicUrl(path).data.publicUrl;
+    },
+
+    async deleteFilesByPublicUrls(urls) {
+      const paths = (urls || []).map((url) => {
+        try {
+          const marker = "/storage/v1/object/public/xiaoluo-media/";
+          const path = new URL(url).pathname.split(marker)[1];
+          return path ? decodeURIComponent(path) : null;
+        } catch (_) { return null; }
+      }).filter(Boolean);
+      if (!paths.length) return;
+      const { error } = await client.storage.from("xiaoluo-media").remove(paths);
+      if (error) throw error;
     },
 
     async listContent(table, userId) {
@@ -181,6 +198,16 @@
       };
     },
 
+    async getPostEngagementSummary(postId) {
+      const [likes, views, comments] = await Promise.all([
+        client.from("post_likes").select("id", { count: "exact", head: true }).eq("post_id", postId),
+        client.from("post_views").select("id", { count: "exact", head: true }).eq("post_id", postId),
+        client.from("post_comments").select("id", { count: "exact", head: true }).eq("post_id", postId)
+      ]);
+      if (likes.error || views.error || comments.error) throw likes.error || views.error || comments.error;
+      return { likes: likes.count || 0, views: views.count || 0, comments: comments.count || 0 };
+    },
+
     async recordPostView(postId, userId) {
       if (!userId) return;
       const { error } = await client.from("post_views").upsert({ post_id: postId, user_id: userId }, { onConflict: "post_id,user_id", ignoreDuplicates: true });
@@ -204,10 +231,75 @@
       return data;
     },
 
+    async deletePostComment(commentId) {
+      const { error } = await client.from("post_comments").delete().eq("id", commentId);
+      if (error) throw error;
+    },
+
     async getTotalLikes() {
       const { count, error } = await client.from("post_likes").select("id", { count: "exact", head: true });
       if (error) throw error;
       return count || 0;
+    },
+
+    async getStorageUsage() {
+      const { data, error } = await client.rpc("get_blog_storage_usage");
+      if (error) throw error;
+      return Number(data || 0);
+    },
+
+    async getContentComments(contentType, contentId) {
+      const { data, error } = await client.from("content_comments").select("id, content, created_at, user_id").eq("content_type", contentType).eq("content_id", contentId).order("created_at", { ascending: false });
+      if (error) throw error;
+      const ids = [...new Set((data || []).map((item) => item.user_id))];
+      const { data: profiles, error: profileError } = ids.length ? await client.from("profiles").select("id, display_name, avatar_url").in("id", ids) : { data: [], error: null };
+      if (profileError) throw profileError;
+      const profilesById = new Map((profiles || []).map((profile) => [profile.id, profile]));
+      return (data || []).map((item) => ({ ...item, profile: profilesById.get(item.user_id) || null }));
+    },
+
+    async addContentComment(contentType, contentId, userId, content) {
+      const { error } = await client.from("content_comments").insert({ content_type: contentType, content_id: contentId, user_id: userId, content });
+      if (error) throw error;
+    },
+
+    async deleteContentComment(commentId) {
+      const { error } = await client.from("content_comments").delete().eq("id", commentId);
+      if (error) throw error;
+    },
+
+    async getContentEngagement(contentType, contentId, userId) {
+      const [likes, views, comments, ownLike] = await Promise.all([
+        client.from("content_likes").select("id", { count: "exact", head: true }).eq("content_type", contentType).eq("content_id", contentId),
+        client.from("content_views").select("id", { count: "exact", head: true }).eq("content_type", contentType).eq("content_id", contentId),
+        client.from("content_comments").select("id", { count: "exact", head: true }).eq("content_type", contentType).eq("content_id", contentId),
+        userId ? client.from("content_likes").select("id").eq("content_type", contentType).eq("content_id", contentId).eq("user_id", userId).maybeSingle() : Promise.resolve({ data: null, error: null })
+      ]);
+      if (likes.error || views.error || comments.error || ownLike.error) throw likes.error || views.error || comments.error || ownLike.error;
+      return { likes: likes.count || 0, views: views.count || 0, comments: comments.count || 0, liked: Boolean(ownLike.data) };
+    },
+
+    async recordContentView(contentType, contentId, userId) {
+      if (!userId) return;
+      const { error } = await client.from("content_views").upsert({ content_type: contentType, content_id: contentId, user_id: userId }, { onConflict: "content_type,content_id,user_id", ignoreDuplicates: true });
+      if (error) throw error;
+    },
+
+    async toggleContentLike(contentType, contentId, userId, liked) {
+      if (liked) {
+        const { error } = await client.from("content_likes").delete().eq("content_type", contentType).eq("content_id", contentId).eq("user_id", userId);
+        if (error) throw error;
+        return false;
+      }
+      const { error } = await client.from("content_likes").insert({ content_type: contentType, content_id: contentId, user_id: userId });
+      if (error) throw error;
+      return true;
+    },
+
+    async listRegisteredUsers() {
+      const { data, error } = await client.rpc("list_blog_registered_users");
+      if (error) throw error;
+      return data || [];
     },
 
     async listTaxonomy(table, userId) {

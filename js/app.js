@@ -33,6 +33,10 @@
     return escapeHtml(value).replace(/(https?:\/\/[^\s<]+)/g, '<a href="$1" target="_blank" rel="noopener noreferrer">$1</a>');
   }
 
+  function formatExcerpt(paragraphs) {
+    return (paragraphs || []).filter(Boolean).slice(0, 2).map((paragraph) => `<p>${linkify(paragraph)}</p>`).join("") || "<p>点击查看文章详情。</p>";
+  }
+
   function formatTime(seconds) {
     if (!Number.isFinite(seconds)) return "00:00";
     const min = Math.floor(seconds / 60).toString().padStart(2, "0");
@@ -153,6 +157,9 @@
     });
     $all("[data-profile-name]").forEach((el) => { el.textContent = data.site.profileName; });
     $all("[data-profile-bio]").forEach((el) => { el.textContent = data.site.profileBio; });
+    $all("[data-about-title]").forEach((el) => { el.textContent = data.site.aboutTitle; });
+    $all("[data-about-bio]").forEach((el) => { el.textContent = data.site.aboutBio; });
+    $all("[data-about-side-bio]").forEach((el) => { el.textContent = data.site.aboutSideBio; });
     $all("[data-hero-title]").forEach((el) => { el.textContent = data.site.heroTitle; });
     $all("[data-hero-subtitle]").forEach((el) => { el.textContent = data.site.heroSubtitle; });
 
@@ -169,11 +176,18 @@
     if (form) {
       if (form.heroTitle) form.heroTitle.value = data.site.heroTitle;
       if (form.profileBio) form.profileBio.value = data.site.profileBio;
+      if (form.announcement) form.announcement.value = data.site.announcement || "";
       if (form.profileName) form.profileName.value = data.site.profileName;
       if (form.contactEmail) form.contactEmail.value = data.site.contacts.email || "";
       if (form.contactQq) form.contactQq.value = data.site.contacts.qq || "";
       if (form.contactWechat) form.contactWechat.value = data.site.contacts.wechat || "";
       if (form.contactDouyin) form.contactDouyin.value = data.site.contacts.douyin || "";
+    }
+    const aboutForm = $("[data-about-settings-form]");
+    if (aboutForm) {
+      aboutForm.aboutTitle.value = data.site.aboutTitle;
+      aboutForm.aboutBio.value = data.site.aboutBio;
+      aboutForm.aboutSideBio.value = data.site.aboutSideBio;
     }
 
     $all("[data-contact-item]").forEach((item) => {
@@ -378,6 +392,10 @@
       data.site.avatarDataUrl = adminProfile.avatar_url || "";
       data.site.heroTitle = adminProfile.home_title || data.site.heroTitle;
       data.site.profileBio = adminProfile.home_bio || data.site.profileBio;
+      data.site.aboutTitle = adminProfile.about_title || data.site.aboutTitle;
+      data.site.aboutBio = adminProfile.about_bio || data.site.aboutBio;
+      data.site.aboutSideBio = adminProfile.about_side_bio || data.site.aboutSideBio;
+      data.site.announcement = adminProfile.announcement || "";
       data.site.contacts = adminProfile.contacts || {};
       data.categories = categories.map((item) => ({ id: item.id, name: item.name, description: "" }));
       data.tags = tags.map((item) => ({ id: item.id, name: item.name }));
@@ -389,6 +407,7 @@
       populateFilters();
       if (pageName() === "dashboard" && state.isAdmin) renderContentManagers();
       if (pageName() === "dashboard" && state.isAdmin) renderDashboardStats();
+      if (pageName() === "dashboard" && state.isAdmin) renderRegisteredUsers();
       if (pageName() === "home") renderHome();
       if (pageName() === "articles") renderArticles();
       if (pageName() === "categories") renderCategories();
@@ -463,8 +482,9 @@
         <div class="article-body">
           <p class="mini-title">${escapeHtml(post.category)}</p>
           <h3>${escapeHtml(post.title)}</h3>
-          <p>${escapeHtml(post.excerpt)}</p>
+          <div class="article-excerpt">${formatExcerpt(post.content || [post.excerpt])}</div>
           <div class="article-meta"><span>${formatPostDate(post.publishedAt)}</span><span>${escapeHtml(post.author)}</span></div>
+          <span class="article-engagement" data-post-card-engagement data-post-card-id="${escapeHtml(post.id)}">阅读 0 · 点赞 0 · 评论 0</span>
           ${post.attachments?.length ? `<p class="article-attachment-hint">含 ${post.attachments.length} 个附件，进入详情可下载</p>` : ""}
           <div class="tag-row">${post.tags.map((tag) => `<a href="./articles.html?tag=${encodeURIComponent(tag)}">#${escapeHtml(tag)}</a>`).join("")}</div>
         </div>
@@ -668,13 +688,23 @@
         if (remove) {
           const { type, id } = remove.dataset;
           const table = type === "album" ? "albums" : type === "moment" ? "moments" : "progress_logs";
-          if (!await confirmPublish("确认删除此内容？", "删除后无法恢复。", "确认删除")) return;
+          const list = type === "album" ? data.albums : type === "moment" ? data.moments : data.progress;
+          const item = list.find((entry) => entry.id === id);
+          if (!await confirmPublish("确认删除整条帖子？", "标题、文字和其中所有图片都会删除，且无法恢复。", "确认删除")) return;
+          if (item?.images?.length) await window.XiaoLuoSupabase.deleteFilesByPublicUrls(item.images);
           await window.XiaoLuoSupabase.deleteContent(table, id, state.userId);
           if (type === "album") data.albums = data.albums.filter((item) => item.id !== id);
           if (type === "moment") data.moments = data.moments.filter((item) => item.id !== id);
           if (type === "progress") data.progress = data.progress.filter((item) => item.id !== id);
           renderContentManagers();
           renderDashboardStats();
+        }
+        const manageImages = event.target.closest("[data-manage-timeline-post]");
+        if (manageImages) {
+          const { type, id } = manageImages.dataset;
+          const list = type === "moment" ? data.moments : data.progress;
+          const item = list.find((entry) => entry.id === id);
+          openContentPostEditor(type, item);
         }
         if (edit) {
           const { type, id } = edit.dataset;
@@ -698,21 +728,231 @@
     }
   }
 
+  function openContentImageManager(type, item) {
+    if (!state.isAdmin || !item) return;
+    let modal = $("[data-content-images-modal]");
+    if (!modal) {
+      modal = document.createElement("div");
+      modal.className = "modal content-images-modal";
+      modal.dataset.contentImagesModal = "";
+      modal.innerHTML = `<div class="modal-backdrop" data-content-images-close></div><section class="modal-card glass-card" role="dialog" aria-modal="true" aria-label="管理帖子"><button class="modal-close" type="button" data-content-images-close aria-label="关闭">x</button><p class="mini-title">POST MANAGEMENT</p><h2>管理帖子</h2><button class="danger-button" type="button" data-delete-timeline-post>删除整条帖子</button><div class="content-images-grid" data-content-images-grid></div></section>`;
+      document.body.appendChild(modal);
+    }
+    const table = type === "moment" ? "moments" : "progress_logs";
+    const draw = () => {
+      const grid = $("[data-content-images-grid]", modal);
+      grid.innerHTML = (item.images || []).map((url, index) => `<figure><img src="${url}" alt="帖子图片 ${index + 1}"><button class="danger-button" type="button" data-delete-content-image="${index}">删除图片</button></figure>`).join("") || '<p class="comment-empty">这条帖子没有图片。</p>';
+      $("[data-delete-timeline-post]", modal).onclick = async () => {
+        if (!await confirmPublish("确认删除整条帖子？", "标题、文字和其中所有图片都会删除，且无法恢复。", "确认删除")) return;
+        try {
+          if (item.images?.length) await window.XiaoLuoSupabase.deleteFilesByPublicUrls(item.images);
+          await window.XiaoLuoSupabase.deleteContent(table, item.id, state.userId);
+          const list = type === "moment" ? data.moments : data.progress;
+          const nextList = list.filter((entry) => entry.id !== item.id);
+          if (type === "moment") data.moments = nextList; else data.progress = nextList;
+          modal.classList.remove("open");
+          renderCurrentPage();
+        } catch (error) { showCloudError(error); }
+      };
+      $all("[data-delete-content-image]", grid).forEach((button) => {
+        button.onclick = async () => {
+          const index = Number(button.dataset.deleteContentImage);
+          if (!await confirmPublish("确认删除这张图片？", "删除后无法恢复。", "确认删除")) return;
+          const [removed] = item.images.splice(index, 1);
+          try {
+            await window.XiaoLuoSupabase.deleteFilesByPublicUrls([removed]);
+            await window.XiaoLuoSupabase.updateContent(table, item.id, state.userId, { image_urls: item.images });
+            renderContentManagers();
+            renderDashboardStats();
+            if (!item.images.length) modal.classList.remove("open"); else draw();
+          } catch (error) { item.images.splice(index, 0, removed); showCloudError(error); }
+        };
+      });
+    };
+    $all("[data-content-images-close]", modal).forEach((button) => { button.onclick = () => modal.classList.remove("open"); });
+    draw();
+    modal.classList.add("open");
+  }
+
+  function openContentPostEditor(type, item) {
+    if (!state.isAdmin || !item) return;
+    let modal = $("[data-content-post-editor]");
+    if (!modal) {
+      modal = document.createElement("div");
+      modal.className = "modal content-post-editor-modal";
+      modal.dataset.contentPostEditor = "";
+      modal.innerHTML = `<button class="modal-backdrop" type="button" data-content-editor-close aria-label="关闭"></button><section class="modal-card glass-card" role="dialog" aria-modal="true" aria-label="编辑帖子"><button class="modal-close" type="button" data-content-editor-close aria-label="关闭">×</button><p class="mini-title">POST EDITOR</p><h2 data-content-editor-heading>编辑帖子</h2><form data-content-editor-form><label><span>标题</span><input name="title" type="text" required></label><label><span>日期</span><input name="date" type="date" required></label><label><span>正文</span><textarea name="body" rows="6" placeholder="填写内容"></textarea></label><section class="post-editor-images"><div><strong>已有图片</strong><p>可替换或删除单张图片。</p></div><div class="content-editor-image-grid" data-content-editor-images></div></section><label><span>添加图片</span><input name="newImages" type="file" accept="image/*" multiple></label><div class="publish-confirm-actions"><button class="danger-button" type="button" data-content-editor-delete>删除整条帖子</button><button class="primary-button" type="submit">保存修改</button></div></form></section>`;
+      document.body.appendChild(modal);
+    }
+    const table = type === "moment" ? "moments" : "progress_logs";
+    const folder = type === "moment" ? "moments" : "progress";
+    const form = $("[data-content-editor-form]", modal);
+    let images = [...(item.images || [])];
+    const replacements = new Map();
+    const deleted = new Set();
+    form.title.value = item.title || "";
+    form.date.value = item.date || today();
+    form.body.value = item.text || "";
+    $("[data-content-editor-heading]", modal).textContent = type === "moment" ? "编辑生活圈" : "编辑进步簿";
+
+    const drawImages = () => {
+      const grid = $("[data-content-editor-images]", modal);
+      grid.innerHTML = images.map((url, index) => {
+        if (deleted.has(index)) return "";
+        const preview = replacements.get(index)?.preview || url;
+        return `<figure><img src="${preview}" alt="帖子图片 ${index + 1}"><figcaption><label class="image-replace-label">替换<input type="file" accept="image/*" data-replace-content-image="${index}"></label><button class="danger-button" type="button" data-remove-editor-image="${index}">删除</button></figcaption></figure>`;
+      }).join("") || '<p class="comment-empty">暂时没有图片。</p>';
+      $all("[data-replace-content-image]", grid).forEach((input) => {
+        input.onchange = () => {
+          const file = input.files?.[0];
+          if (!file) return;
+          const reader = new FileReader();
+          reader.onload = () => { replacements.set(Number(input.dataset.replaceContentImage), { file, preview: reader.result }); drawImages(); };
+          reader.readAsDataURL(file);
+        };
+      });
+      $all("[data-remove-editor-image]", grid).forEach((button) => {
+        button.onclick = () => { deleted.add(Number(button.dataset.removeEditorImage)); drawImages(); };
+      });
+    };
+
+    $all("[data-content-editor-close]", modal).forEach((button) => { button.onclick = () => modal.classList.remove("open"); });
+    $("[data-content-editor-delete]", modal).onclick = async () => {
+      if (!await confirmPublish("确认删除整条帖子？", "标题、文字和图片都会删除，且无法恢复。", "确认删除")) return;
+      try {
+        await runWithLoading("正在删除帖子…", async () => {
+          if (images.length) await window.XiaoLuoSupabase.deleteFilesByPublicUrls(images);
+          await window.XiaoLuoSupabase.deleteContent(table, item.id, state.userId);
+        });
+        const next = (type === "moment" ? data.moments : data.progress).filter((entry) => entry.id !== item.id);
+        if (type === "moment") data.moments = next; else data.progress = next;
+        modal.classList.remove("open");
+        renderCurrentPage();
+      } catch (error) { showCloudError(error); }
+    };
+    form.onsubmit = async (event) => {
+      event.preventDefault();
+      const newFiles = Array.from(form.newImages.files || []);
+      const activeCount = images.filter((_, index) => !deleted.has(index)).length + newFiles.length;
+      if (activeCount > 9) { alert("生活圈和进步簿每条最多保留 9 张图片。"); return; }
+      try {
+        await runWithLoading("正在保存修改…", async (cancelled) => {
+          const nextImages = [];
+          const oldImagesToDelete = [];
+          for (let index = 0; index < images.length; index += 1) {
+            const oldUrl = images[index];
+            if (deleted.has(index)) { oldImagesToDelete.push(oldUrl); continue; }
+            const replacement = replacements.get(index);
+            if (replacement) {
+              const uploaded = await window.XiaoLuoSupabase.uploadFile(state.userId, folder, replacement.file);
+              if (cancelled()) return;
+              nextImages.push(uploaded);
+              oldImagesToDelete.push(oldUrl);
+            } else nextImages.push(oldUrl);
+          }
+          const additions = await Promise.all(newFiles.map((file) => window.XiaoLuoSupabase.uploadFile(state.userId, folder, file)));
+          if (cancelled()) return;
+          nextImages.push(...additions);
+          const updated = { title: form.title.value.trim(), body: form.body.value.trim(), entry_date: form.date.value, image_urls: nextImages };
+          await window.XiaoLuoSupabase.updateContent(table, item.id, state.userId, updated);
+          if (oldImagesToDelete.length) await window.XiaoLuoSupabase.deleteFilesByPublicUrls(oldImagesToDelete);
+          item.title = updated.title;
+          item.text = updated.body;
+          item.date = updated.entry_date;
+          item.images = nextImages;
+        });
+        modal.classList.remove("open");
+        renderCurrentPage();
+      } catch (error) { showCloudError(error); }
+    };
+    drawImages();
+    modal.classList.add("open");
+  }
+
+  function initTimelinePostManagement() {
+    if (document.body.dataset.timelineManagementBound) return;
+    document.body.dataset.timelineManagementBound = "true";
+    document.addEventListener("click", (event) => {
+      const trigger = event.target.closest("[data-manage-timeline-post]");
+      if (trigger && state.isAdmin) {
+        event.stopPropagation();
+        const type = trigger.dataset.type;
+        const list = type === "moment" ? data.moments : data.progress;
+        openContentPostEditor(type, list.find((entry) => entry.id === trigger.dataset.id));
+        return;
+      }
+      const card = event.target.closest("[data-open-timeline-post]");
+      if (!card || event.target.closest("button, a")) return;
+      const type = card.dataset.type;
+      const list = type === "moment" ? data.moments : data.progress;
+      openTimelineDetail(type, list.find((entry) => entry.id === card.dataset.id));
+    });
+  }
+
+  function openTimelineDetail(type, item) {
+    if (!item) return;
+    let modal = $("[data-timeline-detail-modal]");
+    if (!modal) {
+      modal = document.createElement("div"); modal.className = "modal timeline-detail-modal"; modal.dataset.timelineDetailModal = "";
+      modal.innerHTML = `<div class="modal-backdrop" data-timeline-detail-close></div><section class="modal-card glass-card" role="dialog" aria-modal="true" aria-label="内容详情"><button class="modal-close" type="button" data-timeline-detail-close>x</button><p class="mini-title" data-timeline-detail-date></p><h2 data-timeline-detail-title></h2><p data-timeline-detail-text></p><div class="timeline-detail-images" data-timeline-detail-images></div><div class="post-actions"><button type="button" data-timeline-like>点赞 0</button><span class="post-engagement" data-timeline-engagement>阅读 0 · 评论 0</span></div><section class="timeline-comments"><h3>评论</h3><p data-timeline-comment-note>登录后可以评论。</p><form data-timeline-comment-form><textarea name="content" maxlength="1000" placeholder="写下你的评论"></textarea><button class="primary-button small" type="submit">发表评论</button></form><div class="comment-list" data-timeline-comment-list></div></section></section>`;
+      document.body.appendChild(modal);
+    }
+    $("[data-timeline-detail-date]", modal).textContent = item.date;
+    $("[data-timeline-detail-title]", modal).textContent = item.title;
+    $("[data-timeline-detail-text]", modal).textContent = item.text;
+    $("[data-timeline-detail-images]", modal).innerHTML = (item.images || []).map((url) => `<img src="${url}" alt="${escapeHtml(item.title)}">`).join("");
+    $all("[data-timeline-detail-close]", modal).forEach((button) => { button.onclick = () => modal.classList.remove("open"); });
+    const drawComments = async () => {
+      try {
+        const comments = await window.XiaoLuoSupabase.getContentComments(type, item.id);
+        $("[data-timeline-comment-list]", modal).innerHTML = comments.map((comment) => `<article class="comment-item"><span class="comment-avatar${comment.profile?.avatar_url ? " has-image" : ""}"${comment.profile?.avatar_url ? ` style="background-image:url('${comment.profile.avatar_url}')"` : ""}>${escapeHtml((comment.profile?.display_name || "普").slice(0, 1))}</span><div class="comment-content"><strong>${escapeHtml(comment.profile?.display_name || "普通用户")}</strong><time>${formatPostDate(comment.created_at)}</time><p>${escapeHtml(comment.content)}</p></div></article>`).join("") || '<p class="comment-empty">还没有评论。</p>';
+        if (state.isAdmin) {
+          const commentList = $("[data-timeline-comment-list]", modal);
+          $all(".comment-item", commentList).forEach((element, index) => {
+            element.insertAdjacentHTML("beforeend", `<button class="comment-delete" type="button" data-delete-content-comment="${comments[index].id}">删除</button>`);
+          });
+          $all("[data-delete-content-comment]", modal).forEach((button) => {
+            button.onclick = async () => {
+              if (!await confirmPublish("确认删除这条评论？", "删除后无法恢复。", "确认删除")) return;
+              try {
+                await window.XiaoLuoSupabase.deleteContentComment(button.dataset.deleteContentComment);
+                await drawComments();
+                await drawEngagement();
+              } catch (error) { showCloudError(error); }
+            };
+          });
+        }
+      } catch (error) { console.warn("Timeline comments load failed:", error.message); }
+    };
+    const drawEngagement = async () => {
+      try {
+        if (state.isLoggedIn) await window.XiaoLuoSupabase.recordContentView(type, item.id, state.userId);
+        const engagement = await window.XiaoLuoSupabase.getContentEngagement(type, item.id, state.userId);
+        const button = $("[data-timeline-like]", modal);
+        button.textContent = engagement.liked ? `已点赞 ${engagement.likes}` : `点赞 ${engagement.likes}`;
+        button.classList.toggle("is-liked", engagement.liked);
+        button.onclick = async () => { if (!state.isLoggedIn) return alert("请先登录后再点赞。"); try { await window.XiaoLuoSupabase.toggleContentLike(type, item.id, state.userId, engagement.liked); drawEngagement(); } catch (error) { showCloudError(error); } };
+        $("[data-timeline-engagement]", modal).textContent = `阅读 ${engagement.views} · 评论 ${engagement.comments}`;
+      } catch (error) { console.warn("Timeline engagement load failed:", error.message); }
+    };
+    const form = $("[data-timeline-comment-form]", modal); form.reset();
+    $("[data-timeline-comment-note]", modal).textContent = state.isLoggedIn ? "评论会保存到这条内容下方。" : "请先登录后发表评论。";
+    form.onsubmit = async (event) => { event.preventDefault(); if (!state.isLoggedIn) return alert("请先登录后发表评论。"); const content = form.content.value.trim(); if (!content) return; try { await window.XiaoLuoSupabase.addContentComment(type, item.id, state.userId, content); form.reset(); drawComments(); drawEngagement(); } catch (error) { showCloudError(error); } };
+    drawComments(); drawEngagement(); modal.classList.add("open");
+  }
+
   function renderHome() {
     const latest = $("[data-latest-posts]");
     const featured = $("[data-featured-posts]");
     const chips = $("[data-category-chips]");
-    if (latest) latest.innerHTML = data.posts.slice(0, 3).map(postCard).join("");
-    if (featured) {
-      featured.innerHTML = data.posts.filter((post) => post.featured).map((post) => `
-        <a class="featured-item glass-card" href="./article-detail.html?id=${post.id}">
-          <span>${formatPostDate(post.publishedAt)}</span>
-          <strong>${escapeHtml(post.title)}</strong>
-          <small>${escapeHtml(post.excerpt)}</small>
-        </a>
-      `).join("");
+    if (latest) {
+      const posts = data.posts.slice(0, 3);
+      latest.innerHTML = posts.map(postCard).join("");
+      loadPostCardEngagement(posts, latest);
     }
+    if (featured) featured.innerHTML = "";
     if (chips) chips.innerHTML = "";
+    $all("[data-site-announcement]").forEach((el) => { el.textContent = data.site.announcement || "暂无公告。"; });
   }
 
   function renderArticles() {
@@ -737,6 +977,7 @@
       const total = Math.max(1, Math.ceil(filtered.length / pageSize));
       currentPage = Math.min(currentPage, total);
       list.innerHTML = filtered.slice((currentPage - 1) * pageSize, currentPage * pageSize).map(postCard).join("") || '<p class="empty-state">暂时没有找到文章。</p>';
+      loadPostCardEngagement(filtered.slice((currentPage - 1) * pageSize, currentPage * pageSize), list);
       if (pagination) pagination.innerHTML = Array.from({ length: total }, (_, index) => `<button class="${index + 1 === currentPage ? "active" : ""}" type="button" data-page-number="${index + 1}">${index + 1}</button>`).join("");
     };
 
@@ -800,7 +1041,7 @@
           ${state.isAdmin && state.cloudOwnerId === state.userId ? `<button class="danger-button" type="button" data-delete-post="${post.id}">删除文章</button>` : ""}
           <button type="button" data-post-like="${post.id}">点赞</button>
           <button type="button" data-placeholder-action="bookmark">收藏</button>
-          <span class="post-engagement" data-post-engagement>阅读 0 · 点赞 0</span>
+          <span class="post-engagement" data-post-engagement>阅读 0 · 点赞 0 · 评论 0</span>
         </div>
       </article>
       <nav class="post-neighbor">
@@ -824,7 +1065,7 @@
       if (state.isLoggedIn) await api.recordPostView(postId, state.userId);
       const engagement = await api.getPostEngagement(postId, state.userId);
       const summary = $("[data-post-engagement]");
-      if (summary) summary.textContent = `阅读 ${engagement.views} · 点赞 ${engagement.likes}`;
+      if (summary) summary.textContent = `阅读 ${engagement.views} · 点赞 ${engagement.likes} · 评论 ${engagement.comments.length}`;
       const likeButton = $("[data-post-like]");
       if (likeButton) {
         likeButton.textContent = engagement.liked ? `已点赞 ${engagement.likes}` : `点赞 ${engagement.likes}`;
@@ -843,6 +1084,20 @@
         const initial = escapeHtml(name.slice(0, 1) || "普");
         return `<article class="comment-item"><span class="comment-avatar${avatar ? " has-image" : ""}"${avatar ? ` style="background-image:url('${avatar}')"` : ""}>${initial}</span><div class="comment-content"><div><strong>${escapeHtml(name)}</strong><time>${formatPostDate(comment.created_at)}</time></div><p>${escapeHtml(comment.content)}</p></div></article>`;
       }).join("") || '<p class="comment-empty">还没有评论。</p>';
+      if (state.isAdmin && commentList) {
+        $all(".comment-item", commentList).forEach((element, index) => {
+          element.insertAdjacentHTML("beforeend", `<button class="comment-delete" type="button" data-delete-post-comment="${engagement.comments[index].id}">删除</button>`);
+        });
+        $all("[data-delete-post-comment]", commentList).forEach((button) => {
+          button.onclick = async () => {
+            if (!await confirmPublish("确认删除这条评论？", "删除后无法恢复。", "确认删除")) return;
+            try {
+              await api.deletePostComment(button.dataset.deletePostComment);
+              await loadPostEngagement(postId);
+            } catch (error) { showCloudError(error); }
+          };
+        });
+      }
       const form = $("[data-post-comment-form]");
       if (form && !form.dataset.bound) {
         form.dataset.bound = "true";
@@ -859,15 +1114,39 @@
     }
   }
 
+  function loadPostCardEngagement(posts, scope) {
+    const api = window.XiaoLuoSupabase;
+    if (!api?.isConfigured || !posts?.length || !scope) return;
+    posts.forEach(async (post) => {
+      try {
+        const engagement = await api.getPostEngagementSummary(post.id);
+        const target = scope.querySelector(`[data-post-card-id="${post.id}"]`);
+        if (target) target.textContent = `阅读 ${engagement.views} · 点赞 ${engagement.likes} · 评论 ${engagement.comments}`;
+      } catch (error) { console.warn("Post card engagement load failed:", error.message); }
+    });
+  }
+
   function renderTimeline(selector, items) {
     const wrap = $(selector);
     if (!wrap) return;
+    const type = selector.includes("progress") ? "progress" : "moment";
     wrap.innerHTML = items.map((item) => {
       const images = item.images || (item.imageClass ? [item.imageClass] : []);
       const imagePayload = escapeHtml(JSON.stringify(images));
       const grid = images.length ? `<div class="moment-gallery count-${Math.min(images.length, 9)}">${images.slice(0, 9).map((img, index) => /^https?:\/\//.test(img) ? `<button class="moment-thumb uploaded-image" type="button" data-timeline-images="${imagePayload}" data-timeline-index="${index}" style="background-image:url('${img}')" aria-label="查看第 ${index + 1} 张图片"></button>` : `<button class="moment-thumb ${img}" type="button" data-timeline-images="${imagePayload}" data-timeline-index="${index}" aria-label="查看第 ${index + 1} 张图片"></button>`).join("")}</div>` : "";
-      return `<article class="timeline-item glass-card"><time>${escapeHtml(item.date)}</time><div><h3>${escapeHtml(item.title)}</h3><p>${escapeHtml(item.text)}</p>${grid}</div></article>`;
+      const adminActions = state.isAdmin ? `<button class="timeline-manage-button" type="button" data-manage-timeline-post data-type="${type}" data-id="${escapeHtml(item.id)}" aria-label="管理这条帖子" title="管理帖子">⋯</button>` : "";
+      return `<article class="timeline-item glass-card timeline-openable" data-open-timeline-post data-type="${type}" data-id="${escapeHtml(item.id)}"><time>${escapeHtml(item.date)}</time><div class="timeline-content"><h3>${escapeHtml(item.title)}</h3><p>${escapeHtml(item.text)}</p>${grid}<span class="timeline-engagement" data-timeline-card-engagement>阅读 0 · 点赞 0 · 评论 0</span>${adminActions}</div></article>`;
     }).join("") || '<article class="timeline-item glass-card empty-state">暂时还没有内容。</article>';
+    items.forEach((item) => loadTimelineCardEngagement(type, item.id, wrap));
+  }
+
+  async function loadTimelineCardEngagement(type, id, wrap) {
+    try {
+      const engagement = await window.XiaoLuoSupabase.getContentEngagement(type, id, state.userId);
+      const card = wrap.querySelector(`[data-open-timeline-post][data-id="${id}"]`);
+      const target = card?.querySelector("[data-timeline-card-engagement]");
+      if (target) target.textContent = `阅读 ${engagement.views} · 点赞 ${engagement.likes} · 评论 ${engagement.comments}`;
+    } catch (error) { console.warn("Timeline card engagement load failed:", error.message); }
   }
 
   function initTimelineImageViewer() {
@@ -994,7 +1273,7 @@
       document.body.insertAdjacentHTML("beforeend", `
         <aside class="floating-player" data-floating-player hidden>
           <button type="button" class="floating-collapse" data-floating-collapse aria-label="收起音乐播放器" title="收起播放器"><span aria-hidden="true">&#8249;</span></button>
-          <button type="button" data-music-prev aria-label="上一首">‹</button>
+          <button type="button" data-music-prev aria-label="上一首"><span class="player-icon player-icon-previous" aria-hidden="true"></span></button>
           <div class="floating-record" data-floating-record>♪</div>
           <div class="floating-info">
             <strong data-floating-title></strong>
@@ -1003,7 +1282,7 @@
             <small><span data-floating-current>00:00</span> / <span data-floating-duration>00:00</span></small>
           </div>
           <button type="button" data-floating-toggle aria-label="播放或暂停">▶</button>
-          <button type="button" data-music-next aria-label="下一首">›</button>
+          <button type="button" data-music-next aria-label="下一首"><span class="player-icon player-icon-next" aria-hidden="true"></span></button>
         </aside>
       `);
     }
@@ -1140,6 +1419,10 @@
     const profile = {
       home_title: form.heroTitle?.value.trim() || data.site.heroTitle,
       home_bio: form.profileBio?.value.trim() || data.site.profileBio,
+      about_title: data.site.aboutTitle,
+      about_bio: data.site.aboutBio,
+      about_side_bio: data.site.aboutSideBio,
+      announcement: form.announcement?.value.trim() || "",
       display_name: form.profileName?.value.trim() || data.site.profileName,
       avatar_url: data.site.avatarDataUrl || "",
       contacts: {
@@ -1157,6 +1440,7 @@
         await window.XiaoLuoSupabase.saveProfile(state.userId, profile);
         data.site.heroTitle = profile.home_title;
         data.site.profileBio = profile.home_bio;
+        data.site.announcement = profile.announcement;
         data.site.profileName = profile.display_name;
         data.site.avatarText = profile.display_name.slice(0, 1);
         data.site.avatarDataUrl = profile.avatar_url;
@@ -1169,7 +1453,37 @@
     const upload = avatarFile
       ? window.XiaoLuoSupabase.uploadFile(state.userId, "avatars", avatarFile).then((url) => { profile.avatar_url = url; })
       : Promise.resolve();
-    upload.then(finish).catch(showCloudError);
+    runWithLoading("正在保存首页设置…", async () => {
+      await upload;
+      await finish();
+    }).catch(showCloudError);
+  }
+
+  async function saveAboutSettings() {
+    const form = $("[data-about-settings-form]");
+    if (!form) return;
+    const profile = {
+      home_title: data.site.heroTitle,
+      home_bio: data.site.profileBio,
+      about_title: form.aboutTitle.value.trim() || "关于小罗",
+      about_bio: form.aboutBio.value.trim(),
+      about_side_bio: form.aboutSideBio.value.trim(),
+      announcement: data.site.announcement || "",
+      display_name: data.site.profileName,
+      avatar_url: data.site.avatarDataUrl || "",
+      contacts: data.site.contacts || {}
+    };
+    try {
+      requireCloudSession();
+      await runWithLoading("正在保存关于我…", async () => {
+        await window.XiaoLuoSupabase.saveProfile(state.userId, profile);
+      });
+      data.site.aboutTitle = profile.about_title;
+      data.site.aboutBio = profile.about_bio;
+      data.site.aboutSideBio = profile.about_side_bio;
+      initBrand();
+      alert("关于我内容已保存到 Supabase。");
+    } catch (error) { showCloudError(error); }
   }
 
   function initForms() {
@@ -1215,6 +1529,11 @@
     if (settings && !settings.dataset.bound) {
       settings.dataset.bound = "true";
       settings.addEventListener("click", saveSiteSettings);
+    }
+    const aboutSettings = $("[data-save-about-settings]");
+    if (aboutSettings && !aboutSettings.dataset.bound) {
+      aboutSettings.dataset.bound = "true";
+      aboutSettings.addEventListener("click", saveAboutSettings);
     }
   }
 
@@ -1362,6 +1681,29 @@
       const target = $("[data-stat-total-likes]");
       if (target) target.textContent = totalLikes.toLocaleString("zh-CN");
     }).catch((error) => console.warn("Like total load failed:", error.message));
+    window.XiaoLuoSupabase?.getStorageUsage?.().then((bytes) => {
+      const target = $("[data-stat-storage-used]");
+      if (target) target.textContent = `${(bytes / 1024 / 1024).toFixed(2)} MB`;
+    }).catch((error) => console.warn("Storage usage load failed:", error.message));
+  }
+
+  function renderRegisteredUsers() {
+    const wrap = $("[data-registered-users]");
+    if (!wrap || !state.isAdmin) return;
+    wrap.innerHTML = '<p class="empty-state">正在加载注册用户…</p>';
+    window.XiaoLuoSupabase?.listRegisteredUsers?.().then((users) => {
+      const count = $("[data-registered-user-count]");
+      if (count) count.textContent = `${users.length} 位用户`;
+      wrap.innerHTML = users.map((user) => {
+        const name = user.display_name || "普通用户";
+        const avatar = user.avatar_url || "";
+        const initial = escapeHtml(name.slice(0, 1) || "普");
+        return `<article class="registered-user-row"><span class="comment-avatar${avatar ? " has-image" : ""}"${avatar ? ` style="background-image:url('${avatar}')"` : ""}>${initial}</span><div><strong>${escapeHtml(name)}</strong><p>${escapeHtml(user.email || "未提供邮箱")}</p></div><time>${formatPostDate(user.created_at)}</time></article>`;
+      }).join("") || '<p class="empty-state">暂时还没有普通用户注册。</p>';
+    }).catch((error) => {
+      wrap.innerHTML = '<p class="empty-state">无法读取注册用户，请确认已执行用户列表权限脚本。</p>';
+      console.warn("Registered users load failed:", error.message);
+    });
   }
 
   function renderContentManagers() {
@@ -1369,8 +1711,8 @@
     const momentWrap = $("[data-moment-manager]");
     const progressWrap = $("[data-progress-manager]");
     if (albumWrap) albumWrap.innerHTML = data.albums.map((album) => `<div class="manager-row"><strong>${escapeHtml(album.title)}</strong><span>${escapeHtml(album.meta)}</span><div><button type="button" data-edit-content data-type="album" data-id="${escapeHtml(album.id)}">编辑</button><button type="button" data-remove-content data-type="album" data-id="${escapeHtml(album.id)}">删除</button></div></div>`).join("");
-    if (momentWrap) momentWrap.innerHTML = data.moments.map((moment) => `<div class="manager-row"><strong>${escapeHtml(moment.title)}</strong><span>${escapeHtml(moment.date)}</span><div><button type="button" data-edit-content data-type="moment" data-id="${escapeHtml(moment.id || `${moment.date}--${moment.title}`)}">编辑</button><button type="button" data-remove-content data-type="moment" data-id="${escapeHtml(moment.id || `${moment.date}--${moment.title}`)}">删除</button></div></div>`).join("");
-    if (progressWrap) progressWrap.innerHTML = data.progress.map((item) => `<div class="manager-row"><strong>${escapeHtml(item.title)}</strong><span>${escapeHtml(item.date)}</span><div><button type="button" data-edit-content data-type="progress" data-id="${escapeHtml(item.id || `${item.date}--${item.title}`)}">编辑</button><button type="button" data-remove-content data-type="progress" data-id="${escapeHtml(item.id || `${item.date}--${item.title}`)}">删除</button></div></div>`).join("");
+    if (momentWrap) momentWrap.innerHTML = "";
+    if (progressWrap) progressWrap.innerHTML = "";
   }
 
   async function protectDashboard() {
@@ -1379,6 +1721,31 @@
     const session = await refreshAuthState();
     if (!session) window.location.href = "./login.html";
     else if (!state.isAdmin) window.location.href = "./index.html";
+  }
+
+  function initAdminEntryGuard() {
+    if (document.body.dataset.adminEntryGuardBound) return;
+    document.body.dataset.adminEntryGuardBound = "true";
+    document.addEventListener("click", (event) => {
+      const entry = event.target.closest("[data-admin-entry], a[href='./dashboard.html'], a[href='./editor.html']");
+      if (!entry || state.isAdmin) return;
+      event.preventDefault();
+      event.stopPropagation();
+      showAdminOnlyNotice();
+    }, true);
+  }
+
+  function showAdminOnlyNotice() {
+    let modal = $("[data-admin-only-modal]");
+    if (!modal) {
+      modal = document.createElement("div");
+      modal.className = "modal admin-only-modal";
+      modal.dataset.adminOnlyModal = "";
+      modal.innerHTML = `<button class="modal-backdrop" type="button" data-admin-only-close aria-label="关闭提示"></button><section class="modal-card glass-card" role="dialog" aria-modal="true" aria-labelledby="admin-only-title"><button class="modal-close" type="button" data-admin-only-close aria-label="关闭">×</button><p class="mini-title">XIAOLUO BLOG</p><h2 id="admin-only-title">管理员专属入口</h2><p>本入口仅供管理员小罗操作。</p><div class="publish-confirm-actions"><button class="primary-button" type="button" data-admin-only-close>我知道了</button></div></section>`;
+      document.body.appendChild(modal);
+    }
+    $all("[data-admin-only-close]", modal).forEach((button) => { button.onclick = () => modal.classList.remove("open"); });
+    modal.classList.add("open");
   }
 
   function renderCurrentPage() {
@@ -1391,6 +1758,8 @@
     initForms();
     initContactCopy();
     initUserProfileSettings();
+    initTimelinePostManagement();
+    initAdminEntryGuard();
     initLiveClock();
     initTimelineImageViewer();
     const page = pageName();
@@ -1408,8 +1777,9 @@
         initDashboardSectionSpy();
         initContentManagement();
         renderAdminPosts();
-          renderContentManagers();
-          renderDashboardStats();
+        renderContentManagers();
+        renderDashboardStats();
+        renderRegisteredUsers();
         renderDashboardStats();
       }
     }

@@ -10,6 +10,9 @@ window.NeverBlogData = {
     heroTitle: "小罗Blog",
     heroSubtitle: "记录生活、技术和成长。",
     profileBio: "欢迎来到小罗博客网站。",
+    aboutTitle: "关于小罗",
+    aboutBio: "这里会记录小罗和这个网站的故事。",
+    aboutSideBio: "记录生活、技术和成长。",
     contacts: { email: "", qq: "", wechat: "", douyin: "" },
     homeBackground: { imageUrl: "" }
   },
