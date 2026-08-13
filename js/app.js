@@ -29,12 +29,252 @@
     }[char]));
   }
 
-  function linkify(value) {
-    return escapeHtml(value).replace(/(https?:\/\/[^\s<]+)/g, '<a href="$1" target="_blank" rel="noopener noreferrer">$1</a>');
+  const HIGHLIGHT_COLORS = new Set(["#ffddd8", "#d8f2e2", "#dce9ff"]);
+
+  function formatPlainRichText(value) {
+    let html = escapeHtml(value || "");
+    const links = [];
+    html = html.replace(/\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g, (_match, label, url) => {
+      const token = `@@XIAOLUO_LINK_${links.length}@@`;
+      links.push(`<a href="${url}" target="_blank" rel="noopener noreferrer">${label}</a>`);
+      return token;
+    });
+    html = html.replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>");
+    html = html.replace(/__(.+?)__/g, "<u>$1</u>");
+    html = html.replace(/https?:\/\/[^\s<]+/g, (url) => `<a href="${url}" target="_blank" rel="noopener noreferrer">${url}</a>`);
+    return html.replace(/@@XIAOLUO_LINK_(\d+)@@/g, (_match, index) => links[Number(index)] || "");
+  }
+
+  function sanitizeRichHtml(value) {
+    const source = document.createElement("div");
+    source.innerHTML = String(value || "");
+    const output = document.createElement("div");
+    const appendClean = (node, parent) => {
+      if (node.nodeType === Node.TEXT_NODE) { parent.append(document.createTextNode(node.nodeValue || "")); return; }
+      if (node.nodeType !== Node.ELEMENT_NODE) return;
+      const tag = node.tagName.toLowerCase();
+      if (tag === "br") { parent.append(document.createElement("br")); return; }
+      const mapped = tag === "b" ? "strong" : tag;
+      if (["strong", "u"].includes(mapped)) {
+        const element = document.createElement(mapped);
+        [...node.childNodes].forEach((child) => appendClean(child, element));
+        parent.append(element);
+        return;
+      }
+      if (tag === "a") {
+        const href = node.getAttribute("href") || "";
+        if (/^https?:\/\//i.test(href)) {
+          const link = document.createElement("a");
+          link.href = href; link.target = "_blank"; link.rel = "noopener noreferrer";
+          [...node.childNodes].forEach((child) => appendClean(child, link));
+          parent.append(link);
+        } else [...node.childNodes].forEach((child) => appendClean(child, parent));
+        return;
+      }
+      if (tag === "span") {
+        const color = (node.style.backgroundColor || "").toLowerCase();
+        const palette = { "rgb(255, 221, 216)": "#ffddd8", "rgb(216, 242, 226)": "#d8f2e2", "rgb(220, 233, 255)": "#dce9ff" };
+        const selected = HIGHLIGHT_COLORS.has(color) ? color : palette[color];
+        if (selected) {
+          const span = document.createElement("span");
+          span.className = "rich-highlight";
+          span.style.backgroundColor = selected;
+          [...node.childNodes].forEach((child) => appendClean(child, span));
+          parent.append(span);
+        } else [...node.childNodes].forEach((child) => appendClean(child, parent));
+        return;
+      }
+      if (["div", "p"].includes(tag)) {
+        [...node.childNodes].forEach((child) => appendClean(child, parent));
+        if (node.nextSibling) parent.append(document.createElement("br"));
+        return;
+      }
+      [...node.childNodes].forEach((child) => appendClean(child, parent));
+    };
+    [...source.childNodes].forEach((node) => appendClean(node, output));
+    return output.innerHTML;
+  }
+
+  function formatRichText(value) {
+    const raw = String(value || "");
+    return /<\/?[a-z][\s\S]*>/i.test(raw) ? sanitizeRichHtml(raw) : formatPlainRichText(raw);
+  }
+
+  function linkify(value) { return formatRichText(value); }
+
+  function bindTextFormatToolbars(scope = document) {
+    $all("[data-format-toolbar]", scope).forEach((toolbar) => {
+      if (toolbar.dataset.bound) return;
+      toolbar.dataset.bound = "true";
+      const input = toolbar.parentElement?.querySelector("[data-format-input]");
+      if (!input) return;
+      $all("[data-format-action]", toolbar).forEach((button) => {
+        button.addEventListener("mousedown", (event) => event.preventDefault());
+        button.onclick = () => {
+          if (input.isContentEditable) {
+            input.focus();
+            const action = button.dataset.formatAction;
+            if (action === "bold") document.execCommand("bold");
+            else if (action === "underline") document.execCommand("underline");
+            else if (action === "highlight") document.execCommand("hiliteColor", false, button.dataset.highlightColor || "#dce9ff");
+            else if (action === "link") {
+              const url = window.prompt("请输入链接地址", "https://");
+              if (!url || !/^https?:\/\//i.test(url)) return;
+              document.execCommand("createLink", false, url);
+              $all("a", input).forEach((link) => { link.target = "_blank"; link.rel = "noopener noreferrer"; });
+            }
+            input.dispatchEvent(new Event("input", { bubbles: true }));
+            return;
+          }
+          const start = input.selectionStart;
+          const end = input.selectionEnd;
+          const selected = input.value.slice(start, end) || "文字";
+          let insert = selected;
+          if (button.dataset.formatAction === "bold") insert = `**${selected}**`;
+          if (button.dataset.formatAction === "underline") insert = `__${selected}__`;
+          if (button.dataset.formatAction === "link") {
+            const url = window.prompt("请输入链接地址", "https://");
+            if (!url || !/^https?:\/\//i.test(url)) return;
+            insert = `[${selected}](${url})`;
+          }
+          input.setRangeText(insert, start, end, "end");
+          input.dispatchEvent(new Event("input", { bubbles: true }));
+          input.focus();
+        };
+      });
+      if (input.isContentEditable) {
+        input.addEventListener("keydown", (event) => {
+          if (!(event.ctrlKey || event.metaKey)) return;
+          if (event.key.toLowerCase() === "b") { event.preventDefault(); document.execCommand("bold"); }
+          if (event.key.toLowerCase() === "u") { event.preventDefault(); document.execCommand("underline"); }
+        });
+      }
+    });
+  }
+
+  function editorContentValue(form) {
+    const input = $("[data-editor-content]", form);
+    return input ? sanitizeRichHtml(input.innerHTML) : (form.content?.value || "");
+  }
+
+  function setEditorContent(form, value) {
+    const input = $("[data-editor-content]", form);
+    if (input) input.innerHTML = formatRichText(value);
+    else if (form.content) form.content.value = value || "";
+  }
+
+  function contentEntryValue(form) {
+    const input = $("[data-content-text]", form);
+    return input ? sanitizeRichHtml(input.innerHTML) : (form.text?.value || "");
+  }
+
+  function renderPostContent(parts) {
+    return (parts || []).filter(Boolean).map((part) => `<p>${formatRichText(part).replace(/\n/g, "<br>")}</p>`).join("");
   }
 
   function formatExcerpt(paragraphs) {
-    return (paragraphs || []).filter(Boolean).slice(0, 2).map((paragraph) => `<p>${linkify(paragraph)}</p>`).join("") || "<p>点击查看文章详情。</p>";
+    return (paragraphs || []).filter(Boolean).slice(0, 2).map((paragraph) => `<p>${formatRichText(paragraph)}</p>`).join("") || "<p>点击查看文章详情。</p>";
+  }
+
+  function sortTimelineByDate(items) {
+    return [...items].sort((a, b) => new Date(`${b.date}T00:00:00`) - new Date(`${a.date}T00:00:00`));
+  }
+
+  function setSavingMessage(message) {
+    const target = $("[data-saving-message]");
+    if (target) target.textContent = message;
+  }
+
+  function canvasToBlob(canvas, quality) {
+    return new Promise((resolve) => canvas.toBlob(resolve, "image/webp", quality));
+  }
+
+  async function compressImageForUpload(file, options = {}) {
+    if (!file?.type?.startsWith("image/") || file.type === "image/gif") return file;
+    setSavingMessage("正在压缩图片中…");
+    const maxSide = options.maxSide || 1920;
+    const targetBytes = options.targetBytes || 600 * 1024;
+    let bitmap;
+    try {
+      bitmap = await createImageBitmap(file);
+      let width = bitmap.width;
+      let height = bitmap.height;
+      const initialScale = Math.min(1, maxSide / Math.max(width, height));
+      width = Math.max(1, Math.round(width * initialScale));
+      height = Math.max(1, Math.round(height * initialScale));
+      let blob = null;
+      for (let pass = 0; pass < 4; pass += 1) {
+        const canvas = document.createElement("canvas");
+        canvas.width = width;
+        canvas.height = height;
+        canvas.getContext("2d").drawImage(bitmap, 0, 0, width, height);
+        for (const quality of [.84, .76, .68, .6, .52]) {
+          blob = await canvasToBlob(canvas, quality);
+          if (blob && blob.size <= targetBytes) break;
+        }
+        if (blob && blob.size <= targetBytes) break;
+        width = Math.max(480, Math.round(width * .8));
+        height = Math.max(480, Math.round(height * .8));
+      }
+      if (!blob || blob.size >= file.size) return file;
+      const baseName = file.name.replace(/\.[^.]+$/, "") || "image";
+      return new File([blob], `${baseName}.webp`, { type: "image/webp" });
+    } catch (error) {
+      console.warn("Image compression skipped:", error.message);
+      return file;
+    } finally {
+      bitmap?.close();
+    }
+  }
+
+  async function uploadOptimizedImage(userId, folder, file, options) {
+    const optimized = await compressImageForUpload(file, options);
+    setSavingMessage("正在上传图片…");
+    return window.XiaoLuoSupabase.uploadFile(userId, folder, optimized);
+  }
+
+  async function uploadOptimizedImages(userId, folder, files, options) {
+    const urls = [];
+    for (const file of files) urls.push(await uploadOptimizedImage(userId, folder, file, options));
+    return urls;
+  }
+
+  function commentThreadHtml(comments, deleteAttribute) {
+    const byParent = new Map();
+    comments.forEach((comment) => {
+      const key = comment.parent_id || "root";
+      if (!byParent.has(key)) byParent.set(key, []);
+      byParent.get(key).push(comment);
+    });
+    const draw = (parentId = "root", depth = 0) => (byParent.get(parentId) || []).map((comment) => {
+      const name = comment.profile?.display_name || "普通用户";
+      const avatar = comment.profile?.avatar_url || "";
+      const replies = byParent.get(comment.id) || [];
+      const replyBlock = replies.length ? `<button class="comment-toggle-replies" type="button" data-toggle-comment-replies aria-expanded="false">查看 ${replies.length} 条回复</button><div class="comment-replies" data-comment-replies hidden>${draw(comment.id, depth + 1)}</div>` : "";
+      return `<article class="comment-item${depth ? " comment-reply" : ""}"><span class="comment-avatar${avatar ? " has-image" : ""}"${avatar ? ` style="background-image:url('${avatar}')"` : ""}>${escapeHtml(name.slice(0, 1) || "普")}</span><div class="comment-content"><div><strong>${escapeHtml(name)}</strong><time>${formatPostDate(comment.created_at)}</time></div><p>${escapeHtml(comment.content)}</p><button class="comment-reply-button" type="button" data-reply-comment="${comment.id}" data-reply-name="${escapeHtml(name)}">回复</button>${replyBlock}</div>${state.isAdmin ? `<button class="comment-delete" type="button" ${deleteAttribute}="${comment.id}">删除</button>` : ""}</article>`;
+    }).join("");
+    return draw() || '<p class="comment-empty">还没有评论。</p>';
+  }
+
+  function bindReplyButtons(scope, form, setReply) {
+    $all("[data-reply-comment]", scope).forEach((button) => {
+      button.onclick = () => {
+        setReply(button.dataset.replyComment);
+        form.content.placeholder = `回复 ${button.dataset.replyName}…`;
+        form.content.focus();
+      };
+    });
+    $all("[data-toggle-comment-replies]", scope).forEach((button) => {
+      button.onclick = () => {
+        const replies = button.nextElementSibling;
+        if (!replies) return;
+        const expanded = button.getAttribute("aria-expanded") === "true";
+        replies.hidden = expanded;
+        button.setAttribute("aria-expanded", String(!expanded));
+        const count = replies.querySelectorAll(":scope > .comment-item").length;
+        button.textContent = expanded ? `查看 ${count} 条回复` : "收起回复";
+      };
+    });
   }
 
   function formatTime(seconds) {
@@ -51,6 +291,20 @@
     if (Number.isNaN(date.getTime())) return String(value);
     const pad = (number) => String(number).padStart(2, "0");
     return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}`;
+  }
+
+  function formatRelativeDays(value) {
+    if (!value) return "暂无更新";
+    const days = Math.max(0, Math.floor((Date.now() - new Date(value).getTime()) / 86400000));
+    if (days === 0) return "今天更新";
+    return `${days} 天前更新`;
+  }
+
+  function renderSiteStats() {
+    const launched = new Date(data.site.launchedAt || Date.now());
+    const runningDays = Math.max(1, Math.floor((Date.now() - launched.getTime()) / 86400000) + 1);
+    $all("[data-site-running-days]").forEach((el) => { el.textContent = `第 ${runningDays} 天`; });
+    $all("[data-site-last-update]").forEach((el) => { el.textContent = formatRelativeDays(data.site.lastUpdatedAt); });
   }
 
   function readSavedSettings() {
@@ -136,10 +390,13 @@
 
   function initBrand() {
     applySavedSettings();
+    const favicon = document.querySelector("link[rel='icon']") || document.head.appendChild(document.createElement("link"));
+    favicon.rel = "icon";
+    favicon.href = "./assets/images/xiaoluo-blog-icon.jpg";
     $all("[data-site-name]").forEach((el) => { el.textContent = data.site.name; });
-    $all("[data-site-logo]").forEach((el) => { el.textContent = data.site.logoText; });
+    $all("[data-site-logo]").forEach((el) => { el.textContent = ""; el.style.backgroundImage = "url('./assets/images/xiaoluo-blog-icon.jpg')"; });
     $all("[data-profile-avatar]").forEach((el) => {
-      const fallback = el.classList.contains("avatar") ? (data.site.logoText || "罗") : (data.site.avatarText || data.site.logoText);
+      const fallback = el.classList.contains("avatar") ? (data.site.logoText || "罗") : (data.site.avatarText || data.site.logoText || "罗");
       el.textContent = fallback;
       const avatarUrl = data.site.avatarDataUrl || "";
       el.classList.toggle("has-avatar-image", Boolean(avatarUrl));
@@ -149,10 +406,13 @@
         const image = new Image();
         image.onerror = () => {
           el.classList.remove("has-avatar-image");
-          el.style.backgroundImage = "";
+          el.style.backgroundImage = "url('./assets/images/xiaoluo-blog-icon.jpg')";
           el.textContent = fallback;
         };
         image.src = avatarUrl;
+      } else if (el.classList.contains("avatar")) {
+        el.classList.add("has-avatar-image");
+        el.style.backgroundImage = "url('./assets/images/xiaoluo-blog-icon.jpg')";
       }
     });
     $all("[data-profile-name]").forEach((el) => { el.textContent = data.site.profileName; });
@@ -166,9 +426,11 @@
     const hero = $("[data-hero-cover]");
     if (hero) {
       if (data.site.homeBackground.imageUrl) {
-        hero.style.backgroundImage = `linear-gradient(90deg, rgba(36, 47, 67, 0.68), rgba(75, 91, 120, 0.18)), url("${data.site.homeBackground.imageUrl}")`;
+        hero.style.backgroundImage = `linear-gradient(90deg, rgba(15, 27, 51, 0.62), rgba(15, 27, 51, 0.12) 56%, rgba(25, 40, 65, 0.28)), url("${data.site.homeBackground.imageUrl}")`;
+        hero.classList.add("has-home-cover");
       } else {
         hero.style.backgroundImage = "";
+        hero.classList.remove("has-home-cover");
       }
     }
 
@@ -178,17 +440,18 @@
       if (form.profileBio) form.profileBio.value = data.site.profileBio;
       if (form.announcement) form.announcement.value = data.site.announcement || "";
       if (form.profileName) form.profileName.value = data.site.profileName;
+      const homeCoverPreview = $("[data-home-cover-preview]", form);
+      if (homeCoverPreview) {
+        homeCoverPreview.hidden = !data.site.homeBackground.imageUrl;
+        homeCoverPreview.src = data.site.homeBackground.imageUrl || "";
+      }
       if (form.contactEmail) form.contactEmail.value = data.site.contacts.email || "";
-      if (form.contactQq) form.contactQq.value = data.site.contacts.qq || "";
-      if (form.contactWechat) form.contactWechat.value = data.site.contacts.wechat || "";
+      if (form.contactGithub) form.contactGithub.value = data.site.contacts.github || "";
       if (form.contactDouyin) form.contactDouyin.value = data.site.contacts.douyin || "";
+      if (form.contactInstagram) form.contactInstagram.value = data.site.contacts.instagram || "";
     }
     const aboutForm = $("[data-about-settings-form]");
-    if (aboutForm) {
-      aboutForm.aboutTitle.value = data.site.aboutTitle;
-      aboutForm.aboutBio.value = data.site.aboutBio;
-      aboutForm.aboutSideBio.value = data.site.aboutSideBio;
-    }
+    if (aboutForm) { aboutForm.aboutTitle.value = data.site.aboutTitle; aboutForm.aboutBio.value = data.site.aboutBio; aboutForm.aboutSideBio.value = data.site.aboutSideBio; }
 
     $all("[data-contact-item]").forEach((item) => {
       const type = item.dataset.contactItem;
@@ -247,11 +510,14 @@
         modal = document.createElement("div");
         modal.className = "modal user-profile-modal";
         modal.dataset.userProfileModal = "";
-        modal.innerHTML = `<div class="modal-backdrop" data-user-profile-close></div><section class="modal-card glass-card" role="dialog" aria-modal="true" aria-label="个人资料"><button class="modal-close" type="button" data-user-profile-close aria-label="关闭">x</button><p class="mini-title">PROFILE</p><h2>个人资料</h2><form data-user-profile-form><label><span>头像</span><input name="avatar" type="file" accept="image/*"></label><label><span>昵称</span><input name="displayName" type="text" maxlength="24" required></label><button class="primary-button small" type="submit">保存资料</button></form></section>`;
+      modal.innerHTML = `<div class="modal-backdrop" data-user-profile-close></div><section class="modal-card glass-card" role="dialog" aria-modal="true" aria-label="个人资料"><button class="modal-close" type="button" data-user-profile-close aria-label="关闭">×</button><p class="mini-title">PROFILE SETTINGS</p><h2>个人资料</h2><form data-user-profile-form><div class="profile-avatar-upload"><span class="profile-avatar-preview" data-profile-avatar-preview>普</span><label class="avatar-upload-button">上传头像<input name="avatar" type="file" accept="image/jpeg,image/png,image/webp"></label><small>JPG、PNG 或 WebP，最大 2MB</small></div><label><span>用户名</span><input name="displayName" type="text" maxlength="24" required></label><button class="primary-button small" type="submit">保存资料</button></form><section class="profile-security"><h3>修改密码</h3><form data-password-form><label><span>当前密码</span><input name="currentPassword" type="password" autocomplete="current-password" required></label><label><span>新密码</span><input name="newPassword" type="password" autocomplete="new-password" minlength="6" required></label><button class="primary-button small" type="submit">更新密码</button></form></section><section class="profile-signout"><button class="ghost-button" type="button" data-profile-signout>退出登录</button></section><section class="profile-danger"><h3>注销账户</h3><p>注销会永久删除你的个人资料、头像、点赞和评论，无法恢复。</p><form data-delete-account-form><label><span>输入当前密码确认</span><input name="password" type="password" autocomplete="current-password" required></label><button class="danger-button" type="submit">永久注销</button></form></section></section>`;
         document.body.appendChild(modal);
       }
       const form = $("[data-user-profile-form]", modal);
       form.displayName.value = state.currentProfile?.display_name || "普通用户";
+      const avatarPreview = $("[data-profile-avatar-preview]", modal);
+      const refreshPreview = (url) => { avatarPreview.textContent = (form.displayName.value || "普").slice(0, 1); avatarPreview.style.backgroundImage = url ? `url('${url}')` : ""; avatarPreview.classList.toggle("has-image", Boolean(url)); };
+      refreshPreview(state.currentProfile?.avatar_url || "");
       modal.classList.add("open");
       $all("[data-user-profile-close]", modal).forEach((button) => { button.onclick = () => modal.classList.remove("open"); });
       form.onsubmit = async (submitEvent) => {
@@ -263,7 +529,8 @@
         submit.textContent = "保存中…";
         try {
           const file = form.avatar.files?.[0];
-          const avatarUrl = file ? await window.XiaoLuoSupabase.uploadFile(state.userId, "avatars", file) : (state.currentProfile?.avatar_url || "");
+          if (file && file.size > 2 * 1024 * 1024) throw new Error("头像文件不能超过 2MB。");
+          const avatarUrl = file ? await runWithLoading("正在压缩图片中…", () => uploadOptimizedImage(state.userId, "avatars", file, { maxSide: 720, targetBytes: 220 * 1024 })) : (state.currentProfile?.avatar_url || "");
           state.currentProfile = await window.XiaoLuoSupabase.updateOwnIdentity(state.userId, { display_name: name, avatar_url: avatarUrl });
           modal.classList.remove("open");
           await refreshAuthState();
@@ -271,7 +538,24 @@
         } catch (error) { showCloudError(error); }
         finally { submit.disabled = false; submit.textContent = "保存资料"; }
       };
+      form.avatar.onchange = () => { const file = form.avatar.files?.[0]; if (!file) return; if (file.size > 2 * 1024 * 1024) { form.avatar.value = ""; alert("头像文件不能超过 2MB。"); return; } const reader = new FileReader(); reader.onload = () => refreshPreview(reader.result); reader.readAsDataURL(file); };
+      $("[data-password-form]", modal).onsubmit = async (submitEvent) => { submitEvent.preventDefault(); const passwordForm = submitEvent.currentTarget; const button = $("button", passwordForm); try { button.disabled = true; await runWithLoading("正在更新密码…", async () => { const session = await window.XiaoLuoSupabase.getSession(); await window.XiaoLuoSupabase.verifyPassword(session.user.email, passwordForm.currentPassword.value); await window.XiaoLuoSupabase.updatePassword(passwordForm.newPassword.value); }); passwordForm.reset(); alert("密码已更新，请使用新密码登录。"); } catch (error) { showCloudError(error); } finally { button.disabled = false; } };
+      $("[data-profile-signout]", modal).onclick = async () => { await window.XiaoLuoSupabase.signOut(); window.location.href = "./index.html"; };
+      $("[data-delete-account-form]", modal).onsubmit = async (submitEvent) => { submitEvent.preventDefault(); const deleteForm = submitEvent.currentTarget; const password = deleteForm.password.value; if (!password) return; if (!await confirmPublish("确认永久注销账户？", "此操作无法撤销。", "永久注销")) return; const button = $("button", deleteForm); try { button.disabled = true; await runWithLoading("正在永久注销账户，请稍候…", async () => { const session = await window.XiaoLuoSupabase.getSession(); await window.XiaoLuoSupabase.verifyPassword(session?.user?.email, password); await window.XiaoLuoSupabase.requestAccountDeletion(password); }); try { await window.XiaoLuoSupabase.signOut(); } catch (_) {} modal.classList.remove("open"); showAccountDeletedNotice(); } catch (error) { showCloudError(error); } finally { button.disabled = false; } };
     });
+  }
+
+  function showAccountDeletedNotice() {
+    let modal = $("[data-account-deleted-modal]");
+    if (!modal) {
+      modal = document.createElement("div");
+      modal.className = "modal account-deleted-modal";
+      modal.dataset.accountDeletedModal = "";
+      modal.innerHTML = `<div class="modal-backdrop"></div><section class="modal-card glass-card" role="dialog" aria-modal="true" aria-labelledby="account-deleted-title"><p class="mini-title">ACCOUNT DELETED</p><h2 id="account-deleted-title">账户已永久注销</h2><p>你的个人资料和相关数据已删除。</p><div class="publish-confirm-actions"><button class="primary-button" type="button" data-return-home-after-delete>返回首页</button></div></section>`;
+      document.body.appendChild(modal);
+    }
+    $("[data-return-home-after-delete]", modal).onclick = () => { window.location.href = "./index.html"; };
+    modal.classList.add("open");
   }
 
   function initDashboardSectionSpy() {
@@ -336,14 +620,14 @@
       if (state.isAdmin) {
         status.href = "./dashboard.html";
         status.setAttribute("aria-label", "作者已登录，进入后台");
-        status.innerHTML = '<img src="./font_fuhbx0kh6gc/作者.svg" alt="" aria-hidden="true"><span>作者</span>';
+        status.innerHTML = '<img src="./font_fuhbx0kh6gc/作者.svg" alt="" aria-hidden="true"><span>作者</span><em class="login-state">已登录</em>';
       } else {
         status.type = "button";
         status.dataset.userProfileButton = "";
         const name = state.currentProfile?.display_name || "普通用户";
         const avatar = state.currentProfile?.avatar_url || "";
         const initial = escapeHtml(name.slice(0, 1) || "普");
-        status.innerHTML = `<span class="account-avatar${avatar ? " has-image" : ""}"${avatar ? ` style="background-image:url('${avatar}')"` : ""}>${initial}</span><span>${escapeHtml(name)}</span>`;
+        status.innerHTML = `<span class="account-avatar${avatar ? " has-image" : ""}"${avatar ? ` style="background-image:url('${avatar}')"` : ""}>${initial}</span><span>${escapeHtml(name)}</span><em class="login-state">已登录</em>`;
         status.removeAttribute("href");
         status.setAttribute("aria-label", "修改头像和昵称");
         status.setAttribute("title", "修改头像和昵称");
@@ -363,6 +647,7 @@
       logout.hidden = !state.isLoggedIn;
     });
     $all("[data-admin-only], .top-nav a[href='./dashboard.html']").forEach((el) => { el.hidden = !state.isAdmin; });
+    $all("[data-music-manage]").forEach((el) => { el.hidden = !state.isAdmin; });
     $all("[data-dashboard-status-title]").forEach((el) => {
       el.textContent = state.isAdmin ? "管理员已登录，管理博客内容" : "小罗的个人博客";
     });
@@ -380,28 +665,34 @@
       if (!adminProfile) return;
       state.adminId = adminProfile.id;
       const ownerId = adminProfile.id;
-      const [categories, tags, moments, progress, posts] = await Promise.all([
+      const [categories, tags, moments, progress, posts, musicTracks] = await Promise.all([
         api.listTaxonomy("categories", ownerId),
         api.listTaxonomy("tags", ownerId),
         api.listContent("moments", ownerId),
         api.listContent("progress_logs", ownerId),
-        state.isAdmin ? api.listPosts(ownerId) : api.listPublishedPosts(ownerId)
+        state.isAdmin ? api.listPosts(ownerId) : api.listPublishedPosts(ownerId),
+        api.listMusicTracks(ownerId)
       ]);
       data.site.profileName = adminProfile.display_name || data.site.profileName;
       data.site.avatarText = (adminProfile.display_name || data.site.profileName).slice(0, 1);
       data.site.avatarDataUrl = adminProfile.avatar_url || "";
       data.site.heroTitle = adminProfile.home_title || data.site.heroTitle;
       data.site.profileBio = adminProfile.home_bio || data.site.profileBio;
+      data.site.homeBackground.imageUrl = adminProfile.home_background_url || "";
       data.site.aboutTitle = adminProfile.about_title || data.site.aboutTitle;
       data.site.aboutBio = adminProfile.about_bio || data.site.aboutBio;
       data.site.aboutSideBio = adminProfile.about_side_bio || data.site.aboutSideBio;
       data.site.announcement = adminProfile.announcement || "";
-      data.site.contacts = adminProfile.contacts || {};
+      data.site.contacts = { ...data.site.contacts, ...(adminProfile.contacts || {}) };
+      data.site.launchedAt = adminProfile.created_at || data.site.launchedAt;
+      const updateDates = [adminProfile.updated_at, ...posts.map((item) => item.updated_at || item.created_at), ...moments.map((item) => item.updated_at || item.created_at), ...progress.map((item) => item.updated_at || item.created_at), ...musicTracks.map((item) => item.updated_at || item.created_at)].filter(Boolean);
+      data.site.lastUpdatedAt = updateDates.sort((a, b) => new Date(b) - new Date(a))[0] || "";
       data.categories = categories.map((item) => ({ id: item.id, name: item.name, description: "" }));
       data.tags = tags.map((item) => ({ id: item.id, name: item.name }));
-      data.moments = moments.map((item) => ({ id: item.id, title: item.title, date: item.entry_date, text: item.body || "", images: item.image_urls || [] }));
-      data.progress = progress.map((item) => ({ id: item.id, title: item.title, date: item.entry_date, text: item.body || "", images: item.image_urls || [] }));
-      data.posts = posts.map((item) => ({ id: item.id, title: item.title, author: data.site.profileName, category: item.category || "未分类", tags: item.tags || [], attachments: item.attachments || [], publishedAt: formatPostDate(item.created_at), coverUrl: item.cover_url || "", coverClass: "gradient-a", excerpt: (item.content || "").slice(0, 110), content: (item.content || "").split(/\n+/).filter(Boolean), featured: false }));
+      data.moments = sortTimelineByDate(moments.map((item) => ({ id: item.id, title: item.title, date: item.entry_date, text: item.body || "", images: item.image_urls || [] })));
+      data.progress = sortTimelineByDate(progress.map((item) => ({ id: item.id, title: item.title, date: item.entry_date, text: item.body || "", images: item.image_urls || [] })));
+      data.posts = posts.map((item) => ({ id: item.id, title: item.title, author: data.site.profileName, category: item.category || "未分类", tags: item.tags || [], attachments: item.attachments || [], publishedAt: formatPostDate(item.created_at), coverUrl: item.cover_url || "", coverClass: "gradient-a", excerpt: (item.content || "").replace(/<[^>]+>/g, "").slice(0, 110), content: [item.content || ""], featured: false }));
+      if (musicTracks.length) data.music = musicTracks.map((track) => ({ id: track.id, title: track.title, artist: track.artist || "小罗Blog", category: track.category || "", src: track.file_url }));
       state.cloudOwnerId = ownerId;
       initBrand();
       populateFilters();
@@ -409,6 +700,8 @@
       if (pageName() === "dashboard" && state.isAdmin) renderDashboardStats();
       if (pageName() === "dashboard" && state.isAdmin) renderRegisteredUsers();
       if (pageName() === "home") renderHome();
+      renderSiteStats();
+      document.dispatchEvent(new CustomEvent("xiaoluo-music-library-updated"));
       if (pageName() === "articles") renderArticles();
       if (pageName() === "categories") renderCategories();
       if (pageName() === "article-detail") renderDetail();
@@ -448,13 +741,22 @@
   }
 
   function initLiveClock() {
-    if (window.__xiaoluoClockTimer) return;
     const draw = () => {
       const now = new Date();
       $all("[data-live-clock]").forEach((el) => { el.textContent = now.toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit", second: "2-digit" }); });
       $all("[data-live-date]").forEach((el) => { el.textContent = now.toLocaleDateString("zh-CN", { year: "numeric", month: "long", day: "numeric", weekday: "long" }); });
+      const hour = now.getHours();
+      const greeting = hour < 5
+        ? "小伙伴，凌晨好，夜深了，记得早点休息。"
+        : hour < 11
+          ? "小伙伴，早上好，记得吃早餐。"
+          : hour < 18
+            ? "小伙伴，下午好，记得喝杯下午茶。"
+            : "小伙伴，晚上好，忙完也要记得休息。";
+      $all("[data-announcement-greeting]").forEach((el) => { el.textContent = greeting; });
     };
     draw();
+    if (window.__xiaoluoClockTimer) return;
     window.__xiaoluoClockTimer = window.setInterval(draw, 1000);
   }
 
@@ -478,7 +780,7 @@
     return `
       <article class="article-card glass-card ${post.coverUrl ? "has-cover" : "no-cover"}" data-post-id="${escapeHtml(post.id)}">
         <a class="article-card-hit" href="./article-detail.html?id=${post.id}" aria-label="阅读 ${escapeHtml(post.title)}"></a>
-        ${post.coverUrl ? `<span class="article-cover ${post.coverClass}" style="background-image:url('${post.coverUrl}')"></span>` : ""}
+        ${post.coverUrl ? `<span class="article-cover ${post.coverClass}"><img src="${post.coverUrl}" alt="${escapeHtml(post.title)} 封面"></span>` : ""}
         <div class="article-body">
           <p class="mini-title">${escapeHtml(post.category)}</p>
           <h3>${escapeHtml(post.title)}</h3>
@@ -641,13 +943,13 @@
           return;
         }
         const folder = type === "album" ? "albums" : type === "moment" ? "moments" : "progress";
-        const images = await Promise.all(files.map((file) => window.XiaoLuoSupabase.uploadFile(state.userId, folder, file)));
+        const images = await uploadOptimizedImages(state.userId, folder, files);
         if (cancelled()) return;
         const entry = {
           id: `${type}-${Date.now()}`,
           title: form.title.value.trim(),
           date: form.date?.value || today(),
-          text: form.text?.value.trim() || "",
+          text: contentEntryValue(form).trim(),
           images
         };
         if (type === "album") {
@@ -655,13 +957,17 @@
           data.albums.unshift({ id: row.id, title: row.title, meta: row.meta, description: row.description, images: row.image_urls, photoClass: "photo-a" });
         } else if (type === "moment") {
           const row = await window.XiaoLuoSupabase.addContent("moments", { user_id: state.userId, title: entry.title, body: entry.text, entry_date: entry.date, image_urls: images });
-          data.moments.unshift({ id: row.id, title: row.title, text: row.body, date: row.entry_date, images: row.image_urls });
+          data.moments = sortTimelineByDate([...data.moments, { id: row.id, title: row.title, text: row.body, date: row.entry_date, images: row.image_urls }]);
         } else {
           const row = await window.XiaoLuoSupabase.addContent("progress_logs", { user_id: state.userId, title: entry.title, body: entry.text, entry_date: entry.date, image_urls: images });
-          data.progress.unshift({ id: row.id, title: row.title, text: row.body, date: row.entry_date, images: row.image_urls });
+          data.progress = sortTimelineByDate([...data.progress, { id: row.id, title: row.title, text: row.body, date: row.entry_date, images: row.image_urls }]);
         }
         form.reset();
+        const richText = $("[data-content-text]", form);
+        if (richText) richText.innerHTML = "";
         renderContentManagers();
+        alert("已保存。");
+        return;
         alert("已保存到 Supabase，前台页面会立即显示。");
         });
         } catch (error) { showCloudError(error); }
@@ -781,18 +1087,19 @@
       modal = document.createElement("div");
       modal.className = "modal content-post-editor-modal";
       modal.dataset.contentPostEditor = "";
-      modal.innerHTML = `<button class="modal-backdrop" type="button" data-content-editor-close aria-label="关闭"></button><section class="modal-card glass-card" role="dialog" aria-modal="true" aria-label="编辑帖子"><button class="modal-close" type="button" data-content-editor-close aria-label="关闭">×</button><p class="mini-title">POST EDITOR</p><h2 data-content-editor-heading>编辑帖子</h2><form data-content-editor-form><label><span>标题</span><input name="title" type="text" required></label><label><span>日期</span><input name="date" type="date" required></label><label><span>正文</span><textarea name="body" rows="6" placeholder="填写内容"></textarea></label><section class="post-editor-images"><div><strong>已有图片</strong><p>可替换或删除单张图片。</p></div><div class="content-editor-image-grid" data-content-editor-images></div></section><label><span>添加图片</span><input name="newImages" type="file" accept="image/*" multiple></label><div class="publish-confirm-actions"><button class="danger-button" type="button" data-content-editor-delete>删除整条帖子</button><button class="primary-button" type="submit">保存修改</button></div></form></section>`;
+      modal.innerHTML = `<button class="modal-backdrop" type="button" data-content-editor-close aria-label="关闭"></button><section class="modal-card glass-card" role="dialog" aria-modal="true" aria-label="编辑帖子"><button class="modal-close" type="button" data-content-editor-close aria-label="关闭">×</button><p class="mini-title">POST EDITOR</p><h2 data-content-editor-heading>编辑帖子</h2><form data-content-editor-form><label><span>标题</span><input name="title" type="text" required></label><label><span>日期</span><input name="date" type="date" required></label><label><span>正文</span><div class="text-format-editor"><div class="text-format-toolbar" data-format-toolbar><button type="button" data-format-action="bold" title="加粗（Ctrl+B）"><b>B</b></button><button type="button" data-format-action="underline" title="下划线（Ctrl+U）"><u>U</u></button><button type="button" data-format-action="link" title="添加超链接">↗</button><span class="format-toolbar-divider"></span><button type="button" class="format-highlight red" data-format-action="highlight" data-highlight-color="#ffddd8" title="红色高亮"></button><button type="button" class="format-highlight green" data-format-action="highlight" data-highlight-color="#d8f2e2" title="绿色高亮"></button><button type="button" class="format-highlight blue" data-format-action="highlight" data-highlight-color="#dce9ff" title="蓝色高亮"></button></div><div class="rich-text-input compact" data-format-input data-content-editor-body contenteditable="true" role="textbox" aria-multiline="true" data-placeholder="选择文字后可使用加粗、下划线、链接和高亮"></div></div></label><section class="post-editor-images"><div><strong>已有图片</strong><p>可替换或删除单张图片。</p></div><div class="content-editor-image-grid" data-content-editor-images></div></section><label><span>添加图片</span><input name="newImages" type="file" accept="image/*" multiple></label><div class="publish-confirm-actions"><button class="danger-button" type="button" data-content-editor-delete>删除整条帖子</button><button class="primary-button" type="submit">保存修改</button></div></form></section>`;
       document.body.appendChild(modal);
     }
     const table = type === "moment" ? "moments" : "progress_logs";
     const folder = type === "moment" ? "moments" : "progress";
     const form = $("[data-content-editor-form]", modal);
+    bindTextFormatToolbars(modal);
     let images = [...(item.images || [])];
     const replacements = new Map();
     const deleted = new Set();
     form.title.value = item.title || "";
     form.date.value = item.date || today();
-    form.body.value = item.text || "";
+    $("[data-content-editor-body]", form).innerHTML = formatRichText(item.text || "");
     $("[data-content-editor-heading]", modal).textContent = type === "moment" ? "编辑生活圈" : "编辑进步簿";
 
     const drawImages = () => {
@@ -844,22 +1151,24 @@
             if (deleted.has(index)) { oldImagesToDelete.push(oldUrl); continue; }
             const replacement = replacements.get(index);
             if (replacement) {
-              const uploaded = await window.XiaoLuoSupabase.uploadFile(state.userId, folder, replacement.file);
+              const uploaded = await uploadOptimizedImage(state.userId, folder, replacement.file);
               if (cancelled()) return;
               nextImages.push(uploaded);
               oldImagesToDelete.push(oldUrl);
             } else nextImages.push(oldUrl);
           }
-          const additions = await Promise.all(newFiles.map((file) => window.XiaoLuoSupabase.uploadFile(state.userId, folder, file)));
+          const additions = await uploadOptimizedImages(state.userId, folder, newFiles);
           if (cancelled()) return;
           nextImages.push(...additions);
-          const updated = { title: form.title.value.trim(), body: form.body.value.trim(), entry_date: form.date.value, image_urls: nextImages };
+          const updated = { title: form.title.value.trim(), body: sanitizeRichHtml($("[data-content-editor-body]", form).innerHTML).trim(), entry_date: form.date.value, image_urls: nextImages };
           await window.XiaoLuoSupabase.updateContent(table, item.id, state.userId, updated);
           if (oldImagesToDelete.length) await window.XiaoLuoSupabase.deleteFilesByPublicUrls(oldImagesToDelete);
           item.title = updated.title;
           item.text = updated.body;
           item.date = updated.entry_date;
           item.images = nextImages;
+          if (type === "moment") data.moments = sortTimelineByDate(data.moments);
+          else data.progress = sortTimelineByDate(data.progress);
         });
         modal.classList.remove("open");
         renderCurrentPage();
@@ -894,23 +1203,22 @@
     let modal = $("[data-timeline-detail-modal]");
     if (!modal) {
       modal = document.createElement("div"); modal.className = "modal timeline-detail-modal"; modal.dataset.timelineDetailModal = "";
-      modal.innerHTML = `<div class="modal-backdrop" data-timeline-detail-close></div><section class="modal-card glass-card" role="dialog" aria-modal="true" aria-label="内容详情"><button class="modal-close" type="button" data-timeline-detail-close>x</button><p class="mini-title" data-timeline-detail-date></p><h2 data-timeline-detail-title></h2><p data-timeline-detail-text></p><div class="timeline-detail-images" data-timeline-detail-images></div><div class="post-actions"><button type="button" data-timeline-like>点赞 0</button><span class="post-engagement" data-timeline-engagement>阅读 0 · 评论 0</span></div><section class="timeline-comments"><h3>评论</h3><p data-timeline-comment-note>登录后可以评论。</p><form data-timeline-comment-form><textarea name="content" maxlength="1000" placeholder="写下你的评论"></textarea><button class="primary-button small" type="submit">发表评论</button></form><div class="comment-list" data-timeline-comment-list></div></section></section>`;
+      modal.innerHTML = `<div class="modal-backdrop" data-timeline-detail-close></div><section class="modal-card glass-card" role="dialog" aria-modal="true" aria-label="内容详情"><button class="modal-close" type="button" data-timeline-detail-close>×</button><div class="detail-split-layout"><article class="timeline-detail-main"><p class="mini-title" data-timeline-detail-date></p><h2 data-timeline-detail-title></h2><div class="timeline-rich-text" data-timeline-detail-text></div><div class="timeline-detail-images" data-timeline-detail-images></div><div class="post-actions"><button type="button" data-timeline-like>点赞 0</button><span class="post-engagement" data-timeline-engagement>阅读 0 · 评论 0</span></div></article><aside class="timeline-comments"><h3>评论</h3><p data-timeline-comment-note>登录后可以评论。</p><form data-timeline-comment-form><textarea name="content" maxlength="1000" placeholder="写下你的评论"></textarea><button class="primary-button small" type="submit">发表评论</button></form><div class="comment-list" data-timeline-comment-list></div></aside></div></section>`;
       document.body.appendChild(modal);
     }
     $("[data-timeline-detail-date]", modal).textContent = item.date;
     $("[data-timeline-detail-title]", modal).textContent = item.title;
-    $("[data-timeline-detail-text]", modal).textContent = item.text;
+    $("[data-timeline-detail-text]", modal).innerHTML = formatRichText(item.text).replace(/\n/g, "<br>");
     $("[data-timeline-detail-images]", modal).innerHTML = (item.images || []).map((url) => `<img src="${url}" alt="${escapeHtml(item.title)}">`).join("");
     $all("[data-timeline-detail-close]", modal).forEach((button) => { button.onclick = () => modal.classList.remove("open"); });
+    let replyTo = null;
     const drawComments = async () => {
       try {
         const comments = await window.XiaoLuoSupabase.getContentComments(type, item.id);
-        $("[data-timeline-comment-list]", modal).innerHTML = comments.map((comment) => `<article class="comment-item"><span class="comment-avatar${comment.profile?.avatar_url ? " has-image" : ""}"${comment.profile?.avatar_url ? ` style="background-image:url('${comment.profile.avatar_url}')"` : ""}>${escapeHtml((comment.profile?.display_name || "普").slice(0, 1))}</span><div class="comment-content"><strong>${escapeHtml(comment.profile?.display_name || "普通用户")}</strong><time>${formatPostDate(comment.created_at)}</time><p>${escapeHtml(comment.content)}</p></div></article>`).join("") || '<p class="comment-empty">还没有评论。</p>';
+        const commentList = $("[data-timeline-comment-list]", modal);
+        commentList.innerHTML = commentThreadHtml(comments, "data-delete-content-comment");
+        bindReplyButtons(commentList, form, (id) => { replyTo = id; });
         if (state.isAdmin) {
-          const commentList = $("[data-timeline-comment-list]", modal);
-          $all(".comment-item", commentList).forEach((element, index) => {
-            element.insertAdjacentHTML("beforeend", `<button class="comment-delete" type="button" data-delete-content-comment="${comments[index].id}">删除</button>`);
-          });
           $all("[data-delete-content-comment]", modal).forEach((button) => {
             button.onclick = async () => {
               if (!await confirmPublish("确认删除这条评论？", "删除后无法恢复。", "确认删除")) return;
@@ -937,7 +1245,7 @@
     };
     const form = $("[data-timeline-comment-form]", modal); form.reset();
     $("[data-timeline-comment-note]", modal).textContent = state.isLoggedIn ? "评论会保存到这条内容下方。" : "请先登录后发表评论。";
-    form.onsubmit = async (event) => { event.preventDefault(); if (!state.isLoggedIn) return alert("请先登录后发表评论。"); const content = form.content.value.trim(); if (!content) return; try { await window.XiaoLuoSupabase.addContentComment(type, item.id, state.userId, content); form.reset(); drawComments(); drawEngagement(); } catch (error) { showCloudError(error); } };
+    form.onsubmit = async (event) => { event.preventDefault(); if (!state.isLoggedIn) return alert("请先登录后发表评论。"); const content = form.content.value.trim(); if (!content) return; try { await window.XiaoLuoSupabase.addContentComment(type, item.id, state.userId, content, replyTo); replyTo = null; form.reset(); form.content.placeholder = "写下你的评论"; await drawComments(); await drawEngagement(); } catch (error) { showCloudError(error); } };
     drawComments(); drawEngagement(); modal.classList.add("open");
   }
 
@@ -953,6 +1261,271 @@
     if (featured) featured.innerHTML = "";
     if (chips) chips.innerHTML = "";
     $all("[data-site-announcement]").forEach((el) => { el.textContent = data.site.announcement || "暂无公告。"; });
+    const photoCount = data.posts.filter((post) => post.coverUrl).length + data.moments.reduce((count, item) => count + (item.images?.length || 0), 0);
+    $all("[data-profile-post-count]").forEach((el) => { el.textContent = data.posts.length; });
+    $all("[data-profile-photo-count]").forEach((el) => { el.textContent = photoCount; });
+    $all("[data-profile-moment-count]").forEach((el) => { el.textContent = data.moments.length; });
+    renderSiteStats();
+    initGuestbook();
+  }
+
+  function guestbookAvatarHtml() {
+    return '<span class="guestbook-avatar" aria-hidden="true"><i></i><b></b></span>';
+  }
+
+  function guestbookMessageHtml(message, index) {
+    const positions = [[7, 12, -4], [49, 7, 3], [27, 29, -2], [68, 35, 5], [9, 55, 2], [45, 61, -5], [72, 74, 4], [31, 79, 1], [55, 48, -3], [76, 18, -5], [14, 37, 4], [57, 71, -1]];
+    const [baseLeft, baseTop, rotate] = positions[index % positions.length];
+    const round = Math.floor(index / positions.length);
+    const left = Math.min(80, Math.max(3, baseLeft + ((round * 13) % 19) - 8));
+    const top = Math.min(79, Math.max(6, baseTop + ((round * 17) % 23) - 10));
+    const deleteButton = state.isAdmin ? `<button class="drift-letter-delete" type="button" data-delete-drift-message="${escapeHtml(message.id)}" aria-label="删除这封留言" title="删除留言">×</button>` : "";
+    return `<article class="drift-letter" style="--letter-left:${left}%;--letter-top:${top}%;--letter-rotate:${rotate}deg;--letter-delay:${(index % 6) * -.55}s"><div class="drift-letter-inner">${deleteButton}${guestbookAvatarHtml()}<div><div class="drift-letter-meta"><strong>${escapeHtml(message.nickname)}</strong><time>${formatPostDate(message.created_at)}</time></div><p>${escapeHtml(message.message)}</p></div></div></article>`;
+  }
+
+  async function openGuestbook() {
+    let modal = $("[data-guestbook-modal]");
+    if (!modal) {
+      modal = document.createElement("div");
+      modal.className = "modal guestbook-modal";
+      modal.dataset.guestbookModal = "";
+      modal.innerHTML = `<button class="modal-backdrop" type="button" data-guestbook-close aria-label="关闭留言墙"></button><section class="guestbook-panel" role="dialog" aria-modal="true" aria-labelledby="guestbook-title"><button class="modal-close" type="button" data-guestbook-close aria-label="关闭">×</button><div class="guestbook-orbit orbit-one"></div><div class="guestbook-orbit orbit-two"></div><header class="guestbook-heading"><p class="mini-title">A MESSAGE FOR XIAOLUO</p><h2 id="guestbook-title">留言漂流墙</h2><p>不必登录，把想说的话装进信封，交给这一阵风。</p><button class="guestbook-manage-button" type="button" data-guestbook-manage hidden>管理留言</button></header><section class="guestbook-compose"><div class="envelope-mark" aria-hidden="true"><span></span></div><form data-guestbook-form><label><span>你的昵称</span><input name="nickname" type="text" maxlength="20" required placeholder="怎么称呼你？"></label><label><span>想留下的话</span><textarea name="message" maxlength="180" required placeholder="写一段轻轻的话吧…"></textarea></label><div class="guestbook-form-footer"><small><span data-guestbook-count>0</span> / 180</small><button class="guestbook-send-button" type="submit"><span>封好信封</span><i aria-hidden="true"></i></button></div></form></section><section class="guestbook-stream-wrap"><div class="guestbook-stream" data-guestbook-stream><p class="guestbook-empty">漂流墙正在等第一封信。</p></div></section><section class="guestbook-manage-panel" data-guestbook-manage-panel hidden><div class="guestbook-manage-head"><h3>管理留言</h3><button type="button" data-guestbook-manage-close>返回漂流墙</button></div><div data-guestbook-manage-list></div><div class="guestbook-manage-pager"><button type="button" data-guestbook-page-prev>上一页</button><span data-guestbook-page-info></span><button type="button" data-guestbook-page-next>下一页</button></div></section></section>`;
+      document.body.appendChild(modal);
+      $all("[data-guestbook-close]", modal).forEach((button) => { button.onclick = () => modal.classList.remove("open"); });
+      const form = $("[data-guestbook-form]", modal);
+      const textarea = form.message;
+      textarea.oninput = () => { $("[data-guestbook-count]", form).textContent = textarea.value.length; };
+      form.onsubmit = async (event) => {
+        event.preventDefault();
+        const nickname = form.nickname.value.trim();
+        const message = form.message.value.trim();
+        if (!nickname || !message) return;
+        const button = $("button[type='submit']", form);
+        try {
+          button.disabled = true;
+          modal.classList.add("is-sending");
+          const row = await window.XiaoLuoSupabase.addGuestbookMessage(nickname, message);
+          form.reset();
+          $("[data-guestbook-count]", form).textContent = "0";
+          const stream = $("[data-guestbook-stream]", modal);
+          $(".guestbook-empty", stream)?.remove();
+          stream.insertAdjacentHTML("beforeend", guestbookMessageHtml(row, stream.querySelectorAll(".drift-letter").length));
+          bindGuestbookDeleteActions(modal);
+          setTimeout(() => modal.classList.remove("is-sending"), 900);
+        } catch (error) {
+          modal.classList.remove("is-sending");
+          if (String(error.message || "").includes("guestbook_messages")) {
+            alert("留言墙还没有连接到数据库。请先在 Supabase 的 SQL Editor 执行项目中的 guestbook.sql 文件，执行一次即可。");
+          } else {
+            showCloudError(error);
+          }
+        } finally {
+          button.disabled = false;
+        }
+      };
+      const manageButton = $("[data-guestbook-manage]", modal);
+      const managePanel = $("[data-guestbook-manage-panel]", modal);
+      manageButton.onclick = async () => { managePanel.hidden = false; modal.dataset.guestbookPage = "0"; await renderGuestbookManager(modal); };
+      $("[data-guestbook-manage-close]", modal).onclick = () => { managePanel.hidden = true; };
+      bindGuestbookDrag($("[data-guestbook-stream]", modal));
+    }
+    modal.classList.add("open");
+    await updateGuestbookAdminAccess(modal);
+    await loadGuestbookMessages(modal);
+    bindGuestbookDeleteActions(modal);
+  }
+
+  function bindGuestbookDeleteActions(modal) {
+    if (!state.isAdmin) return;
+    $all("[data-delete-drift-message]", modal).forEach((button) => {
+      if (button.dataset.bound) return;
+      button.dataset.bound = "true";
+      button.addEventListener("pointerdown", (event) => event.stopPropagation());
+      button.onclick = async (event) => {
+        event.stopPropagation();
+        if (!await confirmPublish("删除这封留言？", "删除后无法恢复。", "确认删除")) return;
+        try {
+          await runWithLoading("正在删除留言…", () => window.XiaoLuoSupabase.deleteGuestbookMessage(button.dataset.deleteDriftMessage));
+          button.closest(".drift-letter")?.remove();
+        } catch (error) { showCloudError(error); }
+      };
+    });
+  }
+
+  async function updateGuestbookAdminAccess(modal) {
+    const manageButton = $("[data-guestbook-manage]", modal);
+    if (!manageButton) return;
+    if (window.XiaoLuoSupabase?.isConfigured) {
+      try { await refreshAuthState(); } catch (_) {}
+    }
+    let canManage = Boolean(state.isAdmin || state.currentProfile?.is_admin || (state.adminId && state.adminId === state.userId));
+    if (!canManage && state.userId) {
+      try {
+        const admin = await window.XiaoLuoSupabase.getAdminProfile();
+        canManage = admin?.id === state.userId;
+      } catch (_) {}
+    }
+    manageButton.hidden = !canManage;
+    manageButton.style.display = canManage ? "inline-flex" : "none";
+  }
+
+  function bindGuestbookDrag(stream) {
+    if (!stream || stream.dataset.dragBound) return;
+    stream.dataset.dragBound = "true";
+    let startX = 0; let startY = 0; let targetX = 0; let targetY = 0; let offsetX = 0; let offsetY = 0; let dragging = false; let frame = 0;
+    const glide = () => {
+      offsetX += (targetX - offsetX) * .11;
+      offsetY += (targetY - offsetY) * .11;
+      stream.style.setProperty("--guestbook-drag-x", `${offsetX.toFixed(1)}px`);
+      stream.style.setProperty("--guestbook-drag-y", `${offsetY.toFixed(1)}px`);
+      if (Math.abs(targetX - offsetX) > .2 || Math.abs(targetY - offsetY) > .2) frame = requestAnimationFrame(glide);
+      else frame = 0;
+    };
+    const scheduleGlide = () => { if (!frame) frame = requestAnimationFrame(glide); };
+    stream.addEventListener("pointerdown", (event) => {
+      if (event.button !== 0) return;
+      event.preventDefault();
+      dragging = true;
+      startX = event.clientX - targetX;
+      startY = event.clientY - targetY;
+      stream.setPointerCapture(event.pointerId);
+      stream.classList.add("is-dragging");
+    });
+    stream.addEventListener("pointermove", (event) => {
+      if (!dragging) return;
+      event.preventDefault();
+      targetX = Math.max(-180, Math.min(180, event.clientX - startX));
+      targetY = Math.max(-110, Math.min(110, event.clientY - startY));
+      scheduleGlide();
+    });
+    const finish = (event) => { if (!dragging) return; dragging = false; stream.classList.remove("is-dragging"); stream.releasePointerCapture?.(event.pointerId); };
+    stream.addEventListener("pointerup", finish);
+    stream.addEventListener("pointercancel", finish);
+  }
+
+  async function renderGuestbookManager(modal) {
+    const list = $("[data-guestbook-manage-list]", modal);
+    list.innerHTML = '<p class="guestbook-empty">正在读取留言…</p>';
+    try {
+      const messages = await window.XiaoLuoSupabase.listGuestbookMessages(100);
+      const pageSize = 4;
+      const pages = Math.max(1, Math.ceil(messages.length / pageSize));
+      const page = Math.min(Math.max(0, Number(modal.dataset.guestbookPage || 0)), pages - 1);
+      modal.dataset.guestbookPage = String(page);
+      const visible = messages.slice(page * pageSize, page * pageSize + pageSize);
+      list.innerHTML = visible.map((message) => `<article class="guestbook-manager-row"><div>${guestbookAvatarHtml()}<div><strong>${escapeHtml(message.nickname)}</strong><time>${formatPostDate(message.created_at)}</time><p>${escapeHtml(message.message)}</p></div></div><button type="button" data-delete-guestbook-message="${message.id}">删除</button></article>`).join("") || '<p class="guestbook-empty">暂无留言。</p>';
+      $("[data-guestbook-page-info]", modal).textContent = `${page + 1} / ${pages}`;
+      const previous = $("[data-guestbook-page-prev]", modal);
+      const next = $("[data-guestbook-page-next]", modal);
+      previous.disabled = page === 0;
+      next.disabled = page >= pages - 1;
+      previous.onclick = () => { modal.dataset.guestbookPage = String(page - 1); renderGuestbookManager(modal); };
+      next.onclick = () => { modal.dataset.guestbookPage = String(page + 1); renderGuestbookManager(modal); };
+      $all("[data-delete-guestbook-message]", list).forEach((button) => {
+        button.onclick = async () => {
+          if (!await confirmPublish("删除这条留言？", "删除后无法恢复。", "确认删除")) return;
+          try {
+            await runWithLoading("正在删除留言…", () => window.XiaoLuoSupabase.deleteGuestbookMessage(button.dataset.deleteGuestbookMessage));
+            const stream = $("[data-guestbook-stream]", modal);
+            stream.dataset.loaded = "";
+            await Promise.all([renderGuestbookManager(modal), loadGuestbookMessages(modal)]);
+          } catch (error) { showCloudError(error); }
+        };
+      });
+    } catch (error) {
+      list.innerHTML = '<p class="guestbook-empty">暂时无法读取留言。</p>';
+    }
+  }
+
+  async function loadGuestbookMessages(modal) {
+    const stream = $("[data-guestbook-stream]", modal);
+    if (!stream || stream.dataset.loaded === "true") return;
+    stream.innerHTML = '<p class="guestbook-empty">正在寻找漂来的信…</p>';
+    try {
+      const messages = await window.XiaoLuoSupabase.listGuestbookMessages();
+      stream.dataset.loaded = "true";
+      stream.innerHTML = messages.map(guestbookMessageHtml).join("") || '<p class="guestbook-empty">漂流墙正在等第一封信。</p>';
+      bindGuestbookDeleteActions(modal);
+    } catch (error) {
+      stream.innerHTML = '<p class="guestbook-empty">留言墙尚未初始化，请先执行 guestbook.sql。</p>';
+      console.warn("Guestbook load failed:", error.message);
+    }
+  }
+
+  function initGuestbook() {
+    $all("[data-open-guestbook]").forEach((button) => { button.onclick = openGuestbook; });
+  }
+
+  function openMusicLibrary(manage = false) {
+    let modal = $("[data-music-library-modal]");
+    if (!modal) {
+      modal = document.createElement("div");
+      modal.className = "modal music-library-modal";
+      modal.dataset.musicLibraryModal = "";
+      modal.innerHTML = `<button class="modal-backdrop" type="button" data-music-library-close aria-label="关闭"></button><section class="modal-card glass-card" role="dialog" aria-modal="true" aria-label="音乐歌单"><button class="modal-close" type="button" data-music-library-close aria-label="关闭">×</button><p class="mini-title">MUSIC LIBRARY</p><h2>我的歌单</h2><div class="music-track-list" data-music-track-list></div><div class="music-local-sync" data-music-local-sync hidden><p>检测到 3 首本地新音乐，可替换当前数据库歌单。</p><button type="button" data-sync-local-music>同步本地歌单</button></div><form class="music-upload-form" data-music-upload-form hidden><h3>添加音乐</h3><label><span>音乐文件</span><input name="file" type="file" accept="audio/*" required></label><label><span>歌名</span><input name="title" type="text" maxlength="80" required></label><label><span>歌手/说明</span><input name="artist" type="text" maxlength="80" placeholder="可不填"></label><label><span>分类</span><input name="category" type="text" maxlength="40" placeholder="可不填"></label><button class="primary-button small" type="submit">上传并添加</button></form></section>`;
+      document.body.appendChild(modal);
+    }
+    const list = $("[data-music-track-list]", modal);
+    const form = $("[data-music-upload-form]", modal);
+    const canManageMusic = Boolean(manage && state.isAdmin);
+    const localSync = $("[data-music-local-sync]", modal);
+    form.hidden = !canManageMusic;
+    form.style.display = canManageMusic ? "" : "none";
+    $all("input, button", form).forEach((control) => { control.disabled = !canManageMusic; });
+    localSync.hidden = !canManageMusic;
+    localSync.style.display = canManageMusic ? "" : "none";
+    $all("button", localSync).forEach((control) => { control.disabled = !canManageMusic; });
+    list.innerHTML = data.music.map((track, index) => `<article class="music-track-row${index === state.musicIndex ? " is-current" : ""}"><button type="button" data-select-music-track="${index}"><span>${index + 1}</span><strong>${escapeHtml(track.title)}</strong><small>${escapeHtml(track.artist || "小罗Blog")}</small></button>${canManageMusic && track.id ? `<div class="music-track-tools"><button type="button" data-move-music-track="${index}" data-direction="up" aria-label="上移">↑</button><button type="button" data-move-music-track="${index}" data-direction="down" aria-label="下移">↓</button><button type="button" data-delete-music-track="${index}" aria-label="删除">删除</button></div>` : ""}</article>`).join("") || '<p class="comment-empty">还没有音乐。</p>';
+    $all("[data-music-library-close]", modal).forEach((button) => { button.onclick = () => modal.classList.remove("open"); });
+    $all("[data-select-music-track]", list).forEach((button) => { button.onclick = () => { document.dispatchEvent(new CustomEvent("xiaoluo-play-track", { detail: { index: Number(button.dataset.selectMusicTrack), play: true } })); openMusicLibrary(manage); }; });
+    $all("[data-move-music-track]", list).forEach((button) => {
+      button.onclick = async () => {
+        const from = Number(button.dataset.moveMusicTrack); const to = from + (button.dataset.direction === "up" ? -1 : 1);
+        if (to < 0 || to >= data.music.length) return;
+        const next = [...data.music]; [next[from], next[to]] = [next[to], next[from]];
+        try {
+          await runWithLoading("正在调整歌单顺序…", async () => Promise.all(next.filter((track) => track.id).map((track, order) => window.XiaoLuoSupabase.updateMusicTrack(state.userId, track.id, { sort_order: order }))));
+          data.music = next; state.musicIndex = to; document.dispatchEvent(new CustomEvent("xiaoluo-music-library-updated")); openMusicLibrary(true);
+        } catch (error) { showCloudError(error); }
+      };
+    });
+    $all("[data-delete-music-track]", list).forEach((button) => {
+      button.onclick = async () => {
+        const index = Number(button.dataset.deleteMusicTrack); const track = data.music[index];
+        if (!track?.id || !await confirmPublish("确认删除这首音乐？", "音乐文件和歌单记录都会删除。", "确认删除")) return;
+        try {
+          await runWithLoading("正在删除音乐…", async () => { await window.XiaoLuoSupabase.deleteFilesByPublicUrls([track.src]); await window.XiaoLuoSupabase.deleteMusicTrack(state.userId, track.id); });
+          data.music.splice(index, 1); state.musicIndex = 0; document.dispatchEvent(new CustomEvent("xiaoluo-play-track", { detail: { index: 0, play: false } })); openMusicLibrary(true);
+        } catch (error) { showCloudError(error); }
+      };
+    });
+    form.onsubmit = async (event) => {
+      event.preventDefault(); const file = form.file.files?.[0]; if (!file) return;
+      try {
+        await runWithLoading("正在上传音乐并保存歌单…", async () => {
+          const url = await window.XiaoLuoSupabase.uploadFile(state.userId, "music", file);
+          const row = await window.XiaoLuoSupabase.addMusicTrack(state.userId, { title: form.title.value.trim(), artist: form.artist.value.trim(), category: form.category.value.trim(), file_url: url, sort_order: data.music.length });
+          data.music.push({ id: row.id, title: row.title, artist: row.artist || "小罗Blog", category: row.category || "", src: row.file_url });
+        });
+        form.reset(); document.dispatchEvent(new CustomEvent("xiaoluo-music-library-updated")); openMusicLibrary(true);
+      } catch (error) { showCloudError(error); }
+    };
+    $("[data-sync-local-music]", modal).onclick = async () => {
+      if (!canManageMusic) return;
+      if (!await confirmPublish("替换当前歌单？", "旧歌单记录会删除，并切换为本地的 3 首新音乐。", "确认替换")) return;
+      const localTracks = JSON.parse(JSON.stringify(defaultData.music));
+      try {
+        await runWithLoading("正在更新歌单…", async () => {
+          await Promise.all(data.music.filter((track) => track.id).map((track) => window.XiaoLuoSupabase.deleteMusicTrack(state.userId, track.id)));
+          const rows = await Promise.all(localTracks.map((track, index) => window.XiaoLuoSupabase.addMusicTrack(state.userId, { title: track.title, artist: track.artist, category: track.category, file_url: track.src, sort_order: index })));
+          data.music = localTracks.map((track, index) => ({ ...track, id: rows[index].id }));
+          state.musicIndex = 0;
+        });
+        document.dispatchEvent(new CustomEvent("xiaoluo-music-library-updated"));
+        openMusicLibrary(true);
+      } catch (error) { showCloudError(error); }
+    };
+    modal.classList.add("open");
   }
 
   function renderArticles() {
@@ -1028,13 +1601,14 @@
     const next = data.posts[index + 1];
     document.title = `${post.title} | ${data.site.name}`;
     wrap.innerHTML = `
+      <section class="article-detail-layout">
       <article class="article-detail glass-card" data-post-id="${post.id}">
         <p class="eyebrow">${escapeHtml(post.category)}</p>
         <h1>${escapeHtml(post.title)}</h1>
         <div class="article-meta detail-meta"><span>${escapeHtml(post.author)}</span><span>${formatPostDate(post.publishedAt)}</span><span>${escapeHtml(post.category)}</span></div>
         <div class="tag-row">${post.tags.map((tag) => `<a href="./articles.html?tag=${encodeURIComponent(tag)}">#${escapeHtml(tag)}</a>`).join("")}</div>
         ${post.coverUrl ? `<div class="detail-cover ${post.coverClass}" style="background-image:url('${post.coverUrl}')"></div>` : ""}
-        <div class="post-content">${post.content.map((paragraph) => `<p>${linkify(paragraph)}</p>`).join("")}</div>
+        <div class="post-content">${renderPostContent(post.content)}</div>
         ${post.attachments?.length ? `<section class="post-attachments"><h2>附件下载</h2>${post.attachments.map((file) => `<a href="${file.url}" download="${escapeHtml(file.name)}" target="_blank" rel="noopener">下载：${escapeHtml(file.name)}</a>`).join("")}</section>` : ""}
         <div class="post-actions">
           ${state.isAdmin && state.cloudOwnerId === state.userId ? `<a class="ghost-button" href="./editor.html?id=${post.id}">编辑文章</a>` : ""}
@@ -1044,16 +1618,17 @@
           <span class="post-engagement" data-post-engagement>阅读 0 · 点赞 0 · 评论 0</span>
         </div>
       </article>
+      <aside class="comments glass-card detail-comments-sidebar">
+        <h2>评论</h2>
+        <p data-comment-note>登录后可以发表评论。</p>
+        <form data-post-comment-form data-post-id="${post.id}"><textarea name="content" placeholder="写下你的评论" maxlength="1000"></textarea><button class="primary-button small" type="submit">发表评论</button></form>
+        <div class="comment-list" data-comment-list></div>
+      </aside>
+      </section>
       <nav class="post-neighbor">
         ${prev ? `<a href="./article-detail.html?id=${prev.id}">上一篇：${escapeHtml(prev.title)}</a>` : "<span>已经是最新文章</span>"}
         ${next ? `<a href="./article-detail.html?id=${next.id}">下一篇：${escapeHtml(next.title)}</a>` : "<span>已经是最后一篇</span>"}
       </nav>
-      <section class="comments glass-card">
-        <h2>评论区域</h2>
-        <p data-comment-note>登录后可以发表评论。</p>
-        <form data-post-comment-form data-post-id="${post.id}"><textarea name="content" placeholder="写下你的评论" maxlength="1000"></textarea><button class="primary-button small" type="submit">发表评论</button></form>
-        <div class="comment-list" data-comment-list></div>
-      </section>
     `;
     loadPostEngagement(post.id);
   }
@@ -1078,16 +1653,8 @@
       const note = $("[data-comment-note]");
       if (note) note.textContent = state.isLoggedIn ? "评论会保存到文章下方。" : "请先登录后发表评论。";
       const commentList = $("[data-comment-list]");
-      if (commentList) commentList.innerHTML = engagement.comments.map((comment) => {
-        const name = comment.profile?.display_name || "普通用户";
-        const avatar = comment.profile?.avatar_url || "";
-        const initial = escapeHtml(name.slice(0, 1) || "普");
-        return `<article class="comment-item"><span class="comment-avatar${avatar ? " has-image" : ""}"${avatar ? ` style="background-image:url('${avatar}')"` : ""}>${initial}</span><div class="comment-content"><div><strong>${escapeHtml(name)}</strong><time>${formatPostDate(comment.created_at)}</time></div><p>${escapeHtml(comment.content)}</p></div></article>`;
-      }).join("") || '<p class="comment-empty">还没有评论。</p>';
+      if (commentList) commentList.innerHTML = commentThreadHtml(engagement.comments, "data-delete-post-comment");
       if (state.isAdmin && commentList) {
-        $all(".comment-item", commentList).forEach((element, index) => {
-          element.insertAdjacentHTML("beforeend", `<button class="comment-delete" type="button" data-delete-post-comment="${engagement.comments[index].id}">删除</button>`);
-        });
         $all("[data-delete-post-comment]", commentList).forEach((button) => {
           button.onclick = async () => {
             if (!await confirmPublish("确认删除这条评论？", "删除后无法恢复。", "确认删除")) return;
@@ -1099,15 +1666,16 @@
         });
       }
       const form = $("[data-post-comment-form]");
-      if (form && !form.dataset.bound) {
-        form.dataset.bound = "true";
-        form.addEventListener("submit", async (event) => {
+      let replyTo = null;
+      if (form) bindReplyButtons(commentList, form, (id) => { replyTo = id; });
+      if (form) {
+        form.onsubmit = async (event) => {
           event.preventDefault();
           if (!state.isLoggedIn) { alert("请先登录后发表评论。"); return; }
           const content = form.content.value.trim();
           if (!content) return;
-          try { await api.addPostComment(postId, state.userId, content); form.reset(); await loadPostEngagement(postId); } catch (error) { showCloudError(error); }
-        });
+          try { await api.addPostComment(postId, state.userId, content, replyTo); replyTo = null; form.reset(); form.content.placeholder = "写下你的评论"; await loadPostEngagement(postId); } catch (error) { showCloudError(error); }
+        };
       }
     } catch (error) {
       console.warn("Post engagement load failed:", error.message);
@@ -1135,7 +1703,7 @@
       const imagePayload = escapeHtml(JSON.stringify(images));
       const grid = images.length ? `<div class="moment-gallery count-${Math.min(images.length, 9)}">${images.slice(0, 9).map((img, index) => /^https?:\/\//.test(img) ? `<button class="moment-thumb uploaded-image" type="button" data-timeline-images="${imagePayload}" data-timeline-index="${index}" style="background-image:url('${img}')" aria-label="查看第 ${index + 1} 张图片"></button>` : `<button class="moment-thumb ${img}" type="button" data-timeline-images="${imagePayload}" data-timeline-index="${index}" aria-label="查看第 ${index + 1} 张图片"></button>`).join("")}</div>` : "";
       const adminActions = state.isAdmin ? `<button class="timeline-manage-button" type="button" data-manage-timeline-post data-type="${type}" data-id="${escapeHtml(item.id)}" aria-label="管理这条帖子" title="管理帖子">⋯</button>` : "";
-      return `<article class="timeline-item glass-card timeline-openable" data-open-timeline-post data-type="${type}" data-id="${escapeHtml(item.id)}"><time>${escapeHtml(item.date)}</time><div class="timeline-content"><h3>${escapeHtml(item.title)}</h3><p>${escapeHtml(item.text)}</p>${grid}<span class="timeline-engagement" data-timeline-card-engagement>阅读 0 · 点赞 0 · 评论 0</span>${adminActions}</div></article>`;
+      return `<article class="timeline-item glass-card timeline-openable" data-open-timeline-post data-type="${type}" data-id="${escapeHtml(item.id)}"><time>${escapeHtml(item.date)}</time><div class="timeline-content"><h3>${escapeHtml(item.title)}</h3><div class="timeline-rich-text">${formatRichText(item.text).replace(/\n/g, "<br>")}</div>${grid}<span class="timeline-engagement" data-timeline-card-engagement>阅读 0 · 点赞 0 · 评论 0</span>${adminActions}</div></article>`;
     }).join("") || '<article class="timeline-item glass-card empty-state">暂时还没有内容。</article>';
     items.forEach((item) => loadTimelineCardEngagement(type, item.id, wrap));
   }
@@ -1196,6 +1764,22 @@
       const target = $(selector);
       if (target) target.textContent = count;
     });
+    const links = $("[data-about-contact-links]");
+    if (links) {
+      const contacts = data.site.contacts || {};
+      const entries = [
+        ["GitHub", contacts.github, "github"],
+        ["邮箱", contacts.email, "email"],
+        ["抖音", contacts.douyin, "douyin"],
+        ["Instagram", contacts.instagram, "instagram"]
+      ].filter(([, value]) => value);
+      links.innerHTML = entries.map(([label, value, type]) => {
+        const href = type === "email" ? `mailto:${value}` : (/^https?:\/\//i.test(value) ? value : "#");
+        const icon = type === "github" ? '<i class="social-icon social-icon-github" aria-hidden="true"></i>' : type === "instagram" ? '<i class="social-icon social-icon-instagram" aria-hidden="true"></i>' : type === "douyin" ? '<i class="about-platform-icon iconfont icon-douyin2" aria-hidden="true"></i>' : '<i class="about-platform-icon email" aria-hidden="true">@</i>';
+        return `<a class="about-contact-link ${type}" href="${escapeHtml(href)}"${href === "#" ? ` data-contact-copy="${escapeHtml(value)}"` : ' target="_blank" rel="noopener"'}>${icon}<span>${escapeHtml(label)}</span><strong>${escapeHtml(value)}</strong></a>`;
+      }).join("") || '<p class="about-contact-empty">联系方式正在整理中。</p>';
+      $all("[data-contact-copy]", links).forEach((link) => { link.onclick = async (event) => { event.preventDefault(); try { await navigator.clipboard.writeText(link.dataset.contactCopy); link.classList.add("copied"); setTimeout(() => link.classList.remove("copied"), 1200); } catch (_) {} }; });
+    }
   }
 
   function renderGallery() {
@@ -1319,14 +1903,28 @@
     });
 
     const loadTrack = (index, shouldPlay = false) => {
+      if (!data.music.length) return;
       state.musicIndex = (index + data.music.length) % data.music.length;
       const track = data.music[state.musicIndex];
       const artistText = track.category ? `${track.artist} · ${track.category}` : track.artist;
-      audio.src = track.src;
+      const nextSrc = new URL(track.src, location.href).href;
+      const sameTrack = audio.currentSrc === nextSrc || audio.src === nextSrc;
+      if (!sameTrack) {
+        audio.src = track.src;
+        audio.dataset.trackSrc = nextSrc;
+      }
       $all("[data-track-title], [data-floating-title]").forEach((el) => { el.textContent = track.title; });
       $all("[data-track-artist], [data-floating-artist]").forEach((el) => { el.textContent = artistText; });
       if (shouldPlay) playAudio();
+      else { updateButtons(); updateProgress(); }
     };
+
+    document.addEventListener("xiaoluo-play-track", (event) => loadTrack(event.detail?.index || 0, Boolean(event.detail?.play)));
+    document.addEventListener("xiaoluo-music-library-updated", () => {
+      const current = data.music[state.musicIndex] || data.music[0];
+      if (!current) { audio.pause(); audio.removeAttribute("src"); updateButtons(); return; }
+      loadTrack(Math.min(state.musicIndex, data.music.length - 1), false);
+    });
 
     const rememberPlayback = () => {
       sessionStorage.setItem("xiaoluo-music-state", JSON.stringify({
@@ -1383,6 +1981,8 @@
       }
       if (event.target.closest("[data-music-prev]")) loadTrack(state.musicIndex - 1, true);
       if (event.target.closest("[data-music-next]")) loadTrack(state.musicIndex + 1, true);
+      if (event.target.closest("[data-music-library]")) openMusicLibrary(state.isAdmin);
+      if (event.target.closest("[data-music-manage]")) openMusicLibrary(true);
     });
 
     document.addEventListener("input", (event) => {
@@ -1410,6 +2010,7 @@
         if (savedPlayback.playing) playAudio();
       }, { once: true });
     }
+    window.XiaoLuoMusicSyncUI = () => { updateButtons(); updateProgress(); };
     window.addEventListener("beforeunload", rememberPlayback);
   }
 
@@ -1425,15 +2026,18 @@
       announcement: form.announcement?.value.trim() || "",
       display_name: form.profileName?.value.trim() || data.site.profileName,
       avatar_url: data.site.avatarDataUrl || "",
+      home_background_url: data.site.homeBackground.imageUrl || "",
       contacts: {
       email: form.contactEmail?.value.trim() || "",
-      qq: form.contactQq?.value.trim() || "",
-      wechat: form.contactWechat?.value.trim() || "",
-      douyin: form.contactDouyin?.value.trim() || ""
+      github: form.contactGithub?.value.trim() || "https://github.com/LuoLuowo",
+      douyin: form.contactDouyin?.value.trim() || "",
+      instagram: form.contactInstagram?.value.trim() || "xiaoluo672"
       }
     };
 
     const avatarFile = form.avatar?.files?.[0];
+    const homeCoverFile = form.homeCover?.files?.[0];
+    const oldHomeCoverUrl = data.site.homeBackground.imageUrl || "";
     const finish = async () => {
       try {
         requireCloudSession();
@@ -1444,6 +2048,7 @@
         data.site.profileName = profile.display_name;
         data.site.avatarText = profile.display_name.slice(0, 1);
         data.site.avatarDataUrl = profile.avatar_url;
+        data.site.homeBackground.imageUrl = profile.home_background_url || "";
         data.site.contacts = profile.contacts;
         initBrand();
         alert("已保存到 Supabase，首页现在已经生效。");
@@ -1451,11 +2056,15 @@
     };
 
     const upload = avatarFile
-      ? window.XiaoLuoSupabase.uploadFile(state.userId, "avatars", avatarFile).then((url) => { profile.avatar_url = url; })
+      ? uploadOptimizedImage(state.userId, "avatars", avatarFile, { maxSide: 720, targetBytes: 220 * 1024 }).then((url) => { profile.avatar_url = url; })
       : Promise.resolve();
     runWithLoading("正在保存首页设置…", async () => {
       await upload;
+      if (homeCoverFile) {
+        profile.home_background_url = await uploadOptimizedImage(state.userId, "home-covers", homeCoverFile, { maxSide: 2400, targetBytes: 900 * 1024 });
+      }
       await finish();
+      if (homeCoverFile && oldHomeCoverUrl && oldHomeCoverUrl !== profile.home_background_url) await window.XiaoLuoSupabase.deleteFilesByPublicUrls([oldHomeCoverUrl]);
     }).catch(showCloudError);
   }
 
@@ -1481,6 +2090,7 @@
       data.site.aboutTitle = profile.about_title;
       data.site.aboutBio = profile.about_bio;
       data.site.aboutSideBio = profile.about_side_bio;
+      data.site.contacts = profile.contacts;
       initBrand();
       alert("关于我内容已保存到 Supabase。");
     } catch (error) { showCloudError(error); }
@@ -1504,12 +2114,14 @@
             return;
           }
           msg.textContent = "正在处理...";
+          const requestedNext = new URLSearchParams(location.search).get("next");
+          const nextPage = requestedNext && requestedNext.startsWith("/") ? `.${requestedNext}` : "";
           if (form.dataset.authForm === "register") {
             const result = await api.signUpWithEmail(form.email.value, form.password.value);
             await refreshAuthState();
             if (result.session) {
               msg.textContent = state.isAdmin ? "注册成功，正在进入后台..." : "注册成功，正在进入博客...";
-              window.location.href = state.isAdmin ? "./dashboard.html" : "./index.html";
+              window.location.href = nextPage || (state.isAdmin ? "./dashboard.html" : "./index.html");
               return;
             }
             msg.textContent = "注册成功，请先去邮箱点击确认链接，然后再回来登录。";
@@ -1517,7 +2129,7 @@
             await api.signInWithEmail(form.email.value, form.password.value);
             await refreshAuthState();
             msg.textContent = state.isAdmin ? "登录成功，正在进入后台..." : "登录成功，正在进入博客...";
-            window.location.href = state.isAdmin ? "./dashboard.html" : "./index.html";
+            window.location.href = nextPage || (state.isAdmin ? "./dashboard.html" : "./index.html");
           }
         } catch (error) {
           msg.textContent = error.message || "操作失败，请稍后重试。";
@@ -1581,6 +2193,7 @@
     if (!form || form.dataset.bound) return;
     if (!state.isAdmin) return;
     form.dataset.bound = "true";
+    bindTextFormatToolbars(form);
     const panel = $("[data-preview-panel]");
     const title = $("[data-preview-title]");
     const content = $("[data-preview-content]");
@@ -1588,7 +2201,7 @@
     $("[data-editor-preview]")?.addEventListener("click", () => {
       panel.hidden = false;
       title.textContent = form.title.value || "未命名文章";
-      content.innerHTML = form.content.value.split(/\n+/).filter(Boolean).map((line) => `<p>${linkify(line)}</p>`).join("");
+      content.innerHTML = renderPostContent([editorContentValue(form)]);
     });
     $("[data-save-draft]")?.addEventListener("click", () => alert(state.isLoggedIn ? "草稿已准备保存，下一步会写入 Supabase。" : "请先登录。"));
     form.addEventListener("submit", (event) => {
@@ -1600,15 +2213,18 @@
           await runWithLoading("正在发布文章，请稍候…", async (cancelled) => {
             const editingId = form.dataset.editPostId || "";
             const existing = data.posts.find((post) => post.id === editingId);
-            const cover = form.cover?.files?.[0] ? await window.XiaoLuoSupabase.uploadFile(state.userId, "post-covers", form.cover.files[0]) : (existing?.coverUrl || null);
+            const oldCover = existing?.coverUrl || null;
+            const cover = form.cover?.files?.[0] ? await uploadOptimizedImage(state.userId, "post-covers", form.cover.files[0]) : oldCover;
             if (cancelled()) return;
             const attachmentFiles = Array.from(form.attachments?.files || []);
-            const attachments = attachmentFiles.length ? await Promise.all(attachmentFiles.map(async (file) => ({ name: file.name, url: await window.XiaoLuoSupabase.uploadFile(state.userId, "post-attachments", file) }))) : (existing?.attachments || []);
+            const attachments = [...(existing?.attachments || []), ...await Promise.all(attachmentFiles.map(async (file) => ({ name: file.name, url: await window.XiaoLuoSupabase.uploadFile(state.userId, "post-attachments", file) })))];
             if (cancelled()) return;
-            const postData = { title: form.title.value.trim(), content: form.content.value.trim(), cover_url: cover, category: form.category.value || "未分类", tags: form.tags.value.split(",").map((tag) => tag.trim()).filter(Boolean), attachments, status: "published" };
+            const postData = { title: form.title.value.trim(), content: editorContentValue(form).trim(), cover_url: cover, category: form.category.value || "未分类", tags: form.tags.value.split(",").map((tag) => tag.trim()).filter(Boolean), attachments, status: "published" };
             if (editingId) await window.XiaoLuoSupabase.updatePost(state.userId, editingId, postData);
             else await window.XiaoLuoSupabase.savePost(state.userId, postData);
+            if (editingId && form.cover?.files?.[0] && oldCover && oldCover !== cover) await window.XiaoLuoSupabase.deleteFilesByPublicUrls([oldCover]);
             form.reset();
+            setEditorContent(form, "");
             alert(editingId ? "文章已更新到 Supabase。" : "文章已发布到 Supabase。");
             navigate("./articles.html");
           });
@@ -1626,7 +2242,7 @@
     form.dataset.editPostId = postId;
     form.dataset.editHydrated = postId;
     form.title.value = post.title || "";
-    form.content.value = (post.content || []).join("\n");
+    setEditorContent(form, (post.content || []).join("\n"));
     form.tags.value = (post.tags || []).join(", ");
     if (![...form.category.options].some((option) => option.value === post.category)) {
       form.category.insertAdjacentHTML("beforeend", `<option value="${escapeHtml(post.category)}">${escapeHtml(post.category)}</option>`);
@@ -1636,6 +2252,52 @@
     if (heading) heading.textContent = "编辑文章";
     const submit = $("[data-publish-post]");
     if (submit) submit.textContent = "保存修改";
+    renderEditorExistingMedia(post);
+  }
+
+  function renderEditorExistingMedia(post) {
+    const coverSection = $("[data-editor-existing-cover]");
+    const coverPreview = $("[data-editor-cover-preview]");
+    const coverInputLabel = $("[data-editor-cover-input-label]");
+    const attachmentSection = $("[data-editor-existing-attachments]");
+    const attachmentList = $("[data-editor-attachment-list]");
+    if (coverSection && coverPreview) {
+      coverSection.hidden = !post.coverUrl;
+      coverPreview.src = post.coverUrl || "";
+      if (coverInputLabel) coverInputLabel.textContent = post.coverUrl ? "替换封面" : "文章封面";
+    }
+    if (attachmentSection && attachmentList) {
+      attachmentSection.hidden = !(post.attachments?.length);
+      attachmentList.innerHTML = (post.attachments || []).map((file, index) => `<div><a href="${file.url}" target="_blank" rel="noopener">${escapeHtml(file.name)}</a><button class="danger-button" type="button" data-delete-post-attachment="${index}">删除</button></div>`).join("");
+    }
+    const deleteCover = $("[data-delete-post-cover]");
+    if (deleteCover) deleteCover.onclick = async () => {
+      if (!post.coverUrl || !await confirmPublish("确认删除文章封面？", "删除后无法恢复。", "确认删除")) return;
+      try {
+        await runWithLoading("正在删除封面…", async () => {
+          await window.XiaoLuoSupabase.updatePost(state.userId, post.id, { cover_url: null });
+          await window.XiaoLuoSupabase.deleteFilesByPublicUrls([post.coverUrl]);
+        });
+        post.coverUrl = "";
+        renderEditorExistingMedia(post);
+      } catch (error) { showCloudError(error); }
+    };
+    $all("[data-delete-post-attachment]", attachmentList).forEach((button) => {
+      button.onclick = async () => {
+        const index = Number(button.dataset.deletePostAttachment);
+        const file = post.attachments[index];
+        if (!file || !await confirmPublish("确认删除这个附件？", "删除后无法恢复。", "确认删除")) return;
+        const nextAttachments = post.attachments.filter((_, itemIndex) => itemIndex !== index);
+        try {
+          await runWithLoading("正在删除附件…", async () => {
+            await window.XiaoLuoSupabase.updatePost(state.userId, post.id, { attachments: nextAttachments });
+            await window.XiaoLuoSupabase.deleteFilesByPublicUrls([file.url]);
+          });
+          post.attachments = nextAttachments;
+          renderEditorExistingMedia(post);
+        } catch (error) { showCloudError(error); }
+      };
+    });
   }
 
   function renderAdminPosts() {
@@ -1752,6 +2414,7 @@
     applySavedContent();
     initBrand();
     bindThemeButtons();
+    bindTextFormatToolbars();
     bindNavToggle();
     setActiveNav();
     populateFilters();
@@ -1762,6 +2425,8 @@
     initAdminEntryGuard();
     initLiveClock();
     initTimelineImageViewer();
+    initGameDrawer();
+    window.XiaoLuoMusicSyncUI?.();
     const page = pageName();
     if (page === "home") renderHome();
     if (page === "articles") renderArticles();
@@ -1771,6 +2436,7 @@
     if (page === "progress") renderTimeline("[data-progress-timeline]", data.progress);
     if (page === "about") renderAbout();
     if (page === "photos") renderGallery();
+    if (page === "game") ensureJumpGame();
     if (page === "dashboard") {
       protectDashboard();
       if (state.isAdmin) {
@@ -1790,6 +2456,56 @@
     window.XiaoLuoSupabase?.trackVisit?.(location.pathname + location.search);
   }
 
+  function showEntryLoader() {
+    let loader = $("[data-entry-loader]");
+    if (!loader) {
+      loader = document.createElement("div");
+      loader.className = "entry-loader";
+      loader.dataset.entryLoader = "";
+      loader.innerHTML = '<div class="entry-loader-mark"><img src="./assets/images/xiaoluo-blog-icon.jpg" alt="小罗Blog"></div><strong>正在进入小罗Blog</strong><span>正在整理这一页的故事…</span><i></i>';
+      document.body.appendChild(loader);
+    }
+    loader.classList.add("is-visible");
+  }
+
+  async function hideEntryLoaderAfterAssets() {
+    const images = $all("main img").filter((image) => !image.complete);
+    await Promise.race([
+      Promise.all(images.map((image) => new Promise((resolve) => { image.addEventListener("load", resolve, { once: true }); image.addEventListener("error", resolve, { once: true }); }))),
+      new Promise((resolve) => setTimeout(resolve, 3200))
+    ]);
+    const loader = $("[data-entry-loader]");
+    if (loader) {
+      loader.classList.remove("is-visible");
+      setTimeout(() => loader.remove(), 420);
+    }
+  }
+
+  function initGameDrawer() {
+    if (document.body.dataset.gameDrawerBound || !document.querySelector(".site-header")) return;
+    document.body.dataset.gameDrawerBound = "true";
+    const drawer = document.createElement("aside");
+    drawer.className = "blog-game-drawer";
+    drawer.innerHTML = `<button class="blog-game-tab" type="button" data-game-drawer-toggle aria-expanded="false" aria-label="打开小罗自制小游戏"><img src="./assets/images/xiaoluo-jump-game-icon.jpg" alt=""></button><div class="blog-game-drawer-panel"><button class="blog-game-close" type="button" data-game-drawer-close aria-label="关闭小游戏入口">×</button><img src="./assets/images/xiaoluo-jump-game-icon.jpg" alt="小罗跳一跳图标"><p class="mini-title">XIAOLUO MINI GAME</p><h2>小罗自制小游戏</h2><p>小罗跳一跳：按住蓄力，松开起跳。</p><a class="primary-button small" href="./game.html">开玩</a></div>`;
+    document.body.appendChild(drawer);
+    const toggle = $("[data-game-drawer-toggle]", drawer);
+    const close = () => { drawer.classList.remove("open"); toggle.setAttribute("aria-expanded", "false"); };
+    toggle.onclick = () => { const open = drawer.classList.toggle("open"); toggle.setAttribute("aria-expanded", String(open)); };
+    $("[data-game-drawer-close]", drawer).onclick = close;
+  }
+
+  function ensureJumpGame() {
+    if (window.initXiaoLuoJumpGame) { window.initXiaoLuoJumpGame(); return; }
+    let script = document.querySelector("script[data-jump-game-script]");
+    if (!script) {
+      script = document.createElement("script");
+      script.src = "./js/game.js";
+      script.dataset.jumpGameScript = "true";
+      script.onload = () => window.initXiaoLuoJumpGame?.();
+      document.body.appendChild(script);
+    }
+  }
+
   async function navigate(url, push = true) {
     const response = await fetch(url, { cache: "no-store" });
     if (!response.ok) {
@@ -1806,7 +2522,11 @@
       window.location.href = url;
       return;
     }
+    if (pageName() === "game") window.destroyXiaoLuoJumpGame?.();
     document.title = nextDoc.title;
+    const darkMode = document.body.classList.contains("dark-mode");
+    document.body.className = nextDoc.body.className;
+    if (darkMode) document.body.classList.add("dark-mode");
     document.body.dataset.page = nextDoc.body.dataset.page || "home";
     currentMain.replaceWith(nextMain);
     if (push) history.pushState({}, "", url);
@@ -1882,10 +2602,15 @@
   initPostContextMenu();
   initPostDeleteActions();
   watchAuthState();
+  if (pageName() === "home" && !sessionStorage.getItem("xiaoluo-home-entry-seen")) {
+    sessionStorage.setItem("xiaoluo-home-entry-seen", "true");
+    showEntryLoader();
+  }
   refreshAuthState()
     .then(async () => {
       renderCurrentPage();
       await loadCloudData();
+      if ($("[data-entry-loader]")) await hideEntryLoaderAfterAssets();
     })
-    .catch(renderCurrentPage);
+    .catch(() => { renderCurrentPage(); if ($("[data-entry-loader]")) hideEntryLoaderAfterAssets(); });
 })();

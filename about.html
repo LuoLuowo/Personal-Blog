@@ -3,8 +3,10 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>关于我 | 小罗Blog</title>
+  <title>关于我 | 小罗的Life</title>
   <link rel="stylesheet" href="./styles.css" />
+  <link rel="stylesheet" href="./font_fuhbx0kh6gc/iconfont.css" />
+  <link rel="stylesheet" href="./font_fuhbx0kh6gc/social-extra.css" />
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="./js/supabase-config.js" defer></script>
   <script src="./js/supabase-client.js" defer></script>
@@ -17,26 +19,48 @@
     <a class="brand" href="./index.html"><span class="brand-mark" data-site-logo>罗</span><span data-site-name>小罗Blog</span></a>
     <button class="nav-toggle" type="button" data-nav-toggle aria-label="打开导航">☰</button>
     <nav class="top-nav" data-nav>
-      <a href="./index.html">首页</a><a href="./articles.html">文章</a><a href="./life.html">生活圈</a><a href="./progress.html">进步簿</a><a class="active" href="./about.html">关于我</a><a href="./dashboard.html" data-admin-only hidden>后台</a>
+      <a href="./index.html">首页</a><a href="./articles.html">所有文章</a><a href="./life.html">生活圈</a><a href="./progress.html">进步簿</a><a class="active" href="./about.html">关于我</a><a href="./dashboard.html" data-admin-only hidden>后台</a>
     </nav>
     <div class="header-actions"><button class="icon-button" type="button" data-theme-toggle>◐</button><a class="ghost-button" href="./login.html" data-guest-only>登录</a><a class="primary-button small" href="./register.html" data-guest-only>注册</a><a class="user-entry" href="./dashboard.html" hidden><span class="user-avatar" data-profile-avatar>罗</span></a></div>
   </header>
-  <main class="sub-page">
-    <section class="about-cover-ui" aria-hidden="true">
-      <div class="about-cover-orbit orbit-one"></div><div class="about-cover-orbit orbit-two"></div>
-      <div class="about-cover-window"><span></span><span></span><span></span><span></span></div>
-      <div class="about-cover-note">XIAOLUO BLOG <i></i> NOTES / LIFE / GROWTH</div>
+  <main class="sub-page about-life-page">
+    <section class="about-life-cover" aria-label="小罗的关于">
+      <img src="./assets/images/about-cover.webp" alt="小罗的关于封面">
     </section>
-    <section class="about-card glass-card">
-      <div>
-        <p class="eyebrow">ABOUT</p>
+
+    <section class="about-life-grid">
+      <article class="about-life-card about-intro-card">
+        <p class="mini-title">SELF INTRODUCTION</p>
         <h1 data-about-title>关于小罗</h1>
-        <p data-about-bio>这里会记录小罗和这个网站的故事。</p>
+        <p data-about-bio>我是一名大二在读计算机专业的一名学生，做这个博客目的是为了记录一些生活中的碎片以及点点滴滴！希望后面可以越做越大，更多属于自己的碎片。</p>
         <div class="about-stats"><span><strong data-about-post-count>0</strong>文章</span><span><strong data-about-moment-count>0</strong>生活圈</span><span><strong data-about-progress-count>0</strong>进步记录</span></div>
-      </div>
-      <div class="about-me"><h3 data-profile-name>小罗</h3><p data-about-side-bio>记录生活、技术和成长。</p><a class="log-button primary-button" href="./progress.html">查看进步簿</a></div>
+      </article>
+
+      <article class="about-life-card about-personality-card">
+        <div><p class="mini-title">PERSONALITY</p><h2>提倡者 <em>INFJ</em></h2><p>敏感而坚定，喜欢在独处里整理感受，也愿意认真对待每一次相遇。</p></div>
+        <div class="infj-figure" aria-label="INFJ 性格图形"><span class="infj-head"></span><span class="infj-body"></span><i></i><i></i><i></i></div>
+      </article>
+
+      <article class="about-life-card about-tags-card">
+        <p class="mini-title">PERSONAL TAGS</p><h2>我的关键词</h2>
+        <div class="about-tag-cloud"><span>注重感情</span><span>独处</span><span>自由</span><span>世界游</span><span>热爱阅读</span><span>探索未知</span></div>
+      </article>
+
+      <article class="about-life-card about-quote-card"><p class="mini-title">A LITTLE NOTE</p><p>愿岁并谢，与友长兮。</p></article>
+
+      <article class="about-life-card about-motto-card"><p class="mini-title">MY MOTTO</p><p>自由不是远走，而是始终有选择自己人生的勇气。</p></article>
+
+      <article class="about-game-card">
+        <img src="./assets/images/about-game-evolution.webp" alt="失控进化游戏画面">
+        <div><p class="game-favorite-badge">小罗最爱好的游戏</p><p class="mini-title">FAVORITE GAME</p><h2>失控进化</h2><p>在未知与协作之间，寻找下一段冒险。</p></div>
+      </article>
+
+      <article class="about-life-card about-contact-card">
+        <p class="mini-title">CONTACT ME</p><h2>联系我</h2><p>有想交流的事情，欢迎从这里找到我。</p>
+        <div class="about-contact-links" data-about-contact-links></div>
+      </article>
     </section>
   </main>
-  <footer class="site-footer"><p>© 2026 小罗Blog</p></footer>
+  <footer class="site-footer"><p>© 2026 小罗的Life</p></footer>
 </body>
 </html>

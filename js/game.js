@@ -1,0 +1,221 @@
+(() => {
+  async function initJumpGame() {
+  const canvas = document.querySelector("[data-jump-canvas]");
+  if (!canvas || canvas.dataset.gameReady || canvas.dataset.gameBooting) return;
+  canvas.dataset.gameBooting = "true";
+  const api = window.XiaoLuoSupabase;
+  const session = await api?.getSession?.();
+  if (!session) {
+    canvas.dataset.gameBooting = "";
+    const target = encodeURIComponent(`${location.pathname}${location.search}`);
+    location.replace(`./login.html?next=${target}`);
+    return;
+  }
+  canvas.dataset.gameReady = "true";
+  canvas.dataset.gameBooting = "";
+  const ctx = canvas.getContext("2d");
+  const scoreEl = document.querySelector("[data-game-score]");
+  const bestEl = document.querySelector("[data-game-best]");
+  const hintEl = document.querySelector("[data-game-hint]");
+  const restart = document.querySelector("[data-game-restart]");
+  const W = canvas.width;
+  const H = canvas.height;
+  const ground = 860;
+  const blockHeight = 170;
+  const gravity = .48;
+  let best = 0;
+  let score = 0;
+  let current;
+  let next;
+  let player;
+  let charging = false;
+  let chargeStarted = 0;
+  let charge = 0;
+  let gameOver = false;
+  let camera = 0;
+  let targetCamera = 0;
+  let sparkles = [];
+  let frame;
+  const events = new AbortController();
+
+  bestEl.textContent = best;
+  const blockColors = ["#5d8dd8", "#d88763", "#71a384", "#9579c8", "#d5a956", "#4e9caf"];
+  const random = (min, max) => Math.floor(Math.random() * (max - min + 1)) + min;
+
+  const rankingList = document.querySelector("[data-game-ranking-list]");
+  const escapeHtml = (value) => String(value ?? "").replace(/[&<>\"']/g, (char) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[char]));
+  const renderRanking = async () => {
+    if (!rankingList || !api?.isConfigured) return;
+    try {
+      const rows = await api.listJumpGameRanking(20);
+      let mine = rows.find((row) => row.user_id === session.user.id) || await api.getMyJumpGameScore(session.user.id);
+      if (!mine) mine = { user_id: session.user.id, best_score: 0, profile: await api.getProfile(session.user.id) };
+      best = Number(mine?.best_score || 0);
+      bestEl.textContent = best;
+      const displayRows = mine && !rows.some((row) => row.user_id === session.user.id) ? [...rows, mine] : rows;
+      rankingList.innerHTML = displayRows.map((row, index) => {
+        const profile = row.profile || {};
+        const name = profile.display_name || (row.user_id === session.user.id ? "我" : `普通用户${index + 1}`);
+        const avatarStyle = profile.avatar_url ? ` style="background-image:url('${escapeHtml(profile.avatar_url)}')"` : "";
+        const rank = row.user_id === session.user.id && !rows.some((entry) => entry.user_id === session.user.id) ? "我" : index + 1;
+        return `<li class="game-ranking-row${row.user_id === session.user.id ? " is-me" : ""}"><span class="game-ranking-rank">${rank}</span><span class="game-ranking-avatar"${avatarStyle}>${profile.avatar_url ? "" : escapeHtml(name.slice(0, 1))}</span><strong class="game-ranking-name">${escapeHtml(name)}${row.user_id === session.user.id ? "（我）" : ""}</strong><span class="game-ranking-score">${row.best_score}</span></li>`;
+      }).join("") || '<li class="game-ranking-empty">完成一局游戏后，这里会显示你的成绩。</li>';
+    } catch (error) {
+      rankingList.innerHTML = '<li class="game-ranking-empty">排行榜暂时无法读取。</li>';
+      console.warn("Jump leaderboard load failed:", error.message);
+    }
+  };
+
+  const saveScore = async () => {
+    if (!api?.isConfigured || score <= 0) return;
+    try {
+      const saved = await api.submitJumpGameScore(score);
+      best = Math.max(best, Number(saved?.best_score || 0));
+      bestEl.textContent = best;
+      renderRanking();
+    } catch (error) {
+      console.warn("Jump score save failed:", error.message);
+    }
+  };
+
+  function makeBlock(x, width) { return { x, width, color: blockColors[random(0, blockColors.length - 1)] }; }
+  function resetPlayer() { player = { x: current.x + current.width / 2, y: ground - blockHeight - 33, vx: 0, vy: 0, jumping: false, squash: 0 }; }
+  function makeNext() { next = makeBlock(current.x + current.width + random(122, 320), random(124, 205)); }
+  function reset() {
+    current = makeBlock(150, 188);
+    makeNext();
+    resetPlayer();
+    score = 0;
+    charge = 0;
+    charging = false;
+    gameOver = false;
+    camera = 0;
+    targetCamera = 0;
+    sparkles = [];
+    scoreEl.textContent = score;
+    hintEl.textContent = "按住画面开始蓄力";
+    cancelAnimationFrame(frame);
+    frame = requestAnimationFrame(loop);
+  }
+  function start() {
+    if (gameOver) return reset();
+    if (player.jumping || charging) return;
+    charging = true;
+    chargeStarted = performance.now();
+    hintEl.textContent = "松开起跳";
+  }
+  function release() {
+    if (!charging || gameOver) return;
+    charging = false;
+    const power = Math.min(charge, 1);
+    player.vx = 7 + power * 20.5;
+    player.vy = -(8.2 + power * 11.8);
+    player.jumping = true;
+    hintEl.textContent = "飞向下一块";
+  }
+  function award(points) {
+    score += points;
+    scoreEl.textContent = score;
+    if (score > best) { best = score; bestEl.textContent = best; }
+    sparkles.push({ x: player.x, y: player.y - 72, text: `+${points}`, life: 1, color: points === 3 ? "#f5c65d" : "#f5f7fb" });
+  }
+  function land(block) {
+    const centre = block.x + block.width / 2;
+    const distance = Math.abs(player.x - centre);
+    const points = distance < block.width * .16 ? 3 : distance < block.width * .43 ? 2 : 1;
+    award(points);
+    current = { ...block };
+    makeNext();
+    resetPlayer();
+    player.squash = 1;
+    targetCamera = Math.max(0, current.x - 190);
+    hintEl.textContent = points === 3 ? "完美落点，继续！" : "继续蓄力";
+  }
+  function fail() {
+    gameOver = true;
+    charging = false;
+    player.jumping = false;
+    player.x = current.x + current.width / 2;
+    player.y = ground - blockHeight - 33;
+    targetCamera = Math.max(0, current.x - 190);
+    camera = targetCamera;
+    hintEl.textContent = `本局 ${score} 分，点击画面或按 R 重开`;
+    saveScore();
+  }
+  function update() {
+    if (charging) charge = Math.min((performance.now() - chargeStarted) / 900, 1);
+    if (player.jumping) {
+      player.x += player.vx;
+      player.y += player.vy;
+      player.vy += gravity;
+      const landingY = ground - blockHeight - 33;
+      if (player.vy > 0 && player.y >= landingY - 6 && player.y <= landingY + 24) {
+        const onNext = player.x >= next.x && player.x <= next.x + next.width;
+        const onCurrent = player.x >= current.x && player.x <= current.x + current.width;
+        if (onNext) land(next);
+        else if (onCurrent) { resetPlayer(); hintEl.textContent = "回到原地，再试一次"; }
+      }
+      if (player.y > ground + 270) fail();
+    }
+    player.squash *= .86;
+    camera += (targetCamera - camera) * .075;
+    sparkles.forEach((item) => { item.y -= 1.3; item.life -= .018; });
+    sparkles = sparkles.filter((item) => item.life > 0);
+  }
+  function roundRect(x, y, w, h, r) { ctx.beginPath(); ctx.roundRect(x, y, w, h, r); }
+  function drawBlock(block) {
+    const x = block.x - camera;
+    const y = ground - blockHeight;
+    ctx.save();
+    ctx.shadowColor = "rgba(5,13,29,.32)"; ctx.shadowBlur = 22; ctx.shadowOffsetY = 13;
+    roundRect(x, y, block.width, blockHeight, 20); ctx.fillStyle = block.color; ctx.fill();
+    ctx.shadowColor = "transparent";
+    roundRect(x + 7, y - 4, block.width - 14, 26, 14); ctx.fillStyle = "rgba(255,255,255,.32)"; ctx.fill();
+    ctx.fillStyle = "rgba(12,23,46,.16)";
+    for (let dot = 0; dot < 4; dot += 1) { ctx.beginPath(); ctx.arc(x + 24 + dot * ((block.width - 44) / 3), y + 105, 13, 0, Math.PI * 2); ctx.fill(); }
+    ctx.restore();
+  }
+  function drawBird() {
+    const x = player.x - camera;
+    const y = player.y;
+    const scaleX = 1 - player.squash * .16 - (charging ? charge * .14 : 0);
+    const scaleY = 1 + player.squash * .12 + (charging ? charge * .12 : 0);
+    ctx.save(); ctx.translate(x, y); ctx.scale(scaleX, scaleY);
+    ctx.shadowColor = "rgba(6,12,25,.28)"; ctx.shadowBlur = 18; ctx.shadowOffsetY = 8;
+    ctx.fillStyle = "#775039"; ctx.beginPath(); ctx.ellipse(0, 3, 27, 21, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = "#cfa98c"; ctx.beginPath(); ctx.ellipse(3, 8, 16, 12, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.shadowBlur = 0; ctx.fillStyle = "#4c3329"; ctx.beginPath(); ctx.ellipse(-23, 0, 19, 9, -.35, 0, Math.PI * 2); ctx.fill(); ctx.beginPath(); ctx.ellipse(23, 0, 19, 9, .35, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = "#5d3d2c"; ctx.beginPath(); ctx.arc(0, -18, 15, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = "#121826"; ctx.beginPath(); ctx.arc(-6, -20, 3.4, 0, Math.PI * 2); ctx.arc(6, -20, 3.4, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = "#fff"; ctx.beginPath(); ctx.arc(-5, -21, 1.2, 0, Math.PI * 2); ctx.arc(7, -21, 1.2, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = "#e3a04d"; ctx.beginPath(); ctx.moveTo(0, -15); ctx.lineTo(11, -11); ctx.lineTo(0, -9); ctx.closePath(); ctx.fill();
+    ctx.restore();
+  }
+  function draw() {
+    const sky = ctx.createLinearGradient(0, 0, 0, H); sky.addColorStop(0, "#223a67"); sky.addColorStop(.62, "#8fc5dc"); sky.addColorStop(1, "#dbeaf2"); ctx.fillStyle = sky; ctx.fillRect(0, 0, W, H);
+    ctx.fillStyle = "rgba(255,255,255,.15)"; for (let i = 0; i < 20; i += 1) { ctx.beginPath(); ctx.arc((i * 109 - camera * .08) % (W + 180), 90 + (i % 5) * 85, 2 + i % 4, 0, Math.PI * 2); ctx.fill(); }
+    drawBlock(current); drawBlock(next); drawBird();
+    if (charging && !gameOver) { const width = 116; const x = player.x - camera - width / 2; const y = player.y - 76; roundRect(x, y, width, 14, 7); ctx.fillStyle = "rgba(8,17,35,.75)"; ctx.fill(); roundRect(x, y, width * charge, 14, 7); ctx.fillStyle = "#f3bc55"; ctx.fill(); }
+    sparkles.forEach((item) => { ctx.save(); ctx.globalAlpha = item.life; ctx.font = "800 38px Inter, sans-serif"; ctx.textAlign = "center"; ctx.fillStyle = item.color; ctx.fillText(item.text, item.x - camera, item.y); ctx.restore(); });
+    if (gameOver) { ctx.fillStyle = "rgba(9,17,33,.52)"; ctx.fillRect(0, 0, W, H); ctx.fillStyle = "#fff"; ctx.textAlign = "center"; ctx.font = "800 56px Inter, sans-serif"; ctx.fillText("再来一次", W / 2, H / 2 - 28); ctx.font = "500 28px Inter, sans-serif"; ctx.fillText(`本局得分 ${score}`, W / 2, H / 2 + 32); }
+  }
+  function loop() { update(); draw(); frame = requestAnimationFrame(loop); }
+  canvas.addEventListener("pointerdown", (event) => { event.preventDefault(); start(); }, { signal: events.signal });
+  canvas.addEventListener("pointerup", (event) => { event.preventDefault(); release(); }, { signal: events.signal });
+  canvas.addEventListener("pointerleave", () => { if (charging) release(); }, { signal: events.signal });
+  document.addEventListener("keydown", (event) => { if (event.code === "Space") { event.preventDefault(); start(); } if (event.code === "KeyR") reset(); }, { signal: events.signal });
+  document.addEventListener("keyup", (event) => { if (event.code === "Space") { event.preventDefault(); release(); } }, { signal: events.signal });
+  restart.addEventListener("click", reset, { signal: events.signal });
+  renderRanking();
+  reset();
+  window.destroyXiaoLuoJumpGame = () => {
+    cancelAnimationFrame(frame);
+    events.abort();
+    canvas.dataset.gameReady = "";
+    window.destroyXiaoLuoJumpGame = null;
+  };
+  }
+  window.initXiaoLuoJumpGame = initJumpGame;
+  if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", initJumpGame, { once: true });
+  else initJumpGame();
+})();

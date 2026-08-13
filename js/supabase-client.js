@@ -29,6 +29,29 @@
       return data;
     },
 
+    async verifyPassword(email, password) {
+      const { error } = await client.auth.signInWithPassword({ email: String(email || "").trim(), password });
+      if (error) throw error;
+    },
+
+    async updatePassword(password) {
+      const { error } = await client.auth.updateUser({ password });
+      if (error) throw error;
+    },
+
+    async requestAccountDeletion(password) {
+      const { data: sessionData, error: sessionError } = await client.auth.getSession();
+      if (sessionError || !sessionData.session) throw sessionError || new Error("登录状态已失效。");
+      const response = await fetch(`${config.url}/functions/v1/delete-account`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${sessionData.session.access_token}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ password })
+      });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(result.error || "注销账户失败。");
+      if (result.deleted !== true) throw new Error("注销服务尚未正确部署，请在 Supabase 重新部署 delete-account 函数。");
+    },
+
     async signOut() {
       if (!client) return;
       await client.auth.signOut();
@@ -57,6 +80,78 @@
       });
     },
 
+    async listGuestbookMessages(limit = 40) {
+      const { data, error } = await client.from("guestbook_messages")
+        .select("id, nickname, message, created_at")
+        .order("created_at", { ascending: false })
+        .limit(limit);
+      if (error) throw error;
+      return data || [];
+    },
+
+    async addGuestbookMessage(nickname, message) {
+      const { data, error } = await client.from("guestbook_messages")
+        .insert({ nickname: String(nickname || "").trim(), message: String(message || "").trim() })
+        .select("id, nickname, message, created_at")
+        .single();
+      if (error) throw error;
+      return data;
+    },
+
+    async deleteGuestbookMessage(messageId) {
+      const { error } = await client.from("guestbook_messages").delete().eq("id", messageId);
+      if (error) throw error;
+    },
+
+    async listJumpGameRanking(limit = 20) {
+      const { data, error } = await client.from("jump_game_scores")
+        .select("user_id, best_score, updated_at")
+        .order("best_score", { ascending: false })
+        .order("updated_at", { ascending: true })
+        .limit(limit);
+      if (error) throw error;
+      const scores = data || [];
+      if (!scores.length) return [];
+      const { data: profiles, error: profileError } = await client.from("profiles")
+        .select("id, display_name, avatar_url")
+        .in("id", scores.map((row) => row.user_id));
+      if (profileError) throw profileError;
+      const profileById = new Map((profiles || []).map((profile) => [profile.id, profile]));
+      return scores.map((row) => ({ ...row, profile: profileById.get(row.user_id) || null }));
+    },
+
+    async getMyJumpGameScore(userId) {
+      const { data, error } = await client.from("jump_game_scores")
+        .select("user_id, best_score, updated_at")
+        .eq("user_id", userId)
+        .maybeSingle();
+      if (error) throw error;
+      if (!data) return null;
+      const { data: profile, error: profileError } = await client.from("profiles")
+        .select("id, display_name, avatar_url")
+        .eq("id", userId)
+        .maybeSingle();
+      if (profileError) throw profileError;
+      return { ...data, profile: profile || null };
+    },
+
+    async submitJumpGameScore(score) {
+      const { data, error } = await client.rpc("submit_jump_game_score", { p_score: Math.max(0, Math.floor(Number(score) || 0)) });
+      if (!error) return data;
+      const session = await this.getSession();
+      if (!session) throw error;
+      const nextScore = Math.max(0, Math.floor(Number(score) || 0));
+      const { data: existing, error: readError } = await client.from("jump_game_scores").select("best_score").eq("user_id", session.user.id).maybeSingle();
+      if (readError) throw error;
+      const bestScore = Math.max(nextScore, Number(existing?.best_score || 0));
+      const { data: saved, error: writeError } = await client.from("jump_game_scores")
+        .upsert({ user_id: session.user.id, best_score: bestScore, updated_at: new Date().toISOString() }, { onConflict: "user_id" })
+        .select("user_id, best_score, updated_at")
+        .single();
+      if (writeError) throw error;
+      return saved;
+    },
+
     async getProfile(userId) {
       const { data, error } = await client.from("profiles").select("*").eq("id", userId).maybeSingle();
       if (error) throw error;
@@ -75,6 +170,7 @@
         avatar_url: profile.avatar_url || null,
         home_title: profile.home_title,
         home_bio: profile.home_bio,
+        home_background_url: profile.home_background_url || null,
         about_title: profile.about_title || "关于小罗",
         about_bio: profile.about_bio || "",
         about_side_bio: profile.about_side_bio || "",
@@ -122,8 +218,36 @@
       if (error) throw error;
     },
 
+    async listMusicTracks(userId) {
+      let query = client.from("music_tracks").select("*").order("sort_order", { ascending: true }).order("created_at", { ascending: true });
+      if (userId) query = query.eq("user_id", userId);
+      const { data, error } = await query;
+      if (error) throw error;
+      return data || [];
+    },
+
+    async addMusicTrack(userId, track) {
+      const { data, error } = await client.from("music_tracks").insert({ user_id: userId, ...track }).select().single();
+      if (error) throw error;
+      return data;
+    },
+
+    async updateMusicTrack(userId, trackId, track) {
+      const { error } = await client.from("music_tracks").update({ ...track, updated_at: new Date().toISOString() }).eq("id", trackId).eq("user_id", userId);
+      if (error) throw error;
+    },
+
+    async deleteMusicTrack(userId, trackId) {
+      const { error } = await client.from("music_tracks").delete().eq("id", trackId).eq("user_id", userId);
+      if (error) throw error;
+    },
+
     async listContent(table, userId) {
-      const { data, error } = await client.from(table).select("*").eq("user_id", userId).order("created_at", { ascending: false });
+      let query = client.from(table).select("*").eq("user_id", userId);
+      query = (table === "moments" || table === "progress_logs")
+        ? query.order("entry_date", { ascending: false }).order("created_at", { ascending: false })
+        : query.order("created_at", { ascending: false });
+      const { data, error } = await query;
       if (error) throw error;
       return data || [];
     },
@@ -177,7 +301,7 @@
       const [likes, views, comments, ownLike] = await Promise.all([
         client.from("post_likes").select("id", { count: "exact", head: true }).eq("post_id", postId),
         client.from("post_views").select("id", { count: "exact", head: true }).eq("post_id", postId),
-        client.from("post_comments").select("id, content, created_at, user_id").eq("post_id", postId).order("created_at", { ascending: false }),
+        client.from("post_comments").select("id, content, created_at, user_id, parent_id").eq("post_id", postId).order("created_at", { ascending: true }),
         userId ? client.from("post_likes").select("id").eq("post_id", postId).eq("user_id", userId).maybeSingle() : Promise.resolve({ data: null, error: null })
       ]);
       if (likes.error || views.error || comments.error || ownLike.error) throw likes.error || views.error || comments.error || ownLike.error;
@@ -225,8 +349,8 @@
       return true;
     },
 
-    async addPostComment(postId, userId, content) {
-      const { data, error } = await client.from("post_comments").insert({ post_id: postId, user_id: userId, content }).select().single();
+    async addPostComment(postId, userId, content, parentId = null) {
+      const { data, error } = await client.from("post_comments").insert({ post_id: postId, user_id: userId, content, parent_id: parentId }).select().single();
       if (error) throw error;
       return data;
     },
@@ -249,7 +373,7 @@
     },
 
     async getContentComments(contentType, contentId) {
-      const { data, error } = await client.from("content_comments").select("id, content, created_at, user_id").eq("content_type", contentType).eq("content_id", contentId).order("created_at", { ascending: false });
+      const { data, error } = await client.from("content_comments").select("id, content, created_at, user_id, parent_id").eq("content_type", contentType).eq("content_id", contentId).order("created_at", { ascending: true });
       if (error) throw error;
       const ids = [...new Set((data || []).map((item) => item.user_id))];
       const { data: profiles, error: profileError } = ids.length ? await client.from("profiles").select("id, display_name, avatar_url").in("id", ids) : { data: [], error: null };
@@ -258,8 +382,8 @@
       return (data || []).map((item) => ({ ...item, profile: profilesById.get(item.user_id) || null }));
     },
 
-    async addContentComment(contentType, contentId, userId, content) {
-      const { error } = await client.from("content_comments").insert({ content_type: contentType, content_id: contentId, user_id: userId, content });
+    async addContentComment(contentType, contentId, userId, content, parentId = null) {
+      const { error } = await client.from("content_comments").insert({ content_type: contentType, content_id: contentId, user_id: userId, content, parent_id: parentId });
       if (error) throw error;
     },
 

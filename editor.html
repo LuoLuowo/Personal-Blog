@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>新建/编辑文章 | 小罗Blog</title>
+  <title>新建/编辑文章 | 小罗的Life</title>
   <link rel="stylesheet" href="./styles.css" />
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="./js/supabase-config.js" defer></script>
@@ -17,7 +17,7 @@
     <a class="brand" href="./index.html"><span class="brand-mark" data-site-logo>罗</span><span data-site-name>小罗Blog</span></a>
     <button class="nav-toggle" type="button" data-nav-toggle aria-label="打开导航">☰</button>
     <nav class="top-nav" data-nav>
-      <a href="./index.html">首页</a><a href="./articles.html">文章</a><a href="./life.html">生活圈</a><a href="./progress.html">进步簿</a><a href="./about.html">关于我</a><a href="./dashboard.html">后台</a>
+      <a href="./index.html">首页</a><a href="./articles.html">所有文章</a><a href="./life.html">生活圈</a><a href="./progress.html">进步簿</a><a href="./about.html">关于我</a><a href="./dashboard.html">后台</a>
     </nav>
     <div class="header-actions"><button class="icon-button" type="button" data-theme-toggle>◐</button><button class="ghost-button" type="button" data-placeholder-action="logout">退出登录</button></div>
   </header>
@@ -26,11 +26,20 @@
     <form class="editor-grid" data-editor-form data-supabase-action="posts.insert-or-update">
       <section class="editor-main glass-card">
         <label><span>文章标题</span><input name="title" type="text" placeholder="输入文章标题" required></label>
-        <label><span>正文内容</span><textarea name="content" rows="16" placeholder="支持 Markdown 或富文本内容，后续可接编辑器。"></textarea></label>
+        <label><span>正文内容</span><div class="text-format-editor"><div class="text-format-toolbar" data-format-toolbar><button type="button" data-format-action="bold" title="加粗（Ctrl+B）"><b>B</b></button><button type="button" data-format-action="underline" title="下划线（Ctrl+U）"><u>U</u></button><button type="button" data-format-action="link" title="添加超链接">↗</button><span class="format-toolbar-divider"></span><button type="button" class="format-highlight red" data-format-action="highlight" data-highlight-color="#ffddd8" title="红色高亮"></button><button type="button" class="format-highlight green" data-format-action="highlight" data-highlight-color="#d8f2e2" title="绿色高亮"></button><button type="button" class="format-highlight blue" data-format-action="highlight" data-highlight-color="#dce9ff" title="蓝色高亮"></button></div><div class="rich-text-input" data-format-input data-editor-content contenteditable="true" role="textbox" aria-multiline="true" data-placeholder="直接输入正文；选择文字后可使用加粗、下划线、链接和高亮。"></div></div></label>
       </section>
       <aside class="editor-side glass-card">
-        <label><span>文章封面</span><input name="cover" type="file" accept="image/*" data-supabase-storage="post-covers"></label>
+        <label><span data-editor-cover-input-label>文章封面</span><input name="cover" type="file" accept="image/*" data-supabase-storage="post-covers"></label>
+        <section class="editor-existing-media" data-editor-existing-cover hidden>
+          <span>当前封面</span>
+          <img data-editor-cover-preview alt="文章封面预览">
+          <button class="danger-button" type="button" data-delete-post-cover>删除封面</button>
+        </section>
         <label><span>文章附件</span><input name="attachments" type="file" multiple data-supabase-storage="post-attachments"></label>
+        <section class="editor-existing-media" data-editor-existing-attachments hidden>
+          <span>已有附件</span>
+          <div class="editor-attachment-list" data-editor-attachment-list></div>
+        </section>
         <label><span>分类</span><select name="category" data-category-filter></select></label>
         <label><span>标签</span><input name="tags" type="text" placeholder="JavaScript, 生活, 复盘"></label>
         <div class="editor-actions">

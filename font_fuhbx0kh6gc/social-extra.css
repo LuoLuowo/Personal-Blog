@@ -1,0 +1,15 @@
+@font-face {
+  font-family: "xiaoluo-social";
+  src: url("./font_txy2uyqmpm/iconfont.ttf?t=1786635097494") format("truetype");
+}
+
+.social-icon {
+  display: inline-grid;
+  place-items: center;
+  font-family: "xiaoluo-social" !important;
+  font-style: normal;
+  line-height: 1;
+}
+
+.social-icon-github::before { content: "\ea0a"; }
+.social-icon-instagram::before { content: "\e616"; }

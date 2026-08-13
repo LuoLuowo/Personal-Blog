@@ -3,12 +3,13 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>首页 | 小罗Blog</title>
+  <title>首页 | 小罗的Life</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Noto+Serif+SC:wght@600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="./styles.css" />
   <link rel="stylesheet" href="./font_fuhbx0kh6gc/iconfont.css" />
+  <link rel="stylesheet" href="./font_fuhbx0kh6gc/social-extra.css" />
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="./js/supabase-config.js" defer></script>
   <script src="./js/supabase-client.js" defer></script>
@@ -22,7 +23,7 @@
     <button class="nav-toggle" type="button" data-nav-toggle aria-label="打开导航">☰</button>
     <nav class="top-nav" data-nav aria-label="主导航">
       <a class="active" href="./index.html">首页</a>
-      <a href="./articles.html">文章</a>
+      <a href="./articles.html">所有文章</a>
       <a href="./life.html">生活圈</a>
       <a href="./progress.html">进步簿</a>
       <a href="./about.html">关于我</a>
@@ -63,17 +64,44 @@
           <p data-profile-bio>欢迎来到小罗博客网站。</p>
         </div>
         <ul class="contact-list">
-          <li class="contact-item" data-contact-item="email"><button type="button" data-contact-link="email" aria-label="复制邮箱"><span class="contact-icon contact-icon-email" aria-hidden="true">✉</span><span class="contact-tooltip" data-contact-value="email"></span></button></li>
-          <li class="contact-item" data-contact-item="qq"><button type="button" data-contact-link="qq" aria-label="复制 QQ"><i class="contact-icon iconfont icon-QQ" aria-hidden="true"></i><span class="contact-tooltip" data-contact-value="qq"></span></button></li>
-          <li class="contact-item" data-contact-item="wechat"><button type="button" data-contact-link="wechat" aria-label="微信"><i class="contact-icon iconfont icon-weixin" aria-hidden="true"></i><span class="contact-tooltip" data-contact-value="wechat"></span></button></li>
-          <li class="contact-item" data-contact-item="douyin"><button type="button" data-contact-link="douyin" aria-label="复制抖音账号"><i class="contact-icon iconfont icon-douyin2" aria-hidden="true"></i><span class="contact-tooltip" data-contact-value="douyin"></span></button></li>
+          <li class="contact-item" data-contact-item="github"><button type="button" data-contact-link aria-label="GitHub"><i class="contact-icon social-icon social-icon-github" aria-hidden="true"></i><span class="contact-tooltip" data-contact-value="github"></span></button></li>
+          <li class="contact-item" data-contact-item="email"><button type="button" data-contact-link aria-label="邮箱"><span class="contact-icon contact-icon-email" aria-hidden="true">@</span><span class="contact-tooltip" data-contact-value="email"></span></button></li>
+          <li class="contact-item" data-contact-item="douyin"><button type="button" data-contact-link aria-label="抖音"><i class="contact-icon iconfont icon-douyin2" aria-hidden="true"></i><span class="contact-tooltip" data-contact-value="douyin"></span></button></li>
+          <li class="contact-item" data-contact-item="instagram"><button type="button" data-contact-link aria-label="Instagram"><i class="contact-icon social-icon social-icon-instagram" aria-hidden="true"></i><span class="contact-tooltip" data-contact-value="instagram"></span></button></li>
         </ul>
+        <div class="profile-content-stats" aria-label="内容统计">
+          <span><strong data-profile-post-count>0</strong>文章</span>
+          <span><strong data-profile-photo-count>0</strong>照片</span>
+          <span><strong data-profile-moment-count>0</strong>生活</span>
+        </div>
+        <div class="profile-personal-tags" aria-label="个人标签">
+          <span>注重感情</span>
+          <span>独处</span>
+          <span>自由</span>
+          <span>世界游</span>
+          <span>热爱阅读</span>
+          <span>探索未知</span>
+        </div>
       </article>
 
       <article class="glass-card announcement-card reveal-card">
-        <p class="mini-title">公告</p>
-        <h3>站内公告</h3>
+        <div class="announcement-heading"><div><p class="mini-title">公告</p><h3>站内公告</h3></div><span class="announcement-pet" aria-hidden="true"><i></i><b></b><em></em></span></div>
+        <p class="announcement-greeting" data-announcement-greeting>小伙伴，晚上好。</p>
         <p data-site-announcement>暂无公告。</p>
+      </article>
+
+      <article class="glass-card guestbook-card reveal-card" data-guestbook-card>
+        <div class="guestbook-card-copy">
+          <p class="mini-title">MESSAGE IN A BOTTLE</p>
+          <h3>留言漂流墙</h3>
+          <p>留下一句想说的话，让它随光慢慢漂向远方。</p>
+        </div>
+        <div class="guestbook-mini-stream" aria-hidden="true">
+          <span>写一封信，投进小罗Blog</span>
+          <span>每一份来访，都值得被看见</span>
+          <span>今天也要有好心情</span>
+        </div>
+        <button class="guestbook-open-button" type="button" data-open-guestbook>投递留言</button>
       </article>
 
       <article class="glass-card music-card reveal-card">
@@ -92,11 +120,14 @@
         </div>
         <input class="music-range" data-music-seek type="range" min="0" max="100" value="0" aria-label="拖动音乐进度" />
         <div class="music-time"><span data-current-time>00:00</span><span data-duration>00:00</span></div>
+        <button class="music-library-button" type="button" data-music-library aria-label="打开歌单">歌单</button>
       </article>
 
       <article class="glass-card quick-card reveal-card">
         <p class="mini-title">快捷入口</p>
         <div class="quick-links">
+          <a class="quick-admin-link" href="./dashboard.html#life-settings" data-admin-entry>添加生活</a>
+          <a class="quick-admin-link" href="./dashboard.html#progress-settings" data-admin-entry>添加进步</a>
           <a href="./life.html">生活圈</a>
           <a href="./progress.html">进步簿</a>
           <a href="./editor.html" data-admin-entry>写文章</a>
@@ -108,12 +139,19 @@
         <time data-live-clock></time>
         <p data-live-date></p>
       </article>
+
+      <article class="glass-card site-stats-card reveal-card">
+        <p class="mini-title">站点统计</p>
+        <div class="site-stat-row"><span>运行天数</span><strong data-site-running-days>第 1 天</strong></div>
+        <div class="site-stat-row"><span>最近更新</span><strong data-site-last-update>刚刚更新</strong></div>
+      </article>
     </section>
 
     <section class="content-band">
       <div class="section-heading"><div><p class="eyebrow">LATEST POSTS</p><h2>最新文章</h2></div><a class="text-link" href="./articles.html">查看全部</a></div>
-      <div class="article-grid" data-latest-posts></div>
+      <div class="article-grid home-article-list" data-latest-posts></div>
     </section>
+    <button class="guestbook-mobile-fab" type="button" data-open-guestbook aria-label="打开留言漂流墙"><span class="guestbook-fab-envelope" aria-hidden="true"></span><span>留言</span></button>
   </main>
 
   <footer class="site-footer"><p>© 2026 小罗Blog · 小罗博客网站</p></footer>

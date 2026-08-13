@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>用户后台 | 小罗Blog</title>
+  <title>用户后台 | 小罗的Life</title>
   <link rel="stylesheet" href="./styles.css" />
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="./js/supabase-config.js" defer></script>
@@ -18,7 +18,7 @@
     <button class="nav-toggle" type="button" data-nav-toggle aria-label="打开导航">☰</button>
     <nav class="top-nav" data-nav aria-label="主导航">
       <a href="./index.html">首页</a>
-      <a href="./articles.html">文章</a>
+      <a href="./articles.html">所有文章</a>
       <a href="./life.html">生活圈</a>
       <a href="./progress.html">进步簿</a>
       <a href="./about.html">关于我</a>
@@ -84,7 +84,7 @@
         <form class="content-entry-form standalone-entry-form" data-content-form="moment">
           <input name="title" type="text" placeholder="动态标题" required>
           <input name="date" type="date">
-          <textarea name="text" rows="4" placeholder="记录这一刻"></textarea>
+          <div class="text-format-editor"><div class="text-format-toolbar" data-format-toolbar><button type="button" data-format-action="bold" title="加粗（Ctrl+B）"><b>B</b></button><button type="button" data-format-action="underline" title="下划线（Ctrl+U）"><u>U</u></button><button type="button" data-format-action="link" title="添加超链接">↗</button><span class="format-toolbar-divider"></span><button type="button" class="format-highlight red" data-format-action="highlight" data-highlight-color="#ffddd8" title="红色高亮"></button><button type="button" class="format-highlight green" data-format-action="highlight" data-highlight-color="#d8f2e2" title="绿色高亮"></button><button type="button" class="format-highlight blue" data-format-action="highlight" data-highlight-color="#dce9ff" title="蓝色高亮"></button></div><div class="rich-text-input compact" data-format-input data-content-text contenteditable="true" role="textbox" aria-multiline="true" data-placeholder="记录这一刻"></div></div>
           <label class="upload-field"><span>添加图片（最多 9 张）</span><input name="images" type="file" accept="image/*" multiple data-supabase-storage="moment-images"></label>
           <button class="primary-button small" type="submit">发布到生活圈</button>
         </form>
@@ -113,9 +113,10 @@
           <label><span>首页标题</span><input name="heroTitle" type="text" value="小罗Blog"></label>
           <label class="wide-field"><span>首页个人简介</span><textarea name="profileBio" rows="4">欢迎来到小罗博客网站。</textarea></label>
           <label class="wide-field"><span>首页公告</span><textarea name="announcement" rows="3" placeholder="填写后显示在首页个人简介旁边"></textarea></label>
+          <label class="wide-field home-cover-upload"><span>首页封面图</span><input name="homeCover" type="file" accept="image/*" data-supabase-storage="home-covers"><small>用于首页顶部大背景图。上传后会自动压缩并转换为 WebP。</small><img data-home-cover-preview alt="当前首页封面图" hidden></label>
           <label><span>头像</span><input name="avatar" type="file" accept="image/*" data-supabase-storage="avatars"></label>
           <label><span>昵称</span><input name="profileName" type="text" value="小罗"></label>
-          <section class="contact-settings wide-field"><div><span>首页联系方式</span><p>填写后，首页仅显示图标；悬停或轻触图标查看内容。</p></div><div class="contact-settings-grid"><label><span>邮箱</span><input name="contactEmail" type="email" placeholder="name@example.com"></label><label><span>QQ</span><input name="contactQq" type="text" placeholder="QQ 号码"></label><label><span>微信</span><input name="contactWechat" type="text" placeholder="微信号"></label><label><span>抖音链接或账号</span><input name="contactDouyin" type="text" placeholder="@账号 或主页链接"></label></div></section>
+          <section class="contact-settings wide-field"><div><span>联系方式</span><p>首页和关于我页面使用同一套联系方式；首页仅显示图标，悬停或轻触可查看内容。</p></div><div class="contact-settings-grid"><label><span>GitHub 主页</span><input name="contactGithub" type="url" value="https://github.com/LuoLuowo" placeholder="https://github.com/your-name"></label><label><span>邮箱</span><input name="contactEmail" type="email" placeholder="name@example.com"></label><label><span>抖音链接或账号</span><input name="contactDouyin" type="text" placeholder="@账号 或主页链接"></label><label><span>Instagram</span><input name="contactInstagram" type="text" value="xiaoluo672" placeholder="账号名或主页链接"></label></div></section>
         </form>
       </section>
 
