@@ -19,6 +19,14 @@
   const params = () => new URLSearchParams(window.location.search);
   const pageName = () => document.body.dataset.page || "home";
 
+  function requireLogin(message = "请先登录后再使用此功能。") {
+    if (state.isLoggedIn) return true;
+    alert(message);
+    const next = `${window.location.pathname}${window.location.search}${window.location.hash}`;
+    window.location.href = `./login.html?next=${encodeURIComponent(next)}`;
+    return false;
+  }
+
   function escapeHtml(value) {
     return String(value).replace(/[&<>"']/g, (char) => ({
       "&": "&amp;",
@@ -30,6 +38,16 @@
   }
 
   const HIGHLIGHT_COLORS = new Set(["#ffddd8", "#d8f2e2", "#dce9ff"]);
+  const PROFILE_TAGS = ["注重感情", "独处", "自由", "全球游", "世界游", "热爱阅读", "探索未知", "爱动脑子", "脑洞大", "敏感", "爱学习", "吃货一枚", "学霸一枚", "热爱生活", "热爱旅游", "喜欢美女", "喜欢帅哥", "爱音乐"];
+  const ADMIN_PROFILE_TAGS = ["注重感情", "独处", "自由", "世界游", "热爱阅读", "探索未知"];
+  const MBTI_TYPES = ["INTJ", "INTP", "ENTJ", "ENTP", "INFJ", "INFP", "ENFJ", "ENFP", "ISTJ", "ISFJ", "ESTJ", "ESFJ", "ISTP", "ISFP", "ESTP", "ESFP"];
+  const WHISPER_EMOJIS = ["😀", "😂", "🥹", "😭", "😡", "🥳", "❤️", "👍", "✨", "🌈", "🍜", "☕", "🎮", "📚", "🌙", "🔥"];
+  const CODE_LANGUAGES = [
+    ["auto", "自动识别"], ["javascript", "JavaScript"], ["typescript", "TypeScript"], ["html", "HTML/XML"], ["css", "CSS"],
+    ["python", "Python"], ["java", "Java"], ["c", "C"], ["cpp", "C++"], ["csharp", "C#"], ["go", "Go"], ["rust", "Rust"],
+    ["sql", "SQL"], ["json", "JSON"], ["bash", "Bash"], ["powershell", "PowerShell"], ["php", "PHP"], ["ruby", "Ruby"],
+    ["kotlin", "Kotlin"], ["swift", "Swift"], ["markdown", "Markdown"], ["yaml", "YAML"]
+  ];
 
   function formatPlainRichText(value) {
     let html = escapeHtml(value || "");
@@ -54,6 +72,26 @@
       if (node.nodeType !== Node.ELEMENT_NODE) return;
       const tag = node.tagName.toLowerCase();
       if (tag === "br") { parent.append(document.createElement("br")); return; }
+      if (tag === "pre") {
+        const sourceCode = node.querySelector("code") || node;
+        const language = String(sourceCode.dataset.language || [...sourceCode.classList].find((name) => name.startsWith("language-"))?.slice(9) || "auto").toLowerCase();
+        const pre = document.createElement("pre");
+        const code = document.createElement("code");
+        const safeLanguage = /^[a-z0-9+#.-]{1,24}$/.test(language) ? language : "auto";
+        pre.dataset.language = safeLanguage;
+        code.dataset.language = safeLanguage;
+        if (safeLanguage !== "auto") code.className = `language-${safeLanguage}`;
+        code.textContent = sourceCode.textContent || "";
+        pre.append(code);
+        parent.append(pre);
+        return;
+      }
+      if (["ul", "ol", "li"].includes(tag)) {
+        const element = document.createElement(tag);
+        [...node.childNodes].forEach((child) => appendClean(child, element));
+        parent.append(element);
+        return;
+      }
       const mapped = tag === "b" ? "strong" : tag;
       if (["strong", "u"].includes(mapped)) {
         const element = document.createElement(mapped);
@@ -102,9 +140,78 @@
 
   function linkify(value) { return formatRichText(value); }
 
+  function enhanceFormatToolbar(toolbar) {
+    if (toolbar.querySelector('[data-format-action="orderedList"]')) return;
+    const divider = $(".format-toolbar-divider", toolbar);
+    const group = document.createDocumentFragment();
+    [["orderedList", "1.", "有序列表"], ["unorderedList", "•", "无序列表"], ["codeBlock", "</>", "插入代码块"]].forEach(([action, label, title]) => {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.dataset.formatAction = action;
+      button.title = title;
+      button.textContent = label;
+      if (action === "codeBlock") button.className = "format-code-button";
+      group.append(button);
+    });
+    toolbar.insertBefore(group, divider || null);
+  }
+
+  function openCodeBlockDialog(input) {
+    const selection = window.getSelection();
+    const savedRange = selection?.rangeCount && input.contains(selection.anchorNode) ? selection.getRangeAt(0).cloneRange() : null;
+    let modal = $("[data-code-block-modal]");
+    if (!modal) {
+      modal = document.createElement("div");
+      modal.className = "modal code-block-modal";
+      modal.dataset.codeBlockModal = "";
+      modal.innerHTML = `<button class="modal-backdrop" type="button" data-code-block-close aria-label="关闭"></button><section class="modal-card glass-card" role="dialog" aria-modal="true" aria-labelledby="code-block-title"><button class="modal-close" type="button" data-code-block-close aria-label="关闭">×</button><p class="mini-title">CODE BLOCK</p><h2 id="code-block-title">插入代码块</h2><p>选择语言后会自动进行语法高亮。</p><form data-code-block-form><label><span>编程语言</span><select name="language">${CODE_LANGUAGES.map(([value, name]) => `<option value="${value}">${name}</option>`).join("")}</select></label><label><span>代码内容</span><textarea name="code" rows="10" spellcheck="false" required placeholder="在这里粘贴代码…"></textarea></label><div class="publish-confirm-actions"><button class="ghost-button" type="button" data-code-block-close>取消</button><button class="primary-button" type="submit">插入代码</button></div></form></section>`;
+      document.body.appendChild(modal);
+    }
+    const form = $("[data-code-block-form]", modal);
+    form.reset();
+    form.code.value = savedRange?.toString() || "";
+    $all("[data-code-block-close]", modal).forEach((button) => { button.onclick = () => modal.classList.remove("open"); });
+    form.onsubmit = (event) => {
+      event.preventDefault();
+      const language = form.language.value;
+      const code = form.code.value;
+      if (!code.trim()) return;
+      input.focus();
+      if (savedRange) {
+        const currentSelection = window.getSelection();
+        currentSelection.removeAllRanges();
+        currentSelection.addRange(savedRange);
+      }
+      const languageAttribute = language === "auto" ? 'data-language="auto"' : `class="language-${language}" data-language="${language}"`;
+      document.execCommand("insertHTML", false, `<pre data-language="${language}"><code ${languageAttribute}>${escapeHtml(code)}</code></pre><div><br></div>`);
+      input.dispatchEvent(new Event("input", { bubbles: true }));
+      modal.classList.remove("open");
+    };
+    modal.classList.add("open");
+    window.setTimeout(() => form.code.focus(), 40);
+  }
+
+  function highlightCodeBlocks(root = document) {
+    const blocks = $all("pre code", root).filter((block) => !block.dataset.highlighted);
+    if (!blocks.length) return;
+    const run = () => blocks.forEach((block) => { try { window.hljs.highlightElement(block); } catch (_) {} });
+    if (window.hljs) { run(); return; }
+    if (!window.__xiaoluoHighlightPromise) {
+      window.__xiaoluoHighlightPromise = new Promise((resolve) => {
+        const script = document.createElement("script");
+        script.src = "https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.11.1/highlight.min.js";
+        script.onload = resolve;
+        script.onerror = resolve;
+        document.head.appendChild(script);
+      });
+    }
+    window.__xiaoluoHighlightPromise.then(run);
+  }
+
   function bindTextFormatToolbars(scope = document) {
     $all("[data-format-toolbar]", scope).forEach((toolbar) => {
       if (toolbar.dataset.bound) return;
+      enhanceFormatToolbar(toolbar);
       toolbar.dataset.bound = "true";
       const input = toolbar.parentElement?.querySelector("[data-format-input]");
       if (!input) return;
@@ -116,6 +223,9 @@
             const action = button.dataset.formatAction;
             if (action === "bold") document.execCommand("bold");
             else if (action === "underline") document.execCommand("underline");
+            else if (action === "orderedList") document.execCommand("insertOrderedList");
+            else if (action === "unorderedList") document.execCommand("insertUnorderedList");
+            else if (action === "codeBlock") { openCodeBlockDialog(input); return; }
             else if (action === "highlight") document.execCommand("hiliteColor", false, button.dataset.highlightColor || "#dce9ff");
             else if (action === "link") {
               const url = window.prompt("请输入链接地址", "https://");
@@ -169,7 +279,7 @@
   }
 
   function renderPostContent(parts) {
-    return (parts || []).filter(Boolean).map((part) => `<p>${formatRichText(part).replace(/\n/g, "<br>")}</p>`).join("");
+    return (parts || []).filter(Boolean).map((part) => `<div class="post-content-part">${formatRichText(part).replace(/\n/g, "<br>")}</div>`).join("");
   }
 
   function formatExcerpt(paragraphs) {
@@ -251,7 +361,7 @@
       const avatar = comment.profile?.avatar_url || "";
       const replies = byParent.get(comment.id) || [];
       const replyBlock = replies.length ? `<button class="comment-toggle-replies" type="button" data-toggle-comment-replies aria-expanded="false">查看 ${replies.length} 条回复</button><div class="comment-replies" data-comment-replies hidden>${draw(comment.id, depth + 1)}</div>` : "";
-      return `<article class="comment-item${depth ? " comment-reply" : ""}"><span class="comment-avatar${avatar ? " has-image" : ""}"${avatar ? ` style="background-image:url('${avatar}')"` : ""}>${escapeHtml(name.slice(0, 1) || "普")}</span><div class="comment-content"><div><strong>${escapeHtml(name)}</strong><time>${formatPostDate(comment.created_at)}</time></div><p>${escapeHtml(comment.content)}</p><button class="comment-reply-button" type="button" data-reply-comment="${comment.id}" data-reply-name="${escapeHtml(name)}">回复</button>${replyBlock}</div>${state.isAdmin ? `<button class="comment-delete" type="button" ${deleteAttribute}="${comment.id}">删除</button>` : ""}</article>`;
+      return `<article class="comment-item${depth ? " comment-reply" : ""}"><button class="comment-avatar${avatar ? " has-image" : ""}" type="button" data-profile-user-id="${escapeHtml(comment.user_id)}" aria-label="查看${escapeHtml(name)}的资料"${avatar ? ` style="background-image:url('${avatar}')"` : ""}>${escapeHtml(name.slice(0, 1) || "普")}</button><div class="comment-content"><div><strong>${escapeHtml(name)}</strong><time>${formatPostDate(comment.created_at)}</time></div><p>${escapeHtml(comment.content)}</p><button class="comment-reply-button" type="button" data-reply-comment="${comment.id}" data-reply-name="${escapeHtml(name)}">回复</button>${replyBlock}</div>${state.isAdmin ? `<button class="comment-delete" type="button" ${deleteAttribute}="${comment.id}">删除</button>` : ""}</article>`;
     }).join("");
     return draw() || '<p class="comment-empty">还没有评论。</p>';
   }
@@ -414,6 +524,12 @@
         el.classList.add("has-avatar-image");
         el.style.backgroundImage = "url('./assets/images/xiaoluo-blog-icon.jpg')";
       }
+      if (el.classList.contains("avatar") && state.adminId) {
+        el.dataset.profileUserId = state.adminId;
+        el.setAttribute("role", "button");
+        el.setAttribute("tabindex", "0");
+        el.setAttribute("aria-label", "查看作者资料");
+      }
     });
     $all("[data-profile-name]").forEach((el) => { el.textContent = data.site.profileName; });
     $all("[data-profile-bio]").forEach((el) => { el.textContent = data.site.profileBio; });
@@ -499,22 +615,121 @@
     });
   }
 
+  function profileTagsHtml(tags) {
+    return (tags || []).map((tag) => `<span>${escapeHtml(tag)}</span>`).join("");
+  }
+
+  function showWhisperLoginModal() {
+    if (state.isLoggedIn) return false;
+    let modal = $("[data-whisper-login-modal]");
+    if (!modal) {
+      modal = document.createElement("div");
+      modal.className = "modal whisper-login-modal";
+      modal.dataset.whisperLoginModal = "";
+      modal.innerHTML = `<button class="modal-backdrop" type="button" data-whisper-login-close aria-label="关闭提示"></button><section class="modal-card glass-card" role="dialog" aria-modal="true" aria-labelledby="whisper-login-title"><button class="modal-close" type="button" data-whisper-login-close aria-label="关闭">×</button><p class="mini-title">XIAOLUO WHISPERS</p><h2 id="whisper-login-title">登录后参与碎碎念</h2><p>登录后可以发表碎碎念、查看完整内容，和大家一起吃瓜。</p><div class="publish-confirm-actions"><button class="ghost-button" type="button" data-whisper-login-close>暂不登录</button><a class="primary-button" href="./login.html">去登录</a></div></section>`;
+      document.body.appendChild(modal);
+    }
+    $all("[data-whisper-login-close]", modal).forEach((button) => { button.onclick = () => modal.classList.remove("open"); });
+    modal.classList.add("open");
+    return true;
+  }
+
+  async function openProfileDetail(userId) {
+    if (!userId || !window.XiaoLuoSupabase?.getPublicProfile) return;
+    let modal = $("[data-profile-detail-modal]");
+    if (!modal) {
+      modal = document.createElement("div");
+      modal.className = "modal profile-detail-modal";
+      modal.dataset.profileDetailModal = "";
+      modal.innerHTML = `<button class="modal-backdrop" type="button" data-profile-detail-close aria-label="关闭"></button><section class="modal-card glass-card" role="dialog" aria-modal="true" aria-labelledby="profile-detail-name"><button class="modal-close" type="button" data-profile-detail-close aria-label="关闭">×</button><div data-profile-detail-content><p class="empty-state">正在读取个人资料…</p></div></section>`;
+      document.body.appendChild(modal);
+      $all("[data-profile-detail-close]", modal).forEach((button) => { button.onclick = () => modal.classList.remove("open"); });
+    }
+    const content = $("[data-profile-detail-content]", modal);
+    content.innerHTML = '<p class="empty-state">正在读取个人资料…</p>';
+    modal.classList.add("open");
+    try {
+      const profile = await window.XiaoLuoSupabase.getPublicProfile(userId);
+      if (!profile) throw new Error("没有找到这位用户的资料。");
+      const name = profile.display_name || (profile.is_admin ? "小罗" : "普通用户");
+      const avatar = profile.avatar_url || (profile.is_admin ? "./assets/images/xiaoluo-blog-icon.jpg" : "");
+      const tags = profile.is_admin ? ADMIN_PROFILE_TAGS : (Array.isArray(profile.personal_tags) ? profile.personal_tags.slice(0, 4) : []);
+      const isOwnEditableProfile = state.userId === profile.id;
+      let whisperSummary = null;
+      if (window.XiaoLuoSupabase.getPublicWhisperSummary) {
+        try { whisperSummary = await window.XiaoLuoSupabase.getPublicWhisperSummary(profile.id); } catch (_) {}
+      }
+      // Logged-in visitors can still see their summary while the public RPC is being deployed.
+      if (!whisperSummary && state.isLoggedIn && window.XiaoLuoSupabase.listWhispers) {
+        try {
+          const previews = await window.XiaoLuoSupabase.listWhispers(profile.id, 1);
+          const count = window.XiaoLuoSupabase.getWhisperCount
+            ? await window.XiaoLuoSupabase.getWhisperCount(profile.id)
+            : previews.length;
+          whisperSummary = { count, previews };
+        } catch (_) {}
+      }
+      const whisperPreviews = (whisperSummary?.previews || []).slice(0, 1).map((item) => `<article><p>${escapeHtml(item.content || "")}</p><time>${formatPostDate(item.created_at)}</time></article>`).join("");
+      const whisperSection = whisperSummary ? `<section class="profile-whisper-summary"><div class="profile-whisper-summary-heading"><strong>碎碎念</strong><span>共 ${whisperSummary.count} 条</span></div>${whisperPreviews ? `<div class="profile-whisper-previews">${whisperPreviews}</div>` : '<p class="profile-whisper-empty">还没有发布碎碎念。</p>'}<button class="profile-whisper-count" type="button" data-user-whispers="${profile.id}"><strong>${state.isLoggedIn ? "查看全部" : "登录后吃瓜"}</strong><span>${state.isLoggedIn ? "进入完整碎碎念" : "登录后才能查看详情与参与发布"}</span></button></section>` : "";
+      content.innerHTML = `<div class="profile-detail-hero"><span class="profile-detail-avatar${avatar ? " has-image" : ""}"${avatar ? ` style="background-image:url('${avatar}')"` : ""}>${escapeHtml(name.slice(0, 1))}</span><div><p class="mini-title">${profile.is_admin ? "AUTHOR PROFILE" : "USER PROFILE"}</p><h2 id="profile-detail-name">${escapeHtml(name)}</h2>${profile.mbti ? `<strong class="profile-mbti">${escapeHtml(profile.mbti)}</strong>` : ""}</div></div>${tags.length ? `<div class="profile-detail-tags">${profileTagsHtml(tags)}</div>` : ""}<dl class="profile-detail-fields">${profile.gender ? `<div><dt>性别</dt><dd>${escapeHtml(profile.gender)}</dd></div>` : ""}${profile.personal_bio ? `<div class="profile-detail-bio"><dt>个人介绍</dt><dd>${escapeHtml(profile.personal_bio)}</dd></div>` : ""}</dl>${whisperSection}${isOwnEditableProfile ? '<button class="primary-button small" type="button" data-user-profile-button>编辑我的资料</button>' : ""}`;
+    } catch (error) {
+      content.innerHTML = `<p class="empty-state">${escapeHtml(error.message || "暂时无法读取资料。")}</p>`;
+    }
+  }
+
+  function initProfileDetails() {
+    if (document.body.dataset.profileDetailsBound) return;
+    document.body.dataset.profileDetailsBound = "true";
+    document.addEventListener("click", (event) => {
+      const whisperLink = event.target.closest("[data-user-whispers]");
+      if (whisperLink) {
+        event.preventDefault();
+        if (!state.isLoggedIn) { showWhisperLoginModal(); return; }
+        window.location.href = `./whispers.html?user=${encodeURIComponent(whisperLink.dataset.userWhispers)}`;
+        return;
+      }
+      const trigger = event.target.closest("[data-profile-user-id]");
+      if (!trigger) return;
+      event.preventDefault();
+      event.stopPropagation();
+      openProfileDetail(trigger.dataset.profileUserId);
+    });
+    document.addEventListener("keydown", (event) => {
+      if (!['Enter', ' '].includes(event.key)) return;
+      const trigger = event.target.closest?.("[data-profile-user-id]");
+      if (!trigger) return;
+      event.preventDefault();
+      openProfileDetail(trigger.dataset.profileUserId);
+    });
+  }
+
   function initUserProfileSettings() {
     if (document.body.dataset.userProfileBound) return;
     document.body.dataset.userProfileBound = "true";
     document.addEventListener("click", (event) => {
       const trigger = event.target.closest("[data-user-profile-button]");
-      if (!trigger || state.isAdmin || !state.isLoggedIn) return;
+      if (!trigger || !state.isLoggedIn) return;
+      $("[data-profile-detail-modal]")?.classList.remove("open");
       let modal = $("[data-user-profile-modal]");
       if (!modal) {
         modal = document.createElement("div");
         modal.className = "modal user-profile-modal";
         modal.dataset.userProfileModal = "";
-      modal.innerHTML = `<div class="modal-backdrop" data-user-profile-close></div><section class="modal-card glass-card" role="dialog" aria-modal="true" aria-label="个人资料"><button class="modal-close" type="button" data-user-profile-close aria-label="关闭">×</button><p class="mini-title">PROFILE SETTINGS</p><h2>个人资料</h2><form data-user-profile-form><div class="profile-avatar-upload"><span class="profile-avatar-preview" data-profile-avatar-preview>普</span><label class="avatar-upload-button">上传头像<input name="avatar" type="file" accept="image/jpeg,image/png,image/webp"></label><small>JPG、PNG 或 WebP，最大 2MB</small></div><label><span>用户名</span><input name="displayName" type="text" maxlength="24" required></label><button class="primary-button small" type="submit">保存资料</button></form><section class="profile-security"><h3>修改密码</h3><form data-password-form><label><span>当前密码</span><input name="currentPassword" type="password" autocomplete="current-password" required></label><label><span>新密码</span><input name="newPassword" type="password" autocomplete="new-password" minlength="6" required></label><button class="primary-button small" type="submit">更新密码</button></form></section><section class="profile-signout"><button class="ghost-button" type="button" data-profile-signout>退出登录</button></section><section class="profile-danger"><h3>注销账户</h3><p>注销会永久删除你的个人资料、头像、点赞和评论，无法恢复。</p><form data-delete-account-form><label><span>输入当前密码确认</span><input name="password" type="password" autocomplete="current-password" required></label><button class="danger-button" type="submit">永久注销</button></form></section></section>`;
+      modal.innerHTML = `<div class="modal-backdrop" data-user-profile-close></div><section class="modal-card glass-card" role="dialog" aria-modal="true" aria-label="个人资料"><button class="modal-close" type="button" data-user-profile-close aria-label="关闭">×</button><p class="mini-title">PROFILE SETTINGS</p><h2>个人资料</h2><form data-user-profile-form><div class="profile-avatar-upload"><span class="profile-avatar-preview" data-profile-avatar-preview>普</span><label class="avatar-upload-button">上传头像<input name="avatar" type="file" accept="image/jpeg,image/png,image/webp"></label><small>JPG、PNG 或 WebP，最大 2MB</small></div><div class="profile-form-grid"><label><span>昵称</span><input name="displayName" type="text" maxlength="24" required></label><label><span>性别（选填）</span><select name="gender"><option value="">不显示</option><option value="男">男</option><option value="女">女</option><option value="保密">保密</option></select></label><label><span>MBTI 人格（选填）</span><select name="mbti"><option value="">不显示</option>${MBTI_TYPES.map((type) => `<option value="${type}">${type}</option>`).join("")}</select></label></div><label><span>个人介绍（选填）</span><textarea name="personalBio" rows="3" maxlength="300" placeholder="介绍一下自己，不填写则不显示"></textarea></label><fieldset class="profile-tag-picker"><legend>个人标签（最多选择 4 个）</legend><div>${PROFILE_TAGS.map((tag) => `<label><input name="personalTags" type="checkbox" value="${tag}"><span>${tag}</span></label>`).join("")}</div><small>已选择 <strong data-profile-tag-count>0</strong> / 4</small></fieldset><button class="primary-button small" type="submit">保存资料</button></form><section class="profile-security"><h3>修改密码</h3><form data-password-form><label><span>当前密码</span><input name="currentPassword" type="password" autocomplete="current-password" required></label><label><span>新密码</span><input name="newPassword" type="password" autocomplete="new-password" minlength="6" required></label><button class="primary-button small" type="submit">更新密码</button></form></section><section class="profile-signout"><button class="ghost-button" type="button" data-profile-signout>退出登录</button></section><section class="profile-danger"><h3>注销账户</h3><p>注销会永久删除你的个人资料、头像、点赞和评论，无法恢复。</p><form data-delete-account-form><label><span>输入当前密码确认</span><input name="password" type="password" autocomplete="current-password" required></label><button class="danger-button" type="submit">永久注销</button></form></section></section>`;
         document.body.appendChild(modal);
       }
       const form = $("[data-user-profile-form]", modal);
       form.displayName.value = state.currentProfile?.display_name || "普通用户";
+      form.gender.value = state.currentProfile?.gender || "";
+      form.mbti.value = state.currentProfile?.mbti || "";
+      form.personalBio.value = state.currentProfile?.personal_bio || "";
+      const selectedTags = Array.isArray(state.currentProfile?.personal_tags) ? state.currentProfile.personal_tags.slice(0, 4) : [];
+      $all('input[name="personalTags"]', form).forEach((checkbox) => { checkbox.checked = selectedTags.includes(checkbox.value); });
+      const tagPicker = $(".profile-tag-picker", form);
+      if (tagPicker) tagPicker.hidden = state.isAdmin;
+      const updateTagCount = () => { $("[data-profile-tag-count]", form).textContent = $all('input[name="personalTags"]:checked', form).length; };
+      $all('input[name="personalTags"]', form).forEach((checkbox) => { checkbox.onchange = () => { const checked = $all('input[name="personalTags"]:checked', form); if (checked.length > 4) { checkbox.checked = false; alert("个人标签最多选择 4 个。"); } updateTagCount(); }; });
+      updateTagCount();
       const avatarPreview = $("[data-profile-avatar-preview]", modal);
       const refreshPreview = (url) => { avatarPreview.textContent = (form.displayName.value || "普").slice(0, 1); avatarPreview.style.backgroundImage = url ? `url('${url}')` : ""; avatarPreview.classList.toggle("has-image", Boolean(url)); };
       refreshPreview(state.currentProfile?.avatar_url || "");
@@ -531,7 +746,8 @@
           const file = form.avatar.files?.[0];
           if (file && file.size > 2 * 1024 * 1024) throw new Error("头像文件不能超过 2MB。");
           const avatarUrl = file ? await runWithLoading("正在压缩图片中…", () => uploadOptimizedImage(state.userId, "avatars", file, { maxSide: 720, targetBytes: 220 * 1024 })) : (state.currentProfile?.avatar_url || "");
-          state.currentProfile = await window.XiaoLuoSupabase.updateOwnIdentity(state.userId, { display_name: name, avatar_url: avatarUrl });
+          const ownTags = state.isAdmin ? (state.currentProfile?.personal_tags || []) : $all('input[name="personalTags"]:checked', form).map((checkbox) => checkbox.value);
+          state.currentProfile = await window.XiaoLuoSupabase.updateOwnIdentity(state.userId, { display_name: name, avatar_url: avatarUrl, gender: form.gender.value, personal_tags: ownTags, personal_bio: form.personalBio.value.trim(), mbti: form.mbti.value });
           modal.classList.remove("open");
           await refreshAuthState();
           renderCurrentPage();
@@ -603,7 +819,7 @@
     });
     $all(".header-actions").forEach((actions) => {
       let status = $("[data-account-status]", actions);
-      const statusTag = state.isAdmin ? "A" : "BUTTON";
+      const statusTag = "BUTTON";
       if (!status) {
         status = document.createElement(statusTag.toLowerCase());
         status.dataset.accountStatus = "";
@@ -617,20 +833,20 @@
       }
       status.className = `account-status${state.isAdmin ? " is-author" : ""}`;
       status.hidden = !state.isLoggedIn;
+      status.type = "button";
+      status.dataset.profileUserId = state.userId || "";
+      delete status.dataset.userProfileButton;
+      status.removeAttribute("href");
       if (state.isAdmin) {
-        status.href = "./dashboard.html";
-        status.setAttribute("aria-label", "作者已登录，进入后台");
+        status.setAttribute("aria-label", "作者已登录，查看作者资料");
         status.innerHTML = '<img src="./font_fuhbx0kh6gc/作者.svg" alt="" aria-hidden="true"><span>作者</span><em class="login-state">已登录</em>';
       } else {
-        status.type = "button";
-        status.dataset.userProfileButton = "";
         const name = state.currentProfile?.display_name || "普通用户";
         const avatar = state.currentProfile?.avatar_url || "";
         const initial = escapeHtml(name.slice(0, 1) || "普");
         status.innerHTML = `<span class="account-avatar${avatar ? " has-image" : ""}"${avatar ? ` style="background-image:url('${avatar}')"` : ""}>${initial}</span><span>${escapeHtml(name)}</span><em class="login-state">已登录</em>`;
-        status.removeAttribute("href");
-        status.setAttribute("aria-label", "修改头像和昵称");
-        status.setAttribute("title", "修改头像和昵称");
+        status.setAttribute("aria-label", "查看我的个人资料");
+        status.setAttribute("title", "查看我的个人资料");
       }
       let logout = $("[data-header-logout]", actions);
       if (!logout) {
@@ -743,14 +959,18 @@
   function initLiveClock() {
     const draw = () => {
       const now = new Date();
-      $all("[data-live-clock]").forEach((el) => { el.textContent = now.toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit", second: "2-digit" }); });
-      $all("[data-live-date]").forEach((el) => { el.textContent = now.toLocaleDateString("zh-CN", { year: "numeric", month: "long", day: "numeric", weekday: "long" }); });
-      const hour = now.getHours();
-      const greeting = hour < 5
+      const timeZone = "Asia/Shanghai";
+      $all("[data-live-clock]").forEach((el) => { el.textContent = now.toLocaleTimeString("zh-CN", { timeZone, hour: "2-digit", minute: "2-digit", second: "2-digit" }); });
+      $all("[data-live-date]").forEach((el) => { el.textContent = now.toLocaleDateString("zh-CN", { timeZone, year: "numeric", month: "long", day: "numeric", weekday: "long" }); });
+      const hourParts = new Intl.DateTimeFormat("zh-CN", { timeZone, hour: "2-digit", hourCycle: "h23" }).formatToParts(now);
+      const hour = Number(hourParts.find((part) => part.type === "hour")?.value || 0);
+      const greeting = hour < 6
         ? "小伙伴，凌晨好，夜深了，记得早点休息。"
         : hour < 11
           ? "小伙伴，早上好，记得吃早餐。"
-          : hour < 18
+          : hour < 14
+            ? "小伙伴，中午好，记得按时吃午饭。"
+            : hour < 19
             ? "小伙伴，下午好，记得喝杯下午茶。"
             : "小伙伴，晚上好，忙完也要记得休息。";
       $all("[data-announcement-greeting]").forEach((el) => { el.textContent = greeting; });
@@ -1209,6 +1429,7 @@
     $("[data-timeline-detail-date]", modal).textContent = item.date;
     $("[data-timeline-detail-title]", modal).textContent = item.title;
     $("[data-timeline-detail-text]", modal).innerHTML = formatRichText(item.text).replace(/\n/g, "<br>");
+    highlightCodeBlocks($("[data-timeline-detail-text]", modal));
     $("[data-timeline-detail-images]", modal).innerHTML = (item.images || []).map((url) => `<img src="${url}" alt="${escapeHtml(item.title)}">`).join("");
     $all("[data-timeline-detail-close]", modal).forEach((button) => { button.onclick = () => modal.classList.remove("open"); });
     let replyTo = null;
@@ -1234,7 +1455,7 @@
     };
     const drawEngagement = async () => {
       try {
-        if (state.isLoggedIn) await window.XiaoLuoSupabase.recordContentView(type, item.id, state.userId);
+        await window.XiaoLuoSupabase.recordContentView(type, item.id, state.userId);
         const engagement = await window.XiaoLuoSupabase.getContentEngagement(type, item.id, state.userId);
         const button = $("[data-timeline-like]", modal);
         button.textContent = engagement.liked ? `已点赞 ${engagement.likes}` : `点赞 ${engagement.likes}`;
@@ -1254,7 +1475,7 @@
     const featured = $("[data-featured-posts]");
     const chips = $("[data-category-chips]");
     if (latest) {
-      const posts = data.posts.slice(0, 3);
+      const posts = data.posts.slice(0, 4);
       latest.innerHTML = posts.map(postCard).join("");
       loadPostCardEngagement(posts, latest);
     }
@@ -1269,6 +1490,92 @@
     initGuestbook();
   }
 
+  async function renderWhispers() {
+    const feed = $("[data-whisper-feed]");
+    const form = $("[data-whisper-form]");
+    if (!feed || !form || !state.isLoggedIn) return;
+    const filterUserId = params().get("user") || "";
+    const profile = state.currentProfile || {};
+    const ownName = profile.display_name || (state.isAdmin ? "小罗" : "普通用户");
+    const ownAvatar = profile.avatar_url || (state.isAdmin ? "./assets/images/xiaoluo-blog-icon.jpg" : "");
+    const ownAvatarNode = $("[data-whisper-own-avatar]");
+    $("[data-whisper-own-name]").textContent = ownName;
+    ownAvatarNode.textContent = ownAvatar ? "" : ownName.slice(0, 1);
+    ownAvatarNode.classList.toggle("has-image", Boolean(ownAvatar));
+    ownAvatarNode.style.backgroundImage = ownAvatar ? `url('${ownAvatar}')` : "";
+    ownAvatarNode.dataset.profileUserId = state.userId;
+
+    const emojiPicker = $("[data-whisper-emoji-picker]");
+    emojiPicker.innerHTML = WHISPER_EMOJIS.map((emoji) => `<button type="button" data-whisper-emoji="${emoji}" aria-label="插入表情 ${emoji}">${emoji}</button>`).join("");
+    const textarea = form.content;
+    $all("[data-whisper-emoji]", emojiPicker).forEach((button) => {
+      button.onclick = () => {
+        const start = textarea.selectionStart ?? textarea.value.length;
+        const end = textarea.selectionEnd ?? start;
+        textarea.value = `${textarea.value.slice(0, start)}${button.dataset.whisperEmoji}${textarea.value.slice(end)}`;
+        textarea.focus();
+        const cursor = start + button.dataset.whisperEmoji.length;
+        textarea.setSelectionRange(cursor, cursor);
+        textarea.dispatchEvent(new Event("input", { bubbles: true }));
+      };
+    });
+    textarea.oninput = () => { $("[data-whisper-count]").textContent = textarea.value.length; };
+
+    const draw = async () => {
+      feed.innerHTML = '<p class="empty-state">正在读取碎碎念…</p>';
+      try {
+        const items = await window.XiaoLuoSupabase.listWhispers(filterUserId);
+        if (filterUserId) {
+          let filteredName = items[0]?.profile?.display_name || "这位用户";
+          if (!items.length) {
+            try { filteredName = (await window.XiaoLuoSupabase.getPublicProfile(filterUserId))?.display_name || filteredName; } catch (_) {}
+          }
+          $("[data-whisper-feed-title]").textContent = `${filteredName}的碎碎念`;
+          $("[data-whisper-show-all]").hidden = false;
+        } else {
+          $("[data-whisper-feed-title]").textContent = "大家的碎碎念";
+          $("[data-whisper-show-all]").hidden = true;
+        }
+        feed.innerHTML = items.map((item) => {
+          const itemProfile = item.profile || {};
+          const name = itemProfile.display_name || "普通用户";
+          const avatar = itemProfile.avatar_url || "";
+          const canDelete = state.isAdmin || item.user_id === state.userId;
+          return `<article class="whisper-card glass-card${item.user_id === state.userId ? " is-own" : ""}"><button class="whisper-avatar comment-avatar${avatar ? " has-image" : ""}" type="button" data-profile-user-id="${item.user_id}" aria-label="查看${escapeHtml(name)}的资料"${avatar ? ` style="background-image:url('${escapeHtml(avatar)}')"` : ""}>${avatar ? "" : escapeHtml(name.slice(0, 1))}</button><div class="whisper-card-body"><header><button type="button" data-profile-user-id="${item.user_id}">${escapeHtml(name)}</button>${itemProfile.is_admin ? '<span class="whisper-author-badge">作者</span>' : ""}${item.user_id === state.userId ? '<span class="whisper-own-badge">我的碎碎念</span>' : ""}<time>${formatPostDate(item.created_at)}</time></header><p>${escapeHtml(item.content)}</p></div>${canDelete ? `<button class="whisper-delete" type="button" data-delete-whisper="${item.id}" aria-label="删除这条碎碎念">删除</button>` : ""}</article>`;
+        }).join("") || '<p class="empty-state">这里还没有碎碎念，来写下第一条吧。</p>';
+        $all("[data-delete-whisper]", feed).forEach((button) => {
+          button.onclick = async () => {
+            if (!await confirmPublish("确认删除这条碎碎念？", "删除后无法恢复。", "确认删除")) return;
+            try { await window.XiaoLuoSupabase.deleteWhisper(button.dataset.deleteWhisper); await draw(); } catch (error) { showCloudError(error); }
+          };
+        });
+      } catch (error) {
+        feed.innerHTML = `<p class="empty-state">${escapeHtml(error.message || "碎碎念暂时无法加载。")}</p>`;
+      }
+    };
+
+    if (!form.dataset.bound) {
+      form.dataset.bound = "true";
+      form.onsubmit = async (event) => {
+        event.preventDefault();
+        const content = textarea.value.trim();
+        if (!content) return;
+        const button = $("button[type='submit']", form);
+        button.disabled = true;
+        button.textContent = "发布中…";
+        try {
+          await window.XiaoLuoSupabase.addWhisper(state.userId, content);
+          form.reset();
+          $("[data-whisper-count]").textContent = "0";
+          await draw();
+        } catch (error) { showCloudError(error); }
+        finally { button.disabled = false; button.textContent = "发布碎碎念"; }
+      };
+    }
+    await draw();
+    updateWhisperUnreadBadge(true);
+  }
+
   function guestbookAvatarHtml() {
     return '<span class="guestbook-avatar" aria-hidden="true"><i></i><b></b></span>';
   }
@@ -1280,7 +1587,8 @@
     const left = Math.min(80, Math.max(3, baseLeft + ((round * 13) % 19) - 8));
     const top = Math.min(79, Math.max(6, baseTop + ((round * 17) % 23) - 10));
     const deleteButton = state.isAdmin ? `<button class="drift-letter-delete" type="button" data-delete-drift-message="${escapeHtml(message.id)}" aria-label="删除这封留言" title="删除留言">×</button>` : "";
-    return `<article class="drift-letter" style="--letter-left:${left}%;--letter-top:${top}%;--letter-rotate:${rotate}deg;--letter-delay:${(index % 6) * -.55}s"><div class="drift-letter-inner">${deleteButton}${guestbookAvatarHtml()}<div><div class="drift-letter-meta"><strong>${escapeHtml(message.nickname)}</strong><time>${formatPostDate(message.created_at)}</time></div><p>${escapeHtml(message.message)}</p></div></div></article>`;
+    const expandButton = String(message.message || "").length > 38 ? '<button class="drift-letter-expand" type="button" data-toggle-drift-message aria-expanded="false">展开全文</button>' : "";
+    return `<article class="drift-letter" style="--letter-left:${left}%;--letter-top:${top}%;--letter-rotate:${rotate}deg;--letter-delay:${(index % 6) * -.55}s"><div class="drift-letter-inner">${deleteButton}${guestbookAvatarHtml()}<div class="drift-letter-content"><div class="drift-letter-meta"><strong>${escapeHtml(message.nickname)}</strong><time>${formatPostDate(message.created_at)}</time></div><p>${escapeHtml(message.message)}</p>${expandButton}</div></div></article>`;
   }
 
   async function openGuestbook() {
@@ -1289,7 +1597,7 @@
       modal = document.createElement("div");
       modal.className = "modal guestbook-modal";
       modal.dataset.guestbookModal = "";
-      modal.innerHTML = `<button class="modal-backdrop" type="button" data-guestbook-close aria-label="关闭留言墙"></button><section class="guestbook-panel" role="dialog" aria-modal="true" aria-labelledby="guestbook-title"><button class="modal-close" type="button" data-guestbook-close aria-label="关闭">×</button><div class="guestbook-orbit orbit-one"></div><div class="guestbook-orbit orbit-two"></div><header class="guestbook-heading"><p class="mini-title">A MESSAGE FOR XIAOLUO</p><h2 id="guestbook-title">留言漂流墙</h2><p>不必登录，把想说的话装进信封，交给这一阵风。</p><button class="guestbook-manage-button" type="button" data-guestbook-manage hidden>管理留言</button></header><section class="guestbook-compose"><div class="envelope-mark" aria-hidden="true"><span></span></div><form data-guestbook-form><label><span>你的昵称</span><input name="nickname" type="text" maxlength="20" required placeholder="怎么称呼你？"></label><label><span>想留下的话</span><textarea name="message" maxlength="180" required placeholder="写一段轻轻的话吧…"></textarea></label><div class="guestbook-form-footer"><small><span data-guestbook-count>0</span> / 180</small><button class="guestbook-send-button" type="submit"><span>封好信封</span><i aria-hidden="true"></i></button></div></form></section><section class="guestbook-stream-wrap"><div class="guestbook-stream" data-guestbook-stream><p class="guestbook-empty">漂流墙正在等第一封信。</p></div></section><section class="guestbook-manage-panel" data-guestbook-manage-panel hidden><div class="guestbook-manage-head"><h3>管理留言</h3><button type="button" data-guestbook-manage-close>返回漂流墙</button></div><div data-guestbook-manage-list></div><div class="guestbook-manage-pager"><button type="button" data-guestbook-page-prev>上一页</button><span data-guestbook-page-info></span><button type="button" data-guestbook-page-next>下一页</button></div></section></section>`;
+      modal.innerHTML = `<button class="modal-backdrop" type="button" data-guestbook-close aria-label="关闭留言墙"></button><section class="guestbook-panel" role="dialog" aria-modal="true" aria-labelledby="guestbook-title"><button class="modal-close" type="button" data-guestbook-close aria-label="关闭">×</button><div class="guestbook-orbit orbit-one"></div><div class="guestbook-orbit orbit-two"></div><header class="guestbook-heading"><p class="mini-title">ANONYMOUS MESSAGE</p><h2 id="guestbook-title">匿名留言墙</h2><p>匿名留言，在这里你可以畅心所欲的抒发你的情感、生活、碎碎念等留言！快来留言啦~</p><button class="guestbook-manage-button" type="button" data-guestbook-manage hidden>管理留言</button></header><section class="guestbook-compose"><div class="envelope-mark" aria-hidden="true"><span></span></div><form data-guestbook-form><label><span>昵称（选填）</span><input name="nickname" type="text" maxlength="20" placeholder="不填写即为匿名用户"></label><label><span>想留下的话</span><textarea name="message" maxlength="180" required placeholder="随心写下想说的话…"></textarea></label><div class="guestbook-form-footer"><small><span data-guestbook-count>0</span> / 180</small><button class="guestbook-send-button" type="submit"><span>匿名投递</span><i aria-hidden="true"></i></button></div></form></section><section class="guestbook-stream-wrap"><div class="guestbook-stream" data-guestbook-stream><p class="guestbook-empty">漂流墙正在等第一封信。</p></div></section><section class="guestbook-manage-panel" data-guestbook-manage-panel hidden><div class="guestbook-manage-head"><h3>管理留言</h3><button type="button" data-guestbook-manage-close>返回漂流墙</button></div><div data-guestbook-manage-list></div><div class="guestbook-manage-pager"><button type="button" data-guestbook-page-prev>上一页</button><span data-guestbook-page-info></span><button type="button" data-guestbook-page-next>下一页</button></div></section></section>`;
       document.body.appendChild(modal);
       $all("[data-guestbook-close]", modal).forEach((button) => { button.onclick = () => modal.classList.remove("open"); });
       const form = $("[data-guestbook-form]", modal);
@@ -1297,9 +1605,9 @@
       textarea.oninput = () => { $("[data-guestbook-count]", form).textContent = textarea.value.length; };
       form.onsubmit = async (event) => {
         event.preventDefault();
-        const nickname = form.nickname.value.trim();
+        const nickname = form.nickname.value.trim() || "匿名用户";
         const message = form.message.value.trim();
-        if (!nickname || !message) return;
+        if (!message) return;
         const button = $("button[type='submit']", form);
         try {
           button.disabled = true;
@@ -1336,6 +1644,18 @@
   }
 
   function bindGuestbookDeleteActions(modal) {
+    $all("[data-toggle-drift-message]", modal).forEach((button) => {
+      if (button.dataset.bound) return;
+      button.dataset.bound = "true";
+      button.addEventListener("pointerdown", (event) => event.stopPropagation());
+      button.onclick = (event) => {
+        event.stopPropagation();
+        const letter = button.closest(".drift-letter");
+        const expanded = letter.classList.toggle("is-expanded");
+        button.textContent = expanded ? "收起" : "展开全文";
+        button.setAttribute("aria-expanded", String(expanded));
+      };
+    });
     if (!state.isAdmin) return;
     $all("[data-delete-drift-message]", modal).forEach((button) => {
       if (button.dataset.bound) return;
@@ -1609,7 +1929,7 @@
         <div class="tag-row">${post.tags.map((tag) => `<a href="./articles.html?tag=${encodeURIComponent(tag)}">#${escapeHtml(tag)}</a>`).join("")}</div>
         ${post.coverUrl ? `<div class="detail-cover ${post.coverClass}" style="background-image:url('${post.coverUrl}')"></div>` : ""}
         <div class="post-content">${renderPostContent(post.content)}</div>
-        ${post.attachments?.length ? `<section class="post-attachments"><h2>附件下载</h2>${post.attachments.map((file) => `<a href="${file.url}" download="${escapeHtml(file.name)}" target="_blank" rel="noopener">下载：${escapeHtml(file.name)}</a>`).join("")}</section>` : ""}
+        ${post.attachments?.length ? `<section class="post-attachments"><h2>附件下载</h2>${post.attachments.map((file) => `<a href="${file.url}" data-protected-download download="${escapeHtml(file.name)}" target="_blank" rel="noopener">下载：${escapeHtml(file.name)}</a>`).join("")}</section>` : ""}
         <div class="post-actions">
           ${state.isAdmin && state.cloudOwnerId === state.userId ? `<a class="ghost-button" href="./editor.html?id=${post.id}">编辑文章</a>` : ""}
           ${state.isAdmin && state.cloudOwnerId === state.userId ? `<button class="danger-button" type="button" data-delete-post="${post.id}">删除文章</button>` : ""}
@@ -1630,6 +1950,7 @@
         ${next ? `<a href="./article-detail.html?id=${next.id}">下一篇：${escapeHtml(next.title)}</a>` : "<span>已经是最后一篇</span>"}
       </nav>
     `;
+    highlightCodeBlocks(wrap);
     loadPostEngagement(post.id);
   }
 
@@ -1637,7 +1958,7 @@
     const api = window.XiaoLuoSupabase;
     if (!api?.isConfigured) return;
     try {
-      if (state.isLoggedIn) await api.recordPostView(postId, state.userId);
+      await api.recordPostView(postId, state.userId);
       const engagement = await api.getPostEngagement(postId, state.userId);
       const summary = $("[data-post-engagement]");
       if (summary) summary.textContent = `阅读 ${engagement.views} · 点赞 ${engagement.likes} · 评论 ${engagement.comments.length}`;
@@ -1705,6 +2026,7 @@
       const adminActions = state.isAdmin ? `<button class="timeline-manage-button" type="button" data-manage-timeline-post data-type="${type}" data-id="${escapeHtml(item.id)}" aria-label="管理这条帖子" title="管理帖子">⋯</button>` : "";
       return `<article class="timeline-item glass-card timeline-openable" data-open-timeline-post data-type="${type}" data-id="${escapeHtml(item.id)}"><time>${escapeHtml(item.date)}</time><div class="timeline-content"><h3>${escapeHtml(item.title)}</h3><div class="timeline-rich-text">${formatRichText(item.text).replace(/\n/g, "<br>")}</div>${grid}<span class="timeline-engagement" data-timeline-card-engagement>阅读 0 · 点赞 0 · 评论 0</span>${adminActions}</div></article>`;
     }).join("") || '<article class="timeline-item glass-card empty-state">暂时还没有内容。</article>';
+    highlightCodeBlocks(wrap);
     items.forEach((item) => loadTimelineCardEngagement(type, item.id, wrap));
   }
 
@@ -2118,10 +2440,9 @@
           const nextPage = requestedNext && requestedNext.startsWith("/") ? `.${requestedNext}` : "";
           if (form.dataset.authForm === "register") {
             const result = await api.signUpWithEmail(form.email.value, form.password.value);
-            await refreshAuthState();
             if (result.session) {
-              msg.textContent = state.isAdmin ? "注册成功，正在进入后台..." : "注册成功，正在进入博客...";
-              window.location.href = nextPage || (state.isAdmin ? "./dashboard.html" : "./index.html");
+              await api.signOut();
+              msg.textContent = "注册成功，请先去邮箱确认后再登录。";
               return;
             }
             msg.textContent = "注册成功，请先去邮箱点击确认链接，然后再回来登录。";
@@ -2188,6 +2509,16 @@
     });
   }
 
+  function initProtectedDownloads() {
+    if (document.body.dataset.protectedDownloadsBound) return;
+    document.body.dataset.protectedDownloadsBound = "true";
+    document.addEventListener("click", (event) => {
+      const link = event.target.closest("[data-protected-download]");
+      if (!link || requireLogin("请先登录后再下载附件。")) return;
+      event.preventDefault();
+    });
+  }
+
   function initEditor() {
     const form = $("[data-editor-form]");
     if (!form || form.dataset.bound) return;
@@ -2202,6 +2533,7 @@
       panel.hidden = false;
       title.textContent = form.title.value || "未命名文章";
       content.innerHTML = renderPostContent([editorContentValue(form)]);
+      highlightCodeBlocks(content);
     });
     $("[data-save-draft]")?.addEventListener("click", () => alert(state.isLoggedIn ? "草稿已准备保存，下一步会写入 Supabase。" : "请先登录。"));
     form.addEventListener("submit", (event) => {
@@ -2347,6 +2679,21 @@
       const target = $("[data-stat-storage-used]");
       if (target) target.textContent = `${(bytes / 1024 / 1024).toFixed(2)} MB`;
     }).catch((error) => console.warn("Storage usage load failed:", error.message));
+    window.XiaoLuoSupabase?.getSiteMetrics?.().then((metrics) => {
+      const unique = $("[data-stat-unique-visitors]");
+      const online = $("[data-stat-online-visitors]");
+      if (unique) unique.textContent = metrics.uniqueVisitors.toLocaleString("zh-CN");
+      if (online) online.textContent = metrics.onlineVisitors.toLocaleString("zh-CN");
+    }).catch((error) => console.warn("Site metrics load failed; run supabase/site-visitor-stats.sql:", error.message));
+  }
+
+  function initPresenceHeartbeat() {
+    const api = window.XiaoLuoSupabase;
+    if (!api?.heartbeatPresence || window.__xiaoluoPresenceTimer) return;
+    window.__xiaoluoPresenceTimer = window.setInterval(() => {
+      api.heartbeatPresence(location.pathname + location.search).catch(() => {});
+      if (pageName() === "dashboard" && state.isAdmin) renderDashboardStats();
+    }, 30000);
   }
 
   function renderRegisteredUsers() {
@@ -2360,7 +2707,7 @@
         const name = user.display_name || "普通用户";
         const avatar = user.avatar_url || "";
         const initial = escapeHtml(name.slice(0, 1) || "普");
-        return `<article class="registered-user-row"><span class="comment-avatar${avatar ? " has-image" : ""}"${avatar ? ` style="background-image:url('${avatar}')"` : ""}>${initial}</span><div><strong>${escapeHtml(name)}</strong><p>${escapeHtml(user.email || "未提供邮箱")}</p></div><time>${formatPostDate(user.created_at)}</time></article>`;
+        return `<article class="registered-user-row"><button class="comment-avatar${avatar ? " has-image" : ""}" type="button" data-profile-user-id="${escapeHtml(user.id)}" aria-label="查看${escapeHtml(name)}的资料"${avatar ? ` style="background-image:url('${avatar}')"` : ""}>${initial}</button><div><strong>${escapeHtml(name)}</strong><p>${escapeHtml(user.email || "未提供邮箱")}</p></div><time>${formatPostDate(user.created_at)}</time></article>`;
       }).join("") || '<p class="empty-state">暂时还没有普通用户注册。</p>';
     }).catch((error) => {
       wrap.innerHTML = '<p class="empty-state">无法读取注册用户，请确认已执行用户列表权限脚本。</p>';
@@ -2410,6 +2757,53 @@
     modal.classList.add("open");
   }
 
+  function ensureWhisperUnreadBadges() {
+    $all(".top-nav a[href='./whispers.html']").forEach((link) => {
+      if ($( "[data-whisper-unread-badge]", link)) return;
+      const badge = document.createElement("span");
+      badge.className = "whisper-unread-badge";
+      badge.dataset.whisperUnreadBadge = "";
+      badge.hidden = true;
+      badge.setAttribute("aria-label", "");
+      link.appendChild(badge);
+    });
+  }
+
+  async function updateWhisperUnreadBadge(markSeen = false) {
+    ensureWhisperUnreadBadges();
+    const badges = $all("[data-whisper-unread-badge]");
+    const hide = () => badges.forEach((badge) => { badge.hidden = true; badge.textContent = ""; });
+    if (pageName() === "whispers") {
+      if (state.isLoggedIn && state.userId) localStorage.setItem(`xiaoluo-whispers-seen-${state.userId}`, new Date().toISOString());
+      hide();
+      return;
+    }
+    if (!state.isLoggedIn || !state.userId || !window.XiaoLuoSupabase?.getWhisperUnreadCount) { hide(); return; }
+    const storageKey = `xiaoluo-whispers-seen-${state.userId}`;
+    const lastSeen = localStorage.getItem(storageKey);
+    if (markSeen || !lastSeen) {
+      localStorage.setItem(storageKey, new Date().toISOString());
+      hide();
+      return;
+    }
+    try {
+      const count = await window.XiaoLuoSupabase.getWhisperUnreadCount(lastSeen, state.userId);
+      // A newer visit may have marked the feed as read while this request was in flight.
+      if (localStorage.getItem(storageKey) !== lastSeen) return;
+      badges.forEach((badge) => {
+        badge.hidden = count < 1;
+        badge.textContent = count > 99 ? "99+" : String(count);
+        badge.setAttribute("aria-label", `有 ${count} 条未读碎碎念`);
+        badge.title = `有 ${count} 条未读碎碎念`;
+      });
+    } catch (_) { hide(); }
+  }
+
+  function startWhisperUnreadPolling() {
+    if (window.__xiaoluoWhisperUnreadTimer) return;
+    window.__xiaoluoWhisperUnreadTimer = window.setInterval(() => updateWhisperUnreadBadge(), 45000);
+  }
+
   function renderCurrentPage() {
     applySavedContent();
     initBrand();
@@ -2420,14 +2814,18 @@
     populateFilters();
     initForms();
     initContactCopy();
+    initProfileDetails();
     initUserProfileSettings();
     initTimelinePostManagement();
     initAdminEntryGuard();
     initLiveClock();
+    initPresenceHeartbeat();
     initTimelineImageViewer();
     initGameDrawer();
     window.XiaoLuoMusicSyncUI?.();
     const page = pageName();
+    startWhisperUnreadPolling();
+    updateWhisperUnreadBadge(page === "whispers");
     if (page === "home") renderHome();
     if (page === "articles") renderArticles();
     if (page === "categories") renderCategories();
@@ -2436,10 +2834,17 @@
     if (page === "progress") renderTimeline("[data-progress-timeline]", data.progress);
     if (page === "about") renderAbout();
     if (page === "photos") renderGallery();
-    if (page === "game") ensureJumpGame();
+    if (page === "whispers") {
+      if (!state.isLoggedIn) showWhisperLoginModal();
+      else renderWhispers();
+    }
+    if (page === "game") {
+      if (!requireLogin("请先登录后再进入小游戏。")) return;
+      ensureJumpGame();
+    }
     if (page === "dashboard") {
-      protectDashboard();
-      if (state.isAdmin) {
+      protectDashboard().then(() => {
+        if (!state.isAdmin) return;
         initDashboardSectionSpy();
         initContentManagement();
         renderAdminPosts();
@@ -2447,11 +2852,10 @@
         renderDashboardStats();
         renderRegisteredUsers();
         renderDashboardStats();
-      }
+      }).catch(() => {});
     }
     if (page === "editor") {
-      protectDashboard();
-      if (state.isAdmin) initEditor();
+      protectDashboard().then(() => { if (state.isAdmin) initEditor(); }).catch(() => {});
     }
     window.XiaoLuoSupabase?.trackVisit?.(location.pathname + location.search);
   }
@@ -2486,12 +2890,15 @@
     document.body.dataset.gameDrawerBound = "true";
     const drawer = document.createElement("aside");
     drawer.className = "blog-game-drawer";
-    drawer.innerHTML = `<button class="blog-game-tab" type="button" data-game-drawer-toggle aria-expanded="false" aria-label="打开小罗自制小游戏"><img src="./assets/images/xiaoluo-jump-game-icon.jpg" alt=""></button><div class="blog-game-drawer-panel"><button class="blog-game-close" type="button" data-game-drawer-close aria-label="关闭小游戏入口">×</button><img src="./assets/images/xiaoluo-jump-game-icon.jpg" alt="小罗跳一跳图标"><p class="mini-title">XIAOLUO MINI GAME</p><h2>小罗自制小游戏</h2><p>小罗跳一跳：按住蓄力，松开起跳。</p><a class="primary-button small" href="./game.html">开玩</a></div>`;
+    drawer.innerHTML = `<button class="blog-game-tab" type="button" data-game-drawer-toggle aria-expanded="false" aria-label="打开小罗自制小游戏"><img src="./assets/images/xiaoluo-jump-game-icon.jpg" alt=""></button><div class="blog-game-drawer-panel"><button class="blog-game-close" type="button" data-game-drawer-close aria-label="关闭小游戏入口">×</button><img src="./assets/images/xiaoluo-jump-game-icon.jpg" alt="小罗跳一跳图标"><p class="mini-title">XIAOLUO MINI GAME</p><h2>小罗自制小游戏</h2><p>小罗跳一跳：按住蓄力，松开起跳。</p><a class="primary-button small" href="./game.html" data-game-entry>开玩</a></div>`;
     document.body.appendChild(drawer);
     const toggle = $("[data-game-drawer-toggle]", drawer);
     const close = () => { drawer.classList.remove("open"); toggle.setAttribute("aria-expanded", "false"); };
     toggle.onclick = () => { const open = drawer.classList.toggle("open"); toggle.setAttribute("aria-expanded", String(open)); };
     $("[data-game-drawer-close]", drawer).onclick = close;
+    $("[data-game-entry]", drawer).onclick = (event) => {
+      if (!requireLogin("请先登录后再进入小游戏。")) event.preventDefault();
+    };
   }
 
   function ensureJumpGame() {
@@ -2544,6 +2951,15 @@
       if (url.origin !== location.origin) return;
       if (link.target || link.hasAttribute("download") || (url.hash && url.pathname === location.pathname)) return;
       if (!url.pathname.endsWith(".html") && !url.pathname.endsWith("/")) return;
+      if (url.pathname.endsWith("whispers.html") && !state.isLoggedIn) {
+        event.preventDefault();
+        showWhisperLoginModal();
+        return;
+      }
+      if (url.pathname.endsWith("whispers.html") && state.isLoggedIn) {
+        // Clear the badge before navigation so the nav is immediately just "碎碎念".
+        updateWhisperUnreadBadge(true);
+      }
       event.preventDefault();
       navigate(url.href).catch(() => {
         sessionStorage.setItem("xiaoluo-music-state", JSON.stringify({
@@ -2597,7 +3013,8 @@
 
   initTheme();
   initMusic();
-  initPlaceholders();
+    initPlaceholders();
+  initProtectedDownloads();
   initPjax();
   initPostContextMenu();
   initPostDeleteActions();

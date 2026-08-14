@@ -3,6 +3,20 @@
   const isConfigured = Boolean(config.url && config.anonKey && window.supabase);
   const client = isConfigured ? window.supabase.createClient(config.url, config.anonKey) : null;
 
+  function getVisitorId() {
+    const key = "xiaoluo-site-visitor-id";
+    let visitorId = localStorage.getItem(key);
+    if (!visitorId) {
+      visitorId = window.crypto?.randomUUID?.() || `visitor-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+      localStorage.setItem(key, visitorId);
+    }
+    return visitorId;
+  }
+
+  function getViewIdentity(userId) {
+    return userId ? `user:${userId}` : `visitor:${getVisitorId()}`;
+  }
+
   window.XiaoLuoSupabase = {
     client,
     isConfigured,
@@ -11,9 +25,17 @@
       if (!client) throw new Error("Supabase 还没有配置。");
       const { data, error } = await client.auth.signUp({
         email: String(email || "").trim(),
-        password
+        password,
+        options: {
+          emailRedirectTo: `${window.location.origin}/login.html`
+        }
       });
       if (error) throw error;
+      if (data.user && Array.isArray(data.user.identities) && data.user.identities.length === 0) {
+        const duplicateError = new Error("这个邮箱已经注册过了，可以直接登录。");
+        duplicateError.code = "user_already_registered";
+        throw duplicateError;
+      }
       await this.ensureProfile(data.user, email);
       return data;
     },
@@ -25,6 +47,12 @@
         password
       });
       if (error) throw error;
+      if (data.user && !data.user.email_confirmed_at && !data.user.confirmed_at) {
+        await client.auth.signOut();
+        const verificationError = new Error("请先去邮箱确认账号，再登录。");
+        verificationError.code = "email_not_confirmed";
+        throw verificationError;
+      }
       await this.ensureProfile(data.user, email);
       return data;
     },
@@ -74,10 +102,27 @@
 
     async trackVisit(pagePath) {
       if (!client) return;
-      await client.from("page_views").insert({
-        page_path: pagePath,
-        user_agent: navigator.userAgent
-      });
+      await Promise.allSettled([
+        client.from("page_views").insert({ page_path: pagePath, user_agent: navigator.userAgent }),
+        client.rpc("record_site_presence", { p_visitor_id: getVisitorId(), p_page_path: pagePath })
+      ]);
+    },
+
+    async heartbeatPresence(pagePath) {
+      if (!client) return;
+      const { error } = await client.rpc("record_site_presence", { p_visitor_id: getVisitorId(), p_page_path: pagePath });
+      if (error && error.code !== "PGRST202") throw error;
+    },
+
+    async getSiteMetrics() {
+      if (!client) return { uniqueVisitors: 0, onlineVisitors: 0 };
+      const { data, error } = await client.rpc("get_site_metrics");
+      if (error) throw error;
+      const row = Array.isArray(data) ? data[0] : data;
+      return {
+        uniqueVisitors: Number(row?.unique_visitors || 0),
+        onlineVisitors: Number(row?.online_visitors || 0)
+      };
     },
 
     async listGuestbookMessages(limit = 40) {
@@ -101,6 +146,67 @@
     async deleteGuestbookMessage(messageId) {
       const { error } = await client.from("guestbook_messages").delete().eq("id", messageId);
       if (error) throw error;
+    },
+
+    async listWhispers(userId = "", limit = 100) {
+      let request = client.from("whispers")
+        .select("id, user_id, content, created_at, updated_at")
+        .order("created_at", { ascending: false })
+        .limit(limit);
+      if (userId) request = request.eq("user_id", userId);
+      const { data, error } = await request;
+      if (error) throw error;
+      const rows = data || [];
+      const ids = [...new Set(rows.map((item) => item.user_id).filter(Boolean))];
+      const { data: profiles, error: profileError } = ids.length
+        ? await client.from("profiles").select("id, display_name, avatar_url, is_admin").in("id", ids)
+        : { data: [], error: null };
+      if (profileError) throw profileError;
+      const profilesById = new Map((profiles || []).map((profile) => [profile.id, profile]));
+      return rows.map((item) => ({ ...item, profile: profilesById.get(item.user_id) || null }));
+    },
+
+    async addWhisper(userId, content) {
+      const { data, error } = await client.from("whispers")
+        .insert({ user_id: userId, content: String(content || "").trim() })
+        .select("id, user_id, content, created_at, updated_at")
+        .single();
+      if (error) throw error;
+      return data;
+    },
+
+    async deleteWhisper(whisperId) {
+      const { error } = await client.from("whispers").delete().eq("id", whisperId);
+      if (error) throw error;
+    },
+
+    async getWhisperCount(userId) {
+      const { count, error } = await client.from("whispers")
+        .select("id", { count: "exact", head: true })
+        .eq("user_id", userId);
+      if (error) throw error;
+      return count || 0;
+    },
+
+    async getPublicWhisperSummary(userId) {
+      const { data, error } = await client.rpc("get_public_whisper_summary", { p_user_id: userId });
+      if (error) throw error;
+      const row = Array.isArray(data) ? data[0] : data;
+      const previews = Array.isArray(row?.previews)
+        ? row.previews
+        : (typeof row?.previews === "string" ? JSON.parse(row.previews || "[]") : []);
+      return { count: Number(row?.total_count || 0), previews };
+    },
+
+    async getWhisperUnreadCount(since, currentUserId = "") {
+      if (!since) return 0;
+      let request = client.from("whispers")
+        .select("id", { count: "exact", head: true })
+        .gt("created_at", since);
+      if (currentUserId) request = request.neq("user_id", currentUserId);
+      const { count, error } = await request;
+      if (error) throw error;
+      return count || 0;
     },
 
     async listJumpGameRanking(limit = 20) {
@@ -158,6 +264,15 @@
       return data;
     },
 
+    async getPublicProfile(userId) {
+      const { data, error } = await client.from("profiles")
+        .select("id, display_name, avatar_url, is_admin, gender, personal_tags, personal_bio, mbti")
+        .eq("id", userId)
+        .maybeSingle();
+      if (error) throw error;
+      return data;
+    },
+
     async getAdminProfile() {
       const { data, error } = await client.from("profiles").select("*").eq("is_admin", true).limit(1).maybeSingle();
       if (error) throw error;
@@ -189,7 +304,15 @@
 
     async updateOwnIdentity(userId, identity) {
       const { data, error } = await client.from("profiles")
-        .update({ display_name: identity.display_name, avatar_url: identity.avatar_url || null, updated_at: new Date().toISOString() })
+        .update({
+          display_name: identity.display_name,
+          avatar_url: identity.avatar_url || null,
+          gender: identity.gender || null,
+          personal_tags: Array.isArray(identity.personal_tags) ? identity.personal_tags.slice(0, 4) : [],
+          personal_bio: identity.personal_bio || null,
+          mbti: identity.mbti || null,
+          updated_at: new Date().toISOString()
+        })
         .eq("id", userId)
         .select()
         .single();
@@ -333,8 +456,8 @@
     },
 
     async recordPostView(postId, userId) {
-      if (!userId) return;
-      const { error } = await client.from("post_views").upsert({ post_id: postId, user_id: userId }, { onConflict: "post_id,user_id", ignoreDuplicates: true });
+      const visitorId = getViewIdentity(userId);
+      const { error } = await client.from("post_views").upsert({ post_id: postId, user_id: userId || null, visitor_id: visitorId }, { onConflict: "post_id,visitor_id", ignoreDuplicates: true });
       if (error) throw error;
     },
 
@@ -404,8 +527,8 @@
     },
 
     async recordContentView(contentType, contentId, userId) {
-      if (!userId) return;
-      const { error } = await client.from("content_views").upsert({ content_type: contentType, content_id: contentId, user_id: userId }, { onConflict: "content_type,content_id,user_id", ignoreDuplicates: true });
+      const visitorId = getViewIdentity(userId);
+      const { error } = await client.from("content_views").upsert({ content_type: contentType, content_id: contentId, user_id: userId || null, visitor_id: visitorId }, { onConflict: "content_type,content_id,visitor_id", ignoreDuplicates: true });
       if (error) throw error;
     },
 

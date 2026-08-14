@@ -58,7 +58,7 @@
         const name = profile.display_name || (row.user_id === session.user.id ? "我" : `普通用户${index + 1}`);
         const avatarStyle = profile.avatar_url ? ` style="background-image:url('${escapeHtml(profile.avatar_url)}')"` : "";
         const rank = row.user_id === session.user.id && !rows.some((entry) => entry.user_id === session.user.id) ? "我" : index + 1;
-        return `<li class="game-ranking-row${row.user_id === session.user.id ? " is-me" : ""}"><span class="game-ranking-rank">${rank}</span><span class="game-ranking-avatar"${avatarStyle}>${profile.avatar_url ? "" : escapeHtml(name.slice(0, 1))}</span><strong class="game-ranking-name">${escapeHtml(name)}${row.user_id === session.user.id ? "（我）" : ""}</strong><span class="game-ranking-score">${row.best_score}</span></li>`;
+        return `<li class="game-ranking-row${row.user_id === session.user.id ? " is-me" : ""}"><span class="game-ranking-rank">${rank}</span><button class="game-ranking-avatar" type="button" data-profile-user-id="${row.user_id}" aria-label="查看${escapeHtml(name)}的资料"${avatarStyle}>${profile.avatar_url ? "" : escapeHtml(name.slice(0, 1))}</button><strong class="game-ranking-name">${escapeHtml(name)}${row.user_id === session.user.id ? "（我）" : ""}</strong><span class="game-ranking-score">${row.best_score}</span></li>`;
       }).join("") || '<li class="game-ranking-empty">完成一局游戏后，这里会显示你的成绩。</li>';
     } catch (error) {
       rankingList.innerHTML = '<li class="game-ranking-empty">排行榜暂时无法读取。</li>';
