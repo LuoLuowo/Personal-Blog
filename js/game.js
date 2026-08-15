@@ -5,12 +5,10 @@
   canvas.dataset.gameBooting = "true";
   const api = window.XiaoLuoSupabase;
   const session = await api?.getSession?.();
-  if (!session) {
-    canvas.dataset.gameBooting = "";
-    const target = encodeURIComponent(`${location.pathname}${location.search}`);
-    location.replace(`./login.html?next=${target}`);
-    return;
-  }
+  const guestStorageKey = "xiaoluo-jump-game-guest-token";
+  let guestToken = localStorage.getItem(guestStorageKey);
+  if (!session && !guestToken) { guestToken = crypto.randomUUID(); localStorage.setItem(guestStorageKey, guestToken); }
+  const playerKey = session ? `user:${session.user.id}` : `guest:${guestToken}`;
   canvas.dataset.gameReady = "true";
   canvas.dataset.gameBooting = "";
   const ctx = canvas.getContext("2d");
@@ -48,17 +46,22 @@
     if (!rankingList || !api?.isConfigured) return;
     try {
       const rows = await api.listJumpGameRanking(20);
-      let mine = rows.find((row) => row.user_id === session.user.id) || await api.getMyJumpGameScore(session.user.id);
-      if (!mine) mine = { user_id: session.user.id, best_score: 0, profile: await api.getProfile(session.user.id) };
+      const rowKey = (row) => row.player_key || (row.user_id ? `user:${row.user_id}` : `guest:${row.guest_token}`);
+      let mine = rows.find((row) => rowKey(row) === playerKey);
+      if (!mine && session) mine = await api.getMyJumpGameScore(session.user.id);
       best = Number(mine?.best_score || 0);
       bestEl.textContent = best;
-      const displayRows = mine && !rows.some((row) => row.user_id === session.user.id) ? [...rows, mine] : rows;
+      const displayRows = mine && !rows.some((row) => rowKey(row) === playerKey) ? [...rows, mine] : rows;
       rankingList.innerHTML = displayRows.map((row, index) => {
         const profile = row.profile || {};
-        const name = profile.display_name || (row.user_id === session.user.id ? "我" : `普通用户${index + 1}`);
+        const key = rowKey(row);
+        const profileUserId = row.user_id || (String(key).startsWith("user:") ? String(key).slice(5) : "");
+        const isMine = key === playerKey;
+        const name = profile.display_name || row.display_name || (isMine ? (session ? "我" : "罗星人") : `普通用户${index + 1}`);
         const avatarStyle = profile.avatar_url ? ` style="background-image:url('${escapeHtml(profile.avatar_url)}')"` : "";
-        const rank = row.user_id === session.user.id && !rows.some((entry) => entry.user_id === session.user.id) ? "我" : index + 1;
-        return `<li class="game-ranking-row${row.user_id === session.user.id ? " is-me" : ""}"><span class="game-ranking-rank">${rank}</span><button class="game-ranking-avatar" type="button" data-profile-user-id="${row.user_id}" aria-label="查看${escapeHtml(name)}的资料"${avatarStyle}>${profile.avatar_url ? "" : escapeHtml(name.slice(0, 1))}</button><strong class="game-ranking-name">${escapeHtml(name)}${row.user_id === session.user.id ? "（我）" : ""}</strong><span class="game-ranking-score">${row.best_score}</span></li>`;
+        const rank = isMine && !rows.some((entry) => rowKey(entry) === playerKey) ? "我" : index + 1;
+        const avatar = row.is_guest ? '<span class="game-ranking-avatar game-guest-avatar">罗</span>' : `<button class="game-ranking-avatar" type="button" data-profile-user-id="${escapeHtml(profileUserId)}" aria-label="查看${escapeHtml(name)}的资料"${avatarStyle}>${profile.avatar_url ? "" : escapeHtml(name.slice(0, 1))}</button>`;
+        return `<li class="game-ranking-row${isMine ? " is-me" : ""}"><span class="game-ranking-rank">${rank}</span>${avatar}<strong class="game-ranking-name">${escapeHtml(name)}${isMine ? "（我）" : ""}</strong><span class="game-ranking-score">${row.best_score}</span></li>`;
       }).join("") || '<li class="game-ranking-empty">完成一局游戏后，这里会显示你的成绩。</li>';
     } catch (error) {
       rankingList.innerHTML = '<li class="game-ranking-empty">排行榜暂时无法读取。</li>';
@@ -69,7 +72,7 @@
   const saveScore = async () => {
     if (!api?.isConfigured || score <= 0) return;
     try {
-      const saved = await api.submitJumpGameScore(score);
+      const saved = session ? await api.submitJumpGameScore(score) : await api.submitGuestJumpGameScore(guestToken, score);
       best = Math.max(best, Number(saved?.best_score || 0));
       bestEl.textContent = best;
       renderRanking();

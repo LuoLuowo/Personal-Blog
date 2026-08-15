@@ -53,7 +53,20 @@ as $$
     (select count(*) from public.site_presence where last_seen >= now() - interval '2 minutes');
 $$;
 
+create or replace function public.get_today_site_visitors()
+returns bigint
+language sql
+stable
+security definer
+set search_path = public, pg_temp
+as $$
+  select count(*) from public.site_visitors
+  where last_seen >= date_trunc('day', now() at time zone 'Asia/Shanghai') at time zone 'Asia/Shanghai';
+$$;
+
 revoke all on function public.record_site_presence(text, text) from public;
 revoke all on function public.get_site_metrics() from public;
+revoke all on function public.get_today_site_visitors() from public;
 grant execute on function public.record_site_presence(text, text) to anon, authenticated;
 grant execute on function public.get_site_metrics() to authenticated;
+grant execute on function public.get_today_site_visitors() to authenticated;

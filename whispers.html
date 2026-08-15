@@ -29,8 +29,11 @@
     <section class="whisper-composer glass-card" data-whisper-composer>
       <div class="whisper-current-user"><span class="comment-avatar" data-whisper-own-avatar>普</span><div><strong data-whisper-own-name>普通用户</strong><p>今天想说点什么？</p></div></div>
       <form data-whisper-form>
-        <div class="whisper-emoji-picker" data-whisper-emoji-picker aria-label="选择表情"></div>
+        <div class="whisper-format-tools"><button class="ghost-button small" type="button" data-whisper-template-toggle>灵感模板</button><button class="ghost-button small" type="button" data-whisper-emoji-toggle>表情包</button><button class="whisper-format-button" type="button" data-whisper-bold title="加粗">B</button><span class="whisper-color-tools" aria-label="文字颜色"><button type="button" data-whisper-color="rose" title="珊瑚红"></button><button type="button" data-whisper-color="amber" title="暖橙"></button><button type="button" data-whisper-color="green" title="清新绿"></button><button type="button" data-whisper-color="blue" title="天蓝"></button><button type="button" data-whisper-color="purple" title="紫罗兰"></button></span></div>
+        <div class="whisper-template-panel" data-whisper-template-panel hidden><div class="whisper-template-list" data-whisper-template-list></div><div class="whisper-template-admin" data-whisper-template-admin hidden><input data-whisper-template-input maxlength="120" placeholder="添加新的灵感模板"><button class="primary-button small" type="button" data-add-whisper-template>添加</button></div></div>
+        <div class="whisper-emoji-panel" data-whisper-emoji-panel hidden><div class="whisper-emoji-picker" data-whisper-emoji-picker aria-label="选择表情"></div></div>
         <label><span class="sr-only">碎碎念内容</span><textarea name="content" maxlength="500" required placeholder="记录此刻的心情、生活或一件小事…"></textarea></label>
+        <div class="whisper-replying" data-whisper-replying hidden><span></span><button type="button" data-cancel-whisper-reply>取消回复</button></div>
         <div class="whisper-compose-footer"><small><span data-whisper-count>0</span> / 500</small><button class="primary-button small" type="submit">发布碎碎念</button></div>
       </form>
     </section>

@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="theme-color" content="#101a2c" />
+  <title>活跃榜 | 小罗的Life</title>
+  <link rel="icon" href="./assets/images/xiaoluo-blog-icon.jpg" />
+  <link rel="stylesheet" href="./styles.css" />
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="./js/supabase-config.js" defer></script>
+  <script src="./js/supabase-client.js" defer></script>
+  <script src="./js/data.js" defer></script>
+  <script src="./js/app.js" defer></script>
+</head>
+<body data-page="activity">
+  <div class="page-glow"></div>
+  <header class="site-header">
+    <a class="brand" href="./index.html"><span class="brand-mark" data-site-logo>罗</span><span data-site-name>小罗Blog</span></a>
+    <button class="nav-toggle" type="button" data-nav-toggle aria-label="打开导航">☰</button>
+    <nav class="top-nav" data-nav aria-label="主导航">
+      <a href="./index.html">首页</a><a href="./articles.html">所有文章</a><a href="./life.html">生活圈</a><a href="./whispers.html">碎碎念</a><a class="active" href="./activity.html">活跃榜</a><a href="./progress.html">进步簿</a><a href="./about.html">关于我</a><a href="./dashboard.html" data-admin-only hidden>后台</a>
+    </nav>
+    <div class="header-actions"><button class="icon-button" type="button" data-theme-toggle aria-label="切换日夜模式">◐</button><a class="ghost-button" href="./login.html" data-guest-only>登录</a><a class="primary-button small" href="./register.html" data-guest-only>注册</a></div>
+  </header>
+
+  <main class="activity-page">
+    <section class="activity-hero">
+      <div class="activity-constellation" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i></div>
+      <p class="eyebrow">XIAOLUO ACTIVITY</p>
+      <h1>活跃星图</h1>
+      <p>每一次完善资料、签到和互动，都会留下属于你的星光。</p>
+      <div class="activity-self-summary" data-activity-self-summary hidden></div>
+    </section>
+
+    <section class="activity-heatmap glass-card">
+      <div class="section-heading compact"><div><p class="mini-title">365 DAYS</p><h2 data-activity-heatmap-title>全站活跃热力图</h2></div><span>越亮代表当天越活跃</span></div>
+      <div class="activity-heatmap-scroll"><div class="activity-heatmap-grid" data-activity-heatmap aria-label="最近365天活跃热力图"></div></div>
+      <div class="activity-heatmap-legend"><span>少</span><i></i><i></i><i></i><i></i><i></i><span>多</span></div>
+    </section>
+
+    <section class="activity-layout">
+      <aside class="activity-friends glass-card">
+        <p class="mini-title">FRIEND LINKS</p><h2>友链</h2>
+        <p class="activity-friends-note">记录朋友们认真搭建的个人空间。</p>
+        <div class="activity-friend-list" data-activity-friend-list><p class="empty-state">正在读取友链…</p></div>
+        <button class="activity-friend-manage" type="button" data-activity-friend-manage hidden>添加友链</button>
+        <form class="activity-friend-form" data-activity-friend-form hidden><label><span>昵称</span><input name="name" maxlength="40" required></label><label><span>网址</span><input name="url" type="url" placeholder="https://" required></label><label><span>图标网址（选填）</span><input name="iconUrl" type="url" placeholder="https://"></label><label><span>上传图标（选填）</span><input name="iconFile" type="file" accept="image/jpeg,image/png,image/webp,image/gif"></label><label><span>简介</span><textarea name="description" maxlength="120" rows="2"></textarea></label><button class="primary-button small" type="submit">添加友链</button></form>
+      </aside>
+      <section class="activity-ranking glass-card">
+        <div class="section-heading compact"><div><p class="mini-title">LEADERBOARD</p><h2>全站活跃榜</h2></div><div class="activity-ranking-actions"><button class="ghost-button small" type="button" data-activity-rules-open>活跃度规则</button><span data-activity-user-count>0 位罗客</span></div></div>
+        <div class="activity-podium" data-activity-podium></div>
+        <div class="activity-ranking-list" data-activity-ranking-list><p class="empty-state">正在点亮活跃星图…</p></div>
+      </section>
+      <aside class="activity-levels glass-card">
+        <p class="mini-title">LEVEL RIGHTS</p><h2>称号与权益</h2>
+        <div data-activity-levels></div>
+      </aside>
+    </section>
+  </main>
+  <footer class="site-footer"><p>© 2026 小罗Blog</p></footer>
+</body>
+</html>

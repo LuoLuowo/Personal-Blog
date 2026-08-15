@@ -36,6 +36,11 @@ window.NeverBlogData = {
       artist: "DJ小式",
       category: "流行音乐",
       src: "./assets/music/M500000tP0kb0pjwGN (1).mp3"
+    },
+    { title: "去年夏天", artist: "王大毛", category: "流行音乐", src: "./assets/music/去年夏天、王大毛.mp3" },
+    { title: "Rore Period", artist: "La Mer", category: "轻音乐", src: "./assets/music/Rore Period、 La Mer..mp3" },
+    { title: "七里香", artist: "吉拉朵", category: "流行音乐", src: "./assets/music/七里香 吉拉朵.mp3" },
+    { title: "一个人走，风很冷", artist: "未知歌手", category: "流行音乐", src: "./assets/music/一个人走、风很冷.mp3"
     }
   ],
   categories: [],

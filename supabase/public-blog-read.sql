@@ -30,9 +30,14 @@ drop policy if exists "tags are readable" on public.tags;
 create policy "tags are readable" on public.tags
   for select using (true);
 
+alter table public.moments add column if not exists is_public boolean not null default false;
 drop policy if exists "moments are readable" on public.moments;
 create policy "moments are readable" on public.moments
-  for select using (true);
+  for select using (
+    is_public
+    or public.is_blog_admin()
+    or (auth.uid() is not null and public.has_activity_access(50))
+  );
 
 drop policy if exists "progress logs are readable" on public.progress_logs;
 create policy "progress logs are readable" on public.progress_logs

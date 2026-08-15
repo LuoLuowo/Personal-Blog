@@ -11,7 +11,12 @@
     cloudOwnerId: null,
     adminId: null,
     isAdmin: false,
-    currentProfile: null
+    currentProfile: null,
+    activityScore: 0,
+    activityTitle: "初入人",
+    activityCheckedToday: false,
+    activityNextScore: 50,
+    activityNextTitle: "漂泊者"
   };
 
   const $ = (selector, root = document) => root.querySelector(selector);
@@ -25,6 +30,50 @@
     const next = `${window.location.pathname}${window.location.search}${window.location.hash}`;
     window.location.href = `./login.html?next=${encodeURIComponent(next)}`;
     return false;
+  }
+
+  function hasActivityAccess(requiredScore) {
+    return state.isAdmin || (state.isLoggedIn && state.activityScore >= requiredScore);
+  }
+
+  function showActivityNotice(title, message, options = {}) {
+    let modal = $("[data-activity-notice-modal]");
+    if (!modal) {
+      modal = document.createElement("div");
+      modal.className = "modal activity-notice-modal";
+      modal.dataset.activityNoticeModal = "";
+      modal.innerHTML = `<button class="modal-backdrop" type="button" data-activity-notice-close aria-label="关闭"></button><section class="modal-card glass-card" role="dialog" aria-modal="true"><button class="modal-close" type="button" data-activity-notice-close aria-label="关闭">×</button><div class="activity-notice-icon" aria-hidden="true">✦</div><p class="mini-title">ACTIVITY RIGHTS</p><h2 data-activity-notice-title></h2><p data-activity-notice-message></p><div class="publish-confirm-actions" data-activity-notice-actions></div></section>`;
+      document.body.appendChild(modal);
+    }
+    $("[data-activity-notice-title]", modal).textContent = title;
+    $("[data-activity-notice-message]", modal).textContent = message;
+    const actions = $("[data-activity-notice-actions]", modal);
+    actions.innerHTML = options.login
+      ? '<button class="ghost-button" type="button" data-activity-notice-close>先看看</button><a class="primary-button" href="./login.html">去登录</a>'
+      : '<button class="primary-button" type="button" data-activity-notice-close>我知道了</button><a class="ghost-button" href="./activity.html">查看活跃榜</a>';
+    $all("[data-activity-notice-close]", modal).forEach((button) => { button.onclick = () => modal.classList.remove("open"); });
+    modal.classList.add("open");
+  }
+
+  function requireActivityAccess(requiredScore, rightName) {
+    if (hasActivityAccess(requiredScore)) return true;
+    if (!state.isLoggedIn) {
+      showActivityNotice("登录后参与", `登录并达到 ${requiredScore} 活跃度后，即可使用${rightName}。`, { login: true });
+    } else {
+      showActivityNotice("活跃度尚未解锁", `你的活跃度为 ${state.activityScore}，达到 ${requiredScore} 后即可使用${rightName}。`);
+    }
+    return false;
+  }
+
+  function ensureActivityNavLink() {
+    $all(".top-nav").forEach((nav) => {
+      if ($("a[href='./activity.html']", nav)) return;
+      const link = document.createElement("a");
+      link.href = "./activity.html";
+      link.textContent = "活跃榜";
+      const progressLink = $("a[href='./progress.html']", nav);
+      nav.insertBefore(link, progressLink || $("a[href='./about.html']", nav) || null);
+    });
   }
 
   function escapeHtml(value) {
@@ -42,6 +91,24 @@
   const ADMIN_PROFILE_TAGS = ["注重感情", "独处", "自由", "世界游", "热爱阅读", "探索未知"];
   const MBTI_TYPES = ["INTJ", "INTP", "ENTJ", "ENTP", "INFJ", "INFP", "ENFJ", "ENFP", "ISTJ", "ISFJ", "ESTJ", "ESFJ", "ISTP", "ISFP", "ESTP", "ESFP"];
   const WHISPER_EMOJIS = ["😀", "😂", "🥹", "😭", "😡", "🥳", "❤️", "👍", "✨", "🌈", "🍜", "☕", "🎮", "📚", "🌙", "🔥"];
+  const ACTIVITY_LEVELS = [
+    { score: 10, title: "初入人", right: "解锁发布、评论功能" },
+    { score: 50, title: "漂泊者", right: "解锁小罗生活圈入口" },
+    { score: 100, title: "知罗者", right: "权益正在开发中" },
+    { score: 200, title: "熟知罗者", right: "权益正在开发中" },
+    { score: 300, title: "深知罗者", right: "权益正在开发中" },
+    { score: 500, title: "拾光罗客", right: "权益正在开发中" },
+    { score: 800, title: "拾星罗客", right: "权益正在开发中" },
+    { score: 1000, title: "罗客星使", right: "权益正在开发中" },
+    { score: 2000, title: "全站星使", right: "权益正在开发中" },
+    { score: 4000, title: "罗客神", right: "权益正在开发中" }
+  ];
+  const ACTIVITY_RULES = [
+    ["注册用户", "+10", "注册后自动获得"], ["完善 MBTI", "+20", "资料填写后自动计算"],
+    ["完善性别", "+10", "资料填写后自动计算"], ["完善标签", "+20", "选择至少一个标签"],
+    ["每日签到", "+20", "按中国时间每日一次"], ["点赞", "+5", "每个有效点赞"],
+    ["文章/动态评论", "+5", "评论和回复均计算"], ["发布碎碎念", "+5", "每一条有效发布"]
+  ];
   const CODE_LANGUAGES = [
     ["auto", "自动识别"], ["javascript", "JavaScript"], ["typescript", "TypeScript"], ["html", "HTML/XML"], ["css", "CSS"],
     ["python", "Python"], ["java", "Java"], ["c", "C"], ["cpp", "C++"], ["csharp", "C#"], ["go", "Go"], ["rust", "Rust"],
@@ -651,6 +718,8 @@
     try {
       const profile = await window.XiaoLuoSupabase.getPublicProfile(userId);
       if (!profile) throw new Error("没有找到这位用户的资料。");
+      let activity = null;
+      try { activity = await window.XiaoLuoSupabase.getUserActivitySummary?.(profile.id); } catch (_) {}
       const name = profile.display_name || (profile.is_admin ? "小罗" : "普通用户");
       const avatar = profile.avatar_url || (profile.is_admin ? "./assets/images/xiaoluo-blog-icon.jpg" : "");
       const tags = profile.is_admin ? ADMIN_PROFILE_TAGS : (Array.isArray(profile.personal_tags) ? profile.personal_tags.slice(0, 4) : []);
@@ -669,9 +738,9 @@
           whisperSummary = { count, previews };
         } catch (_) {}
       }
-      const whisperPreviews = (whisperSummary?.previews || []).slice(0, 1).map((item) => `<article><p>${escapeHtml(item.content || "")}</p><time>${formatPostDate(item.created_at)}</time></article>`).join("");
+      const whisperPreviews = (whisperSummary?.previews || []).slice(0, 1).map((item) => `<article><p class="whisper-rich-text">${renderWhisperContent(item.content || "")}</p><time>${formatPostDate(item.created_at)}</time></article>`).join("");
       const whisperSection = whisperSummary ? `<section class="profile-whisper-summary"><div class="profile-whisper-summary-heading"><strong>碎碎念</strong><span>共 ${whisperSummary.count} 条</span></div>${whisperPreviews ? `<div class="profile-whisper-previews">${whisperPreviews}</div>` : '<p class="profile-whisper-empty">还没有发布碎碎念。</p>'}<button class="profile-whisper-count" type="button" data-user-whispers="${profile.id}"><strong>${state.isLoggedIn ? "查看全部" : "登录后吃瓜"}</strong><span>${state.isLoggedIn ? "进入完整碎碎念" : "登录后才能查看详情与参与发布"}</span></button></section>` : "";
-      content.innerHTML = `<div class="profile-detail-hero"><span class="profile-detail-avatar${avatar ? " has-image" : ""}"${avatar ? ` style="background-image:url('${avatar}')"` : ""}>${escapeHtml(name.slice(0, 1))}</span><div><p class="mini-title">${profile.is_admin ? "AUTHOR PROFILE" : "USER PROFILE"}</p><h2 id="profile-detail-name">${escapeHtml(name)}</h2>${profile.mbti ? `<strong class="profile-mbti">${escapeHtml(profile.mbti)}</strong>` : ""}</div></div>${tags.length ? `<div class="profile-detail-tags">${profileTagsHtml(tags)}</div>` : ""}<dl class="profile-detail-fields">${profile.gender ? `<div><dt>性别</dt><dd>${escapeHtml(profile.gender)}</dd></div>` : ""}${profile.personal_bio ? `<div class="profile-detail-bio"><dt>个人介绍</dt><dd>${escapeHtml(profile.personal_bio)}</dd></div>` : ""}</dl>${whisperSection}${isOwnEditableProfile ? '<button class="primary-button small" type="button" data-user-profile-button>编辑我的资料</button>' : ""}`;
+      content.innerHTML = `<div class="profile-detail-hero"><span class="profile-detail-avatar${avatar ? " has-image" : ""}"${avatar ? ` style="background-image:url('${avatar}')"` : ""}>${escapeHtml(name.slice(0, 1))}</span><div><p class="mini-title">${profile.is_admin ? "AUTHOR PROFILE" : "USER PROFILE"}</p><h2 id="profile-detail-name">${escapeHtml(name)}</h2>${activity ? `<span class="profile-activity-title">${escapeHtml(activity.title)} · ${activity.score} 活跃度</span>` : ""}${profile.mbti ? `<strong class="profile-mbti">${escapeHtml(profile.mbti)}</strong>` : ""}</div></div>${tags.length ? `<div class="profile-detail-tags">${profileTagsHtml(tags)}</div>` : ""}<dl class="profile-detail-fields">${profile.gender ? `<div><dt>性别</dt><dd>${escapeHtml(profile.gender)}</dd></div>` : ""}${profile.personal_bio ? `<div class="profile-detail-bio"><dt>个人介绍</dt><dd>${escapeHtml(profile.personal_bio)}</dd></div>` : ""}</dl>${whisperSection}${isOwnEditableProfile ? '<button class="primary-button small" type="button" data-user-profile-button>编辑我的资料</button>' : ""}`;
     } catch (error) {
       content.innerHTML = `<p class="empty-state">${escapeHtml(error.message || "暂时无法读取资料。")}</p>`;
     }
@@ -798,6 +867,10 @@
     state.isLoggedIn = Boolean(session);
     state.userId = session?.user?.id || null;
     state.isAdmin = false;
+    state.currentProfile = null;
+    state.activityScore = state.isLoggedIn ? 10 : 0;
+    state.activityTitle = "初入人";
+    state.activityCheckedToday = false;
     if (state.userId && window.XiaoLuoSupabase?.isConfigured) {
       try {
         const profile = await window.XiaoLuoSupabase.getProfile(state.userId);
@@ -805,6 +878,18 @@
         state.isAdmin = Boolean(profile?.is_admin);
       } catch (error) {
         console.warn("Admin role check failed:", error.message);
+      }
+      try {
+        const activity = await window.XiaoLuoSupabase.getActivityStatus?.();
+        if (activity) {
+          state.activityScore = activity.score;
+          state.activityTitle = activity.title;
+          state.activityCheckedToday = activity.checkedToday;
+          state.activityNextScore = activity.nextScore;
+          state.activityNextTitle = activity.nextTitle;
+        }
+      } catch (error) {
+        console.warn("Activity status load failed; run supabase/activity-system.sql:", error.message);
       }
     }
     migrateLegacyUserData();
@@ -848,6 +933,37 @@
         status.setAttribute("aria-label", "查看我的个人资料");
         status.setAttribute("title", "查看我的个人资料");
       }
+      let checkin = $("[data-activity-checkin]", actions);
+      if (!checkin) {
+        checkin = document.createElement("button");
+        checkin.type = "button";
+        checkin.className = "activity-checkin-button";
+        checkin.dataset.activityCheckin = "";
+        actions.appendChild(checkin);
+      }
+      checkin.hidden = !state.isLoggedIn;
+      checkin.disabled = state.activityCheckedToday;
+      checkin.innerHTML = state.activityCheckedToday
+        ? `<i aria-hidden="true"></i><span>今日已签</span><em>${state.activityScore}</em>`
+        : `<i aria-hidden="true"></i><span>每日签到</span><em>+20</em>`;
+      checkin.onclick = async () => {
+        if (state.activityCheckedToday) return;
+        checkin.disabled = true;
+        checkin.classList.add("is-loading");
+        checkin.querySelector("span").textContent = "签到中…";
+        try {
+          const activity = await window.XiaoLuoSupabase.dailyActivityCheckIn();
+          state.activityScore = activity.score;
+          state.activityTitle = activity.title;
+          state.activityCheckedToday = true;
+          checkin.innerHTML = `<i aria-hidden="true"></i><span>今日已签</span><em>${state.activityScore}</em>`;
+          showActivityNotice("签到成功", `活跃度 +20，目前为 ${state.activityScore}，称号「${state.activityTitle}」。`);
+          if (pageName() === "activity") { renderActivityLeaderboard(); renderActivityHeatmap(); }
+        } catch (error) {
+          checkin.disabled = false;
+          showCloudError(error);
+        } finally { checkin.classList.remove("is-loading"); }
+      };
       let logout = $("[data-header-logout]", actions);
       if (!logout) {
         logout = document.createElement("button");
@@ -881,13 +997,14 @@
       if (!adminProfile) return;
       state.adminId = adminProfile.id;
       const ownerId = adminProfile.id;
-      const [categories, tags, moments, progress, posts, musicTracks] = await Promise.all([
+      const [categories, tags, moments, progress, posts, musicTracks, lockedMomentTeasers] = await Promise.all([
         api.listTaxonomy("categories", ownerId),
         api.listTaxonomy("tags", ownerId),
         api.listContent("moments", ownerId),
         api.listContent("progress_logs", ownerId),
         state.isAdmin ? api.listPosts(ownerId) : api.listPublishedPosts(ownerId),
-        api.listMusicTracks(ownerId)
+        api.listMusicTracks(ownerId),
+        api.listMomentTeasers ? api.listMomentTeasers(ownerId).catch(() => []) : Promise.resolve([])
       ]);
       data.site.profileName = adminProfile.display_name || data.site.profileName;
       data.site.avatarText = (adminProfile.display_name || data.site.profileName).slice(0, 1);
@@ -905,7 +1022,9 @@
       data.site.lastUpdatedAt = updateDates.sort((a, b) => new Date(b) - new Date(a))[0] || "";
       data.categories = categories.map((item) => ({ id: item.id, name: item.name, description: "" }));
       data.tags = tags.map((item) => ({ id: item.id, name: item.name }));
-      data.moments = sortTimelineByDate(moments.map((item) => ({ id: item.id, title: item.title, date: item.entry_date, text: item.body || "", images: item.image_urls || [] })));
+      const visibleMoments = moments.map((item) => ({ id: item.id, title: item.title, date: item.entry_date, text: item.body || "", images: item.image_urls || [], isPublic: Boolean(item.is_public) }));
+      const lockedMoments = lockedMomentTeasers.filter((item) => !visibleMoments.some((moment) => moment.id === item.id)).map((item) => ({ id: item.id, title: "生活圈内容已锁定", date: item.entry_date, text: "登录后活跃值达到50可以解锁内容", images: [], isLocked: true, isPublic: false }));
+      data.moments = sortTimelineByDate([...visibleMoments, ...lockedMoments]);
       data.progress = sortTimelineByDate(progress.map((item) => ({ id: item.id, title: item.title, date: item.entry_date, text: item.body || "", images: item.image_urls || [] })));
       data.posts = posts.map((item) => ({ id: item.id, title: item.title, author: data.site.profileName, category: item.category || "未分类", tags: item.tags || [], attachments: item.attachments || [], publishedAt: formatPostDate(item.created_at), coverUrl: item.cover_url || "", coverClass: "gradient-a", excerpt: (item.content || "").replace(/<[^>]+>/g, "").slice(0, 110), content: [item.content || ""], featured: false }));
       if (musicTracks.length) data.music = musicTracks.map((track) => ({ id: track.id, title: track.title, artist: track.artist || "小罗Blog", category: track.category || "", src: track.file_url }));
@@ -1177,7 +1296,7 @@
           data.albums.unshift({ id: row.id, title: row.title, meta: row.meta, description: row.description, images: row.image_urls, photoClass: "photo-a" });
         } else if (type === "moment") {
           const row = await window.XiaoLuoSupabase.addContent("moments", { user_id: state.userId, title: entry.title, body: entry.text, entry_date: entry.date, image_urls: images });
-          data.moments = sortTimelineByDate([...data.moments, { id: row.id, title: row.title, text: row.body, date: row.entry_date, images: row.image_urls }]);
+          data.moments = sortTimelineByDate([...data.moments, { id: row.id, title: row.title, text: row.body, date: row.entry_date, images: row.image_urls, isPublic: Boolean(row.is_public) }]);
         } else {
           const row = await window.XiaoLuoSupabase.addContent("progress_logs", { user_id: state.userId, title: entry.title, body: entry.text, entry_date: entry.date, image_urls: images });
           data.progress = sortTimelineByDate([...data.progress, { id: row.id, title: row.title, text: row.body, date: row.entry_date, images: row.image_urls }]);
@@ -1313,6 +1432,16 @@
     const table = type === "moment" ? "moments" : "progress_logs";
     const folder = type === "moment" ? "moments" : "progress";
     const form = $("[data-content-editor-form]", modal);
+    let publicField = $("[data-content-editor-public-field]", form);
+    if (!publicField) {
+      publicField = document.createElement("label");
+      publicField.className = "content-public-field";
+      publicField.dataset.contentEditorPublicField = "";
+      publicField.innerHTML = '<input name="isPublic" type="checkbox"><span>公开给全站用户（未登录及活跃度不足的用户也可查看）</span>';
+      form.querySelector('label:has(input[name="date"])')?.after(publicField);
+    }
+    publicField.hidden = type !== "moment";
+    form.isPublic.checked = Boolean(item.isPublic);
     bindTextFormatToolbars(modal);
     let images = [...(item.images || [])];
     const replacements = new Map();
@@ -1380,13 +1509,14 @@
           const additions = await uploadOptimizedImages(state.userId, folder, newFiles);
           if (cancelled()) return;
           nextImages.push(...additions);
-          const updated = { title: form.title.value.trim(), body: sanitizeRichHtml($("[data-content-editor-body]", form).innerHTML).trim(), entry_date: form.date.value, image_urls: nextImages };
+          const updated = { title: form.title.value.trim(), body: sanitizeRichHtml($("[data-content-editor-body]", form).innerHTML).trim(), entry_date: form.date.value, image_urls: nextImages, ...(type === "moment" ? { is_public: Boolean(form.isPublic.checked) } : {}) };
           await window.XiaoLuoSupabase.updateContent(table, item.id, state.userId, updated);
           if (oldImagesToDelete.length) await window.XiaoLuoSupabase.deleteFilesByPublicUrls(oldImagesToDelete);
           item.title = updated.title;
           item.text = updated.body;
           item.date = updated.entry_date;
           item.images = nextImages;
+          if (type === "moment") item.isPublic = updated.is_public;
           if (type === "moment") data.moments = sortTimelineByDate(data.moments);
           else data.progress = sortTimelineByDate(data.progress);
         });
@@ -1410,11 +1540,29 @@
         openContentPostEditor(type, list.find((entry) => entry.id === trigger.dataset.id));
         return;
       }
+      const publicToggle = event.target.closest("[data-toggle-moment-public]");
+      if (publicToggle && state.isAdmin) {
+        event.stopPropagation();
+        const item = data.moments.find((entry) => entry.id === publicToggle.dataset.toggleMomentPublic);
+        if (!item) return;
+        const nextPublic = !item.isPublic;
+        confirmPublish(nextPublic ? "公开这条生活圈？" : "取消全站公开？", nextPublic ? "未登录用户也可以查看这条完整生活圈内容。" : "未登录用户和活跃值不足的用户将只能看到锁定预览。", nextPublic ? "确认公开" : "确认取消").then(async (confirmed) => {
+          if (!confirmed) return;
+          try {
+            await window.XiaoLuoSupabase.updateContent("moments", item.id, state.userId, { is_public: nextPublic });
+            item.isPublic = nextPublic;
+            renderTimeline("[data-life-timeline]", data.moments);
+          } catch (error) { showCloudError(error); }
+        });
+        return;
+      }
       const card = event.target.closest("[data-open-timeline-post]");
       if (!card || event.target.closest("button, a")) return;
       const type = card.dataset.type;
       const list = type === "moment" ? data.moments : data.progress;
-      openTimelineDetail(type, list.find((entry) => entry.id === card.dataset.id));
+      const item = list.find((entry) => entry.id === card.dataset.id);
+      if (item?.isLocked) { requireActivityAccess(50, "小罗生活圈内容"); return; }
+      openTimelineDetail(type, item);
     });
   }
 
@@ -1460,13 +1608,13 @@
         const button = $("[data-timeline-like]", modal);
         button.textContent = engagement.liked ? `已点赞 ${engagement.likes}` : `点赞 ${engagement.likes}`;
         button.classList.toggle("is-liked", engagement.liked);
-        button.onclick = async () => { if (!state.isLoggedIn) return alert("请先登录后再点赞。"); try { await window.XiaoLuoSupabase.toggleContentLike(type, item.id, state.userId, engagement.liked); drawEngagement(); } catch (error) { showCloudError(error); } };
+        button.onclick = async () => { if (!state.isLoggedIn) return alert("请先登录后再点赞。"); try { await window.XiaoLuoSupabase.toggleContentLike(type, item.id, state.userId, engagement.liked); await refreshAuthState(); drawEngagement(); } catch (error) { showCloudError(error); } };
         $("[data-timeline-engagement]", modal).textContent = `阅读 ${engagement.views} · 评论 ${engagement.comments}`;
       } catch (error) { console.warn("Timeline engagement load failed:", error.message); }
     };
     const form = $("[data-timeline-comment-form]", modal); form.reset();
     $("[data-timeline-comment-note]", modal).textContent = state.isLoggedIn ? "评论会保存到这条内容下方。" : "请先登录后发表评论。";
-    form.onsubmit = async (event) => { event.preventDefault(); if (!state.isLoggedIn) return alert("请先登录后发表评论。"); const content = form.content.value.trim(); if (!content) return; try { await window.XiaoLuoSupabase.addContentComment(type, item.id, state.userId, content, replyTo); replyTo = null; form.reset(); form.content.placeholder = "写下你的评论"; await drawComments(); await drawEngagement(); } catch (error) { showCloudError(error); } };
+    form.onsubmit = async (event) => { event.preventDefault(); if (!requireActivityAccess(10, "评论功能")) return; const content = form.content.value.trim(); if (!content) return; try { await window.XiaoLuoSupabase.addContentComment(type, item.id, state.userId, content, replyTo); replyTo = null; form.reset(); form.content.placeholder = "写下你的评论"; await refreshAuthState(); await drawComments(); await drawEngagement(); } catch (error) { showCloudError(error); } };
     drawComments(); drawEngagement(); modal.classList.add("open");
   }
 
@@ -1490,6 +1638,129 @@
     initGuestbook();
   }
 
+  function activityAvatarHtml(item, className = "activity-rank-avatar") {
+    const name = item.display_name || "普通用户";
+    const avatar = item.avatar_url || "";
+    return `<button class="${className}${avatar ? " has-image" : ""}" type="button" data-profile-user-id="${escapeHtml(item.user_id)}" aria-label="查看${escapeHtml(name)}的资料"${avatar ? ` style="background-image:url('${escapeHtml(avatar)}')"` : ""}>${avatar ? "" : escapeHtml(name.slice(0, 1))}</button>`;
+  }
+
+  async function renderActivityHeatmap() {
+    const grid = $("[data-activity-heatmap]");
+    if (!grid) return;
+    const targetUserId = null;
+    $("[data-activity-heatmap-title]").textContent = "全站 365 天活跃热力图";
+    try {
+      const rows = await window.XiaoLuoSupabase.getActivityHeatmap(targetUserId);
+      const counts = new Map(rows.map((row) => [row.date, row.count]));
+      const today = new Date();
+      const start = new Date(today.getFullYear(), today.getMonth(), today.getDate() - 364);
+      const mondayOffset = (start.getDay() + 6) % 7;
+      const cells = Array.from({ length: mondayOffset }, () => '<i class="is-empty" aria-hidden="true"></i>');
+      for (let index = 0; index < 365; index += 1) {
+        const date = new Date(start.getFullYear(), start.getMonth(), start.getDate() + index);
+        const key = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+        const count = counts.get(key) || 0;
+        const level = count === 0 ? 0 : count < 2 ? 1 : count < 4 ? 2 : count < 7 ? 3 : count < 11 ? 4 : 5;
+        cells.push(`<i class="level-${level}" title="${key} · ${count} 次活跃" aria-label="${key}，${count}次活跃"></i>`);
+      }
+      grid.innerHTML = cells.join("");
+    } catch (error) {
+      grid.innerHTML = '<p class="empty-state">热力图尚未初始化。</p>';
+    }
+  }
+
+  function replaceWhisperSelection(textarea, prefix, suffix = "") {
+    const start = textarea.selectionStart ?? textarea.value.length;
+    const end = textarea.selectionEnd ?? start;
+    const selected = textarea.value.slice(start, end) || "写点什么";
+    textarea.value = `${textarea.value.slice(0, start)}${prefix}${selected}${suffix}${textarea.value.slice(end)}`;
+    textarea.focus();
+    textarea.setSelectionRange(start + prefix.length, start + prefix.length + selected.length);
+    textarea.dispatchEvent(new Event("input", { bubbles: true }));
+  }
+
+  function renderWhisperContent(value) {
+    return escapeHtml(value || "")
+      .replace(/\[\[b\]\]([\s\S]*?)\[\[\/b\]\]/g, "<strong>$1</strong>")
+      .replace(/\[\[c:(rose|amber|green|blue|purple)\]\]([\s\S]*?)\[\[\/c\]\]/g, '<span class="whisper-color-$1">$2</span>');
+  }
+
+  function openActivityRulesModal() {
+    let modal = $("[data-activity-rules-modal]");
+    if (!modal) {
+      modal = document.createElement("div");
+      modal.className = "modal activity-rules-modal";
+      modal.dataset.activityRulesModal = "";
+      modal.innerHTML = `<button class="modal-backdrop" type="button" data-activity-rules-close aria-label="关闭"></button><section class="modal-card glass-card" role="dialog" aria-modal="true"><button class="modal-close" type="button" data-activity-rules-close aria-label="关闭">×</button><p class="mini-title">SCORE RULES</p><h2>活跃度如何计算</h2><p>每次有效互动都会沉淀为活跃度，达到对应等级即可解锁权益。</p><div class="activity-rules-scroll">${ACTIVITY_RULES.map(([name, score, note]) => `<article><span>${escapeHtml(name)}</span><strong>${score}</strong><small>${escapeHtml(note)}</small></article>`).join("")}</div></section>`;
+      document.body.appendChild(modal);
+      $all("[data-activity-rules-close]", modal).forEach((button) => { button.onclick = () => modal.classList.remove("open"); });
+    }
+    modal.classList.add("open");
+  }
+
+  async function renderFriendLinks() {
+    const list = $("[data-activity-friend-list]");
+    const form = $("[data-activity-friend-form]");
+    const manageButton = $("[data-activity-friend-manage]");
+    if (!list || !form) return;
+    form.hidden = true;
+    if (manageButton) {
+      manageButton.hidden = !state.isAdmin;
+      manageButton.onclick = () => {
+        form.hidden = !form.hidden;
+        manageButton.textContent = form.hidden ? "添加友链" : "收起添加区";
+      };
+    }
+    const draw = async () => {
+      try {
+        const links = await window.XiaoLuoSupabase.listFriendLinks();
+        list.innerHTML = links.map((link) => `<article><button type="button" data-open-friend-link="${escapeHtml(link.url)}"><span class="activity-friend-icon${link.icon_url ? " has-image" : ""}"${link.icon_url ? ` style="background-image:url('${escapeHtml(link.icon_url)}')"` : ""}>${link.icon_url ? "" : escapeHtml(link.name.slice(0, 1))}</span><span><strong>${escapeHtml(link.name)}</strong><small>${escapeHtml(link.description || "朋友的个人博客")}</small></span></button>${state.isAdmin ? `<button class="activity-friend-delete" type="button" data-delete-friend-link="${escapeHtml(link.id)}" aria-label="删除友链">×</button>` : ""}</article>`).join("") || '<p class="empty-state">暂无友链</p>';
+        $all("[data-open-friend-link]", list).forEach((button) => { button.onclick = async () => { const approved = await confirmPublish("即将前往第三方网站", "该网址由第三方开发者维护，网站内的任何内容、服务与信息均与小罗的Life无关。", "继续前往"); if (approved) window.open(button.dataset.openFriendLink, "_blank", "noopener,noreferrer"); }; });
+        $all("[data-delete-friend-link]", list).forEach((button) => { button.onclick = async () => { if (!await confirmPublish("删除这个友链？", "删除后不会影响对方网站。", "确认删除")) return; try { await window.XiaoLuoSupabase.deleteFriendLink(button.dataset.deleteFriendLink); await draw(); } catch (error) { showCloudError(error); } }; });
+      } catch (error) { list.innerHTML = '<p class="empty-state">友链功能尚未初始化。</p>'; }
+    };
+    if (!form.dataset.bound) {
+      form.dataset.bound = "true";
+      form.onsubmit = async (event) => { event.preventDefault(); const data = new FormData(form); try { let iconUrl = String(data.get("iconUrl") || "").trim() || null; const iconFile = form.iconFile.files?.[0]; if (iconFile) iconUrl = await window.XiaoLuoSupabase.uploadFile(state.userId, "friend-links", iconFile); await window.XiaoLuoSupabase.addFriendLink({ name: String(data.get("name") || "").trim(), url: String(data.get("url") || "").trim(), icon_url: iconUrl, description: String(data.get("description") || "").trim() }); form.reset(); await draw(); } catch (error) { showCloudError(error); } };
+    }
+    await draw();
+  }
+
+  async function renderActivityLeaderboard() {
+    const rankingList = $("[data-activity-ranking-list]");
+    if (!rankingList) return;
+    const levels = $("[data-activity-levels]");
+    $("[data-activity-rules-open]").onclick = openActivityRulesModal;
+    levels.innerHTML = ACTIVITY_LEVELS.map((level) => {
+      const unlocked = state.isAdmin || state.activityScore >= level.score;
+      return `<article class="${unlocked ? "is-unlocked" : ""}"><span>${level.score}</span><div><strong>${level.title}</strong><small>${level.right}</small></div><i aria-hidden="true">${unlocked ? "✓" : "○"}</i></article>`;
+    }).join("");
+    try {
+      const items = await window.XiaoLuoSupabase.listActivityLeaderboard();
+      $("[data-activity-user-count]").textContent = `${items.length} 位罗客`;
+      const podiumItems = [
+        { item: items[1], place: 2 },
+        { item: items[0], place: 1 },
+        { item: items[2], place: 3 }
+      ].filter(({ item }) => Boolean(item));
+      $("[data-activity-podium]").innerHTML = podiumItems.map(({ item, place }) => `<article class="activity-podium-place place-${place}"><span class="activity-crown" aria-hidden="true">${place === 1 ? "✦" : place}</span>${activityAvatarHtml(item, "activity-podium-avatar")}<strong>${escapeHtml(item.display_name)}</strong><small>${escapeHtml(item.title)}</small><b>${item.score}</b></article>`).join("");
+      rankingList.innerHTML = items.slice(3, 10).map((item) => `<article class="activity-ranking-row${item.user_id === state.userId ? " is-me" : ""}"><span class="activity-rank-number">${item.rank}</span>${activityAvatarHtml(item)}<div><strong>${escapeHtml(item.display_name)}${item.is_admin ? '<em>作者</em>' : ""}</strong><small>${escapeHtml(item.title)}</small></div><b>${item.score}<small>活跃度</small></b></article>`).join("") || '<p class="empty-state">前三位罗客已经站上领奖台。</p>';
+      const self = items.find((item) => item.user_id === state.userId);
+      const selfSummary = $("[data-activity-self-summary]");
+      if (self && state.isLoggedIn) {
+        const next = ACTIVITY_LEVELS.find((level) => level.score > self.score);
+        const max = next?.score || Math.max(self.score, 4000);
+        const previous = [...ACTIVITY_LEVELS].reverse().find((level) => level.score <= self.score)?.score || 0;
+        const progress = next ? Math.max(0, Math.min(100, ((self.score - previous) / Math.max(1, max - previous)) * 100)) : 100;
+        selfSummary.hidden = false;
+        selfSummary.innerHTML = `<span>我的排名 <strong>${self.rank}</strong></span><span>活跃度 <strong>${self.score}</strong></span><span>称号 <strong>${escapeHtml(self.title)}</strong></span><div><i style="width:${progress}%"></i></div><small>${next ? `距离「${next.title}」还差 ${next.score - self.score} 活跃度` : "你已抵达最高称号"}</small>`;
+      }
+    } catch (error) {
+      rankingList.innerHTML = '<p class="empty-state">活跃榜尚未初始化，请管理员先执行 activity-system.sql。</p>';
+      console.warn("Activity leaderboard load failed:", error.message);
+    }
+  }
+
   async function renderWhispers() {
     const feed = $("[data-whisper-feed]");
     const form = $("[data-whisper-form]");
@@ -1505,7 +1776,9 @@
     ownAvatarNode.style.backgroundImage = ownAvatar ? `url('${ownAvatar}')` : "";
     ownAvatarNode.dataset.profileUserId = state.userId;
 
+    let replyTo = null;
     const emojiPicker = $("[data-whisper-emoji-picker]");
+    const emojiPanel = $("[data-whisper-emoji-panel]");
     emojiPicker.innerHTML = WHISPER_EMOJIS.map((emoji) => `<button type="button" data-whisper-emoji="${emoji}" aria-label="插入表情 ${emoji}">${emoji}</button>`).join("");
     const textarea = form.content;
     $all("[data-whisper-emoji]", emojiPicker).forEach((button) => {
@@ -1517,9 +1790,40 @@
         const cursor = start + button.dataset.whisperEmoji.length;
         textarea.setSelectionRange(cursor, cursor);
         textarea.dispatchEvent(new Event("input", { bubbles: true }));
+        emojiPanel.hidden = true;
       };
     });
     textarea.oninput = () => { $("[data-whisper-count]").textContent = textarea.value.length; };
+
+    const replyBar = $("[data-whisper-replying]");
+    const clearReply = () => { replyTo = null; replyBar.hidden = true; replyBar.querySelector("span").textContent = ""; };
+    $("[data-cancel-whisper-reply]").onclick = clearReply;
+
+    const templatePanel = $("[data-whisper-template-panel]");
+    const templateList = $("[data-whisper-template-list]");
+    const templateAdmin = $("[data-whisper-template-admin]");
+    templateAdmin.hidden = !state.isAdmin;
+    $("[data-whisper-template-toggle]").onclick = () => { templatePanel.hidden = !templatePanel.hidden; emojiPanel.hidden = true; };
+    $("[data-whisper-emoji-toggle]").onclick = () => { emojiPanel.hidden = !emojiPanel.hidden; templatePanel.hidden = true; };
+    $("[data-whisper-bold]").onclick = () => replaceWhisperSelection(textarea, "[[b]]", "[[/b]]");
+    $all("[data-whisper-color]", form).forEach((button) => {
+      button.onclick = () => replaceWhisperSelection(textarea, `[[c:${button.dataset.whisperColor}]]`, "[[/c]]");
+    });
+    const drawTemplates = async () => {
+      try {
+        const templates = await window.XiaoLuoSupabase.listWhisperTemplates();
+        templateList.innerHTML = templates.map((item) => `<div><button type="button" data-use-whisper-template="${escapeHtml(item.id)}" data-template-content="${escapeHtml(item.content)}">${escapeHtml(item.content)}</button>${state.isAdmin ? `<button type="button" data-delete-whisper-template="${escapeHtml(item.id)}" aria-label="删除模板">×</button>` : ""}</div>`).join("") || '<p class="empty-state">暂时没有灵感模板。</p>';
+        $all("[data-use-whisper-template]", templateList).forEach((button) => { button.onclick = () => { textarea.value = button.dataset.templateContent; textarea.focus(); textarea.dispatchEvent(new Event("input", { bubbles: true })); templatePanel.hidden = true; }; });
+        $all("[data-delete-whisper-template]", templateList).forEach((button) => { button.onclick = async () => { if (!await confirmPublish("删除这条灵感模板？", "删除后不会影响已经发布的碎碎念。", "确认删除")) return; await window.XiaoLuoSupabase.deleteWhisperTemplate(button.dataset.deleteWhisperTemplate); await drawTemplates(); }; });
+      } catch (error) { templateList.innerHTML = '<p class="empty-state">请先执行最新版 activity-system.sql。</p>'; }
+    };
+    $("[data-add-whisper-template]").onclick = async () => {
+      const input = $("[data-whisper-template-input]");
+      const content = input.value.trim();
+      if (!content) return;
+      try { await window.XiaoLuoSupabase.addWhisperTemplate(content); input.value = ""; await drawTemplates(); } catch (error) { showCloudError(error); }
+    };
+    await drawTemplates();
 
     const draw = async () => {
       feed.innerHTML = '<p class="empty-state">正在读取碎碎念…</p>';
@@ -1536,13 +1840,27 @@
           $("[data-whisper-feed-title]").textContent = "大家的碎碎念";
           $("[data-whisper-show-all]").hidden = true;
         }
-        feed.innerHTML = items.map((item) => {
+        const repliesByParent = new Map();
+        items.filter((item) => item.parent_id).forEach((item) => {
+          if (!repliesByParent.has(item.parent_id)) repliesByParent.set(item.parent_id, []);
+          repliesByParent.get(item.parent_id).push(item);
+        });
+        const renderReply = (item) => {
           const itemProfile = item.profile || {};
           const name = itemProfile.display_name || "普通用户";
           const avatar = itemProfile.avatar_url || "";
           const canDelete = state.isAdmin || item.user_id === state.userId;
-          return `<article class="whisper-card glass-card${item.user_id === state.userId ? " is-own" : ""}"><button class="whisper-avatar comment-avatar${avatar ? " has-image" : ""}" type="button" data-profile-user-id="${item.user_id}" aria-label="查看${escapeHtml(name)}的资料"${avatar ? ` style="background-image:url('${escapeHtml(avatar)}')"` : ""}>${avatar ? "" : escapeHtml(name.slice(0, 1))}</button><div class="whisper-card-body"><header><button type="button" data-profile-user-id="${item.user_id}">${escapeHtml(name)}</button>${itemProfile.is_admin ? '<span class="whisper-author-badge">作者</span>' : ""}${item.user_id === state.userId ? '<span class="whisper-own-badge">我的碎碎念</span>' : ""}<time>${formatPostDate(item.created_at)}</time></header><p>${escapeHtml(item.content)}</p></div>${canDelete ? `<button class="whisper-delete" type="button" data-delete-whisper="${item.id}" aria-label="删除这条碎碎念">删除</button>` : ""}</article>`;
+          return `<article class="whisper-reply"><button class="whisper-avatar comment-avatar${avatar ? " has-image" : ""}" type="button" data-profile-user-id="${item.user_id}"${avatar ? ` style="background-image:url('${escapeHtml(avatar)}')"` : ""}>${avatar ? "" : escapeHtml(name.slice(0, 1))}</button><div><header><button type="button" data-profile-user-id="${item.user_id}">${escapeHtml(name)}</button><time>${formatPostDate(item.created_at)}</time></header><p class="whisper-rich-text">${renderWhisperContent(item.content)}</p></div>${canDelete ? `<button class="whisper-delete" type="button" data-delete-whisper="${item.id}">删除</button>` : ""}</article>`;
+        };
+        feed.innerHTML = items.filter((item) => !item.parent_id).map((item) => {
+          const itemProfile = item.profile || {};
+          const name = itemProfile.display_name || "普通用户";
+          const avatar = itemProfile.avatar_url || "";
+          const canDelete = state.isAdmin || item.user_id === state.userId;
+          const replies = repliesByParent.get(item.id) || [];
+          return `<article class="whisper-card glass-card${item.user_id === state.userId ? " is-own" : ""}"><button class="whisper-avatar comment-avatar${avatar ? " has-image" : ""}" type="button" data-profile-user-id="${item.user_id}" aria-label="查看${escapeHtml(name)}的资料"${avatar ? ` style="background-image:url('${escapeHtml(avatar)}')"` : ""}>${avatar ? "" : escapeHtml(name.slice(0, 1))}</button><div class="whisper-card-body"><header><button type="button" data-profile-user-id="${item.user_id}">${escapeHtml(name)}</button>${itemProfile.is_admin ? '<span class="whisper-author-badge">作者</span>' : ""}${item.user_id === state.userId ? '<span class="whisper-own-badge">我的碎碎念</span>' : ""}<time>${formatPostDate(item.created_at)}</time></header><p class="whisper-rich-text">${renderWhisperContent(item.content)}</p><button class="comment-reply-button" type="button" data-reply-whisper="${item.id}" data-reply-name="${escapeHtml(name)}">回复</button>${replies.length ? `<div class="whisper-replies">${replies.map(renderReply).join("")}</div>` : ""}</div>${canDelete ? `<button class="whisper-delete" type="button" data-delete-whisper="${item.id}" aria-label="删除这条碎碎念">删除</button>` : ""}</article>`;
         }).join("") || '<p class="empty-state">这里还没有碎碎念，来写下第一条吧。</p>';
+        $all("[data-reply-whisper]", feed).forEach((button) => { button.onclick = () => { replyTo = button.dataset.replyWhisper; replyBar.hidden = false; replyBar.querySelector("span").textContent = `正在回复 ${button.dataset.replyName}`; textarea.focus(); textarea.scrollIntoView({ behavior: "smooth", block: "center" }); }; });
         $all("[data-delete-whisper]", feed).forEach((button) => {
           button.onclick = async () => {
             if (!await confirmPublish("确认删除这条碎碎念？", "删除后无法恢复。", "确认删除")) return;
@@ -1558,14 +1876,17 @@
       form.dataset.bound = "true";
       form.onsubmit = async (event) => {
         event.preventDefault();
+        if (!requireActivityAccess(10, "碎碎念发布功能")) return;
         const content = textarea.value.trim();
         if (!content) return;
         const button = $("button[type='submit']", form);
         button.disabled = true;
         button.textContent = "发布中…";
         try {
-          await window.XiaoLuoSupabase.addWhisper(state.userId, content);
+          await window.XiaoLuoSupabase.addWhisper(state.userId, content, replyTo);
+          await refreshAuthState();
           form.reset();
+          clearReply();
           $("[data-whisper-count]").textContent = "0";
           await draw();
         } catch (error) { showCloudError(error); }
@@ -1782,7 +2103,7 @@
       modal = document.createElement("div");
       modal.className = "modal music-library-modal";
       modal.dataset.musicLibraryModal = "";
-      modal.innerHTML = `<button class="modal-backdrop" type="button" data-music-library-close aria-label="关闭"></button><section class="modal-card glass-card" role="dialog" aria-modal="true" aria-label="音乐歌单"><button class="modal-close" type="button" data-music-library-close aria-label="关闭">×</button><p class="mini-title">MUSIC LIBRARY</p><h2>我的歌单</h2><div class="music-track-list" data-music-track-list></div><div class="music-local-sync" data-music-local-sync hidden><p>检测到 3 首本地新音乐，可替换当前数据库歌单。</p><button type="button" data-sync-local-music>同步本地歌单</button></div><form class="music-upload-form" data-music-upload-form hidden><h3>添加音乐</h3><label><span>音乐文件</span><input name="file" type="file" accept="audio/*" required></label><label><span>歌名</span><input name="title" type="text" maxlength="80" required></label><label><span>歌手/说明</span><input name="artist" type="text" maxlength="80" placeholder="可不填"></label><label><span>分类</span><input name="category" type="text" maxlength="40" placeholder="可不填"></label><button class="primary-button small" type="submit">上传并添加</button></form></section>`;
+      modal.innerHTML = `<button class="modal-backdrop" type="button" data-music-library-close aria-label="关闭"></button><section class="modal-card glass-card" role="dialog" aria-modal="true" aria-label="音乐歌单"><button class="modal-close" type="button" data-music-library-close aria-label="关闭">×</button><p class="mini-title">MUSIC LIBRARY</p><h2>我的歌单</h2><div class="music-track-list" data-music-track-list></div><div class="music-local-sync" data-music-local-sync hidden><p>可将项目内置音乐追加到数据库，已有歌曲不会删除。</p><button type="button" data-sync-local-music>合并本地歌单</button></div><form class="music-upload-form" data-music-upload-form hidden><h3>添加音乐</h3><label><span>音乐文件</span><input name="file" type="file" accept="audio/*" required></label><label><span>歌名</span><input name="title" type="text" maxlength="80" required></label><label><span>歌手/说明</span><input name="artist" type="text" maxlength="80" placeholder="可不填"></label><label><span>分类</span><input name="category" type="text" maxlength="40" placeholder="可不填"></label><button class="primary-button small" type="submit">上传并添加</button></form></section>`;
       document.body.appendChild(modal);
     }
     const list = $("[data-music-track-list]", modal);
@@ -1832,14 +2153,15 @@
     };
     $("[data-sync-local-music]", modal).onclick = async () => {
       if (!canManageMusic) return;
-      if (!await confirmPublish("替换当前歌单？", "旧歌单记录会删除，并切换为本地的 3 首新音乐。", "确认替换")) return;
+      if (!await confirmPublish("合并本地歌单？", "只追加数据库中没有的音乐，已有歌曲和上传文件都会保留。", "确认合并")) return;
       const localTracks = JSON.parse(JSON.stringify(defaultData.music));
       try {
-        await runWithLoading("正在更新歌单…", async () => {
-          await Promise.all(data.music.filter((track) => track.id).map((track) => window.XiaoLuoSupabase.deleteMusicTrack(state.userId, track.id)));
-          const rows = await Promise.all(localTracks.map((track, index) => window.XiaoLuoSupabase.addMusicTrack(state.userId, { title: track.title, artist: track.artist, category: track.category, file_url: track.src, sort_order: index })));
-          data.music = localTracks.map((track, index) => ({ ...track, id: rows[index].id }));
-          state.musicIndex = 0;
+        await runWithLoading("正在合并歌单…", async () => {
+          const keyOf = (track) => `${String(track.title || "").trim().toLowerCase()}|${String(track.artist || "").trim().toLowerCase()}`;
+          const existing = new Set(data.music.map(keyOf));
+          const missing = localTracks.filter((track) => !existing.has(keyOf(track)));
+          const rows = await Promise.all(missing.map((track, index) => window.XiaoLuoSupabase.addMusicTrack(state.userId, { title: track.title, artist: track.artist, category: track.category, file_url: track.src, sort_order: data.music.length + index })));
+          data.music.push(...missing.map((track, index) => ({ ...track, id: rows[index].id })));
         });
         document.dispatchEvent(new CustomEvent("xiaoluo-music-library-updated"));
         openMusicLibrary(true);
@@ -1853,7 +2175,7 @@
     const form = $("[data-article-filter]");
     const pagination = $("[data-pagination]");
     if (!list || !form) return;
-    const pageSize = 4;
+    const pageSize = 6;
     let currentPage = 1;
     form.q.value = params().get("q") || "";
     form.category.value = params().get("category") || "";
@@ -1968,7 +2290,7 @@
         likeButton.classList.toggle("is-liked", engagement.liked);
         likeButton.onclick = async () => {
           if (!state.isLoggedIn) { alert("请先登录后再点赞。"); return; }
-          try { await api.togglePostLike(postId, state.userId, engagement.liked); await loadPostEngagement(postId); } catch (error) { showCloudError(error); }
+          try { await api.togglePostLike(postId, state.userId, engagement.liked); await refreshAuthState(); await loadPostEngagement(postId); } catch (error) { showCloudError(error); }
         };
       }
       const note = $("[data-comment-note]");
@@ -1992,10 +2314,10 @@
       if (form) {
         form.onsubmit = async (event) => {
           event.preventDefault();
-          if (!state.isLoggedIn) { alert("请先登录后发表评论。"); return; }
+          if (!requireActivityAccess(10, "评论功能")) return;
           const content = form.content.value.trim();
           if (!content) return;
-          try { await api.addPostComment(postId, state.userId, content, replyTo); replyTo = null; form.reset(); form.content.placeholder = "写下你的评论"; await loadPostEngagement(postId); } catch (error) { showCloudError(error); }
+          try { await api.addPostComment(postId, state.userId, content, replyTo); replyTo = null; form.reset(); form.content.placeholder = "写下你的评论"; await refreshAuthState(); await loadPostEngagement(postId); } catch (error) { showCloudError(error); }
         };
       }
     } catch (error) {
@@ -2020,14 +2342,17 @@
     if (!wrap) return;
     const type = selector.includes("progress") ? "progress" : "moment";
     wrap.innerHTML = items.map((item) => {
+      const isLocked = type === "moment" && item.isLocked;
       const images = item.images || (item.imageClass ? [item.imageClass] : []);
       const imagePayload = escapeHtml(JSON.stringify(images));
-      const grid = images.length ? `<div class="moment-gallery count-${Math.min(images.length, 9)}">${images.slice(0, 9).map((img, index) => /^https?:\/\//.test(img) ? `<button class="moment-thumb uploaded-image" type="button" data-timeline-images="${imagePayload}" data-timeline-index="${index}" style="background-image:url('${img}')" aria-label="查看第 ${index + 1} 张图片"></button>` : `<button class="moment-thumb ${img}" type="button" data-timeline-images="${imagePayload}" data-timeline-index="${index}" aria-label="查看第 ${index + 1} 张图片"></button>`).join("")}</div>` : "";
+      const grid = isLocked ? '<div class="moment-locked-preview" aria-hidden="true"><i></i><i></i><i></i></div>' : images.length ? `<div class="moment-gallery count-${Math.min(images.length, 9)}">${images.slice(0, 9).map((img, index) => /^https?:\/\//.test(img) ? `<button class="moment-thumb uploaded-image" type="button" data-timeline-images="${imagePayload}" data-timeline-index="${index}" style="background-image:url('${img}')" aria-label="查看第 ${index + 1} 张图片"></button>` : `<button class="moment-thumb ${img}" type="button" data-timeline-images="${imagePayload}" data-timeline-index="${index}" aria-label="查看第 ${index + 1} 张图片"></button>`).join("")}</div>` : "";
       const adminActions = state.isAdmin ? `<button class="timeline-manage-button" type="button" data-manage-timeline-post data-type="${type}" data-id="${escapeHtml(item.id)}" aria-label="管理这条帖子" title="管理帖子">⋯</button>` : "";
-      return `<article class="timeline-item glass-card timeline-openable" data-open-timeline-post data-type="${type}" data-id="${escapeHtml(item.id)}"><time>${escapeHtml(item.date)}</time><div class="timeline-content"><h3>${escapeHtml(item.title)}</h3><div class="timeline-rich-text">${formatRichText(item.text).replace(/\n/g, "<br>")}</div>${grid}<span class="timeline-engagement" data-timeline-card-engagement>阅读 0 · 点赞 0 · 评论 0</span>${adminActions}</div></article>`;
+      const publicToggle = state.isAdmin && type === "moment" ? `<button class="timeline-public-toggle${item.isPublic ? " is-public" : ""}" type="button" data-toggle-moment-public="${escapeHtml(item.id)}">${item.isPublic ? "已公开给全站" : "公开给全站"}</button>` : "";
+      const lockedNotice = isLocked ? '<span class="moment-locked-notice">登录后活跃值达到50可以解锁内容</span>' : "";
+      return `<article class="timeline-item glass-card timeline-openable${isLocked ? " is-locked" : ""}" data-open-timeline-post data-type="${type}" data-id="${escapeHtml(item.id)}"><time>${escapeHtml(item.date)}</time><div class="timeline-content"><h3>${escapeHtml(item.title)}</h3><div class="timeline-rich-text">${formatRichText(item.text).replace(/\n/g, "<br>")}</div>${grid}${lockedNotice}<span class="timeline-engagement" data-timeline-card-engagement>${isLocked ? "内容已锁定" : "阅读 0 · 点赞 0 · 评论 0"}</span>${publicToggle}${adminActions}</div></article>`;
     }).join("") || '<article class="timeline-item glass-card empty-state">暂时还没有内容。</article>';
     highlightCodeBlocks(wrap);
-    items.forEach((item) => loadTimelineCardEngagement(type, item.id, wrap));
+    items.filter((item) => !item.isLocked).forEach((item) => loadTimelineCardEngagement(type, item.id, wrap));
   }
 
   async function loadTimelineCardEngagement(type, id, wrap) {
@@ -2682,8 +3007,10 @@
     window.XiaoLuoSupabase?.getSiteMetrics?.().then((metrics) => {
       const unique = $("[data-stat-unique-visitors]");
       const online = $("[data-stat-online-visitors]");
+      const today = $("[data-stat-today-visitors]");
       if (unique) unique.textContent = metrics.uniqueVisitors.toLocaleString("zh-CN");
       if (online) online.textContent = metrics.onlineVisitors.toLocaleString("zh-CN");
+      if (today) today.textContent = metrics.todayVisitors.toLocaleString("zh-CN");
     }).catch((error) => console.warn("Site metrics load failed; run supabase/site-visitor-stats.sql:", error.message));
   }
 
@@ -2807,6 +3134,7 @@
   function renderCurrentPage() {
     applySavedContent();
     initBrand();
+    ensureActivityNavLink();
     bindThemeButtons();
     bindTextFormatToolbars();
     bindNavToggle();
@@ -2833,13 +3161,13 @@
     if (page === "life") renderTimeline("[data-life-timeline]", data.moments);
     if (page === "progress") renderTimeline("[data-progress-timeline]", data.progress);
     if (page === "about") renderAbout();
+    if (page === "activity") { renderActivityLeaderboard(); renderActivityHeatmap(); renderFriendLinks(); }
     if (page === "photos") renderGallery();
     if (page === "whispers") {
       if (!state.isLoggedIn) showWhisperLoginModal();
       else renderWhispers();
     }
     if (page === "game") {
-      if (!requireLogin("请先登录后再进入小游戏。")) return;
       ensureJumpGame();
     }
     if (page === "dashboard") {
@@ -2896,9 +3224,6 @@
     const close = () => { drawer.classList.remove("open"); toggle.setAttribute("aria-expanded", "false"); };
     toggle.onclick = () => { const open = drawer.classList.toggle("open"); toggle.setAttribute("aria-expanded", String(open)); };
     $("[data-game-drawer-close]", drawer).onclick = close;
-    $("[data-game-entry]", drawer).onclick = (event) => {
-      if (!requireLogin("请先登录后再进入小游戏。")) event.preventDefault();
-    };
   }
 
   function ensureJumpGame() {

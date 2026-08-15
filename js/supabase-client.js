@@ -115,13 +115,17 @@
     },
 
     async getSiteMetrics() {
-      if (!client) return { uniqueVisitors: 0, onlineVisitors: 0 };
-      const { data, error } = await client.rpc("get_site_metrics");
+      if (!client) return { uniqueVisitors: 0, onlineVisitors: 0, todayVisitors: 0 };
+      const [{ data, error }, todayResult] = await Promise.all([
+        client.rpc("get_site_metrics"),
+        client.rpc("get_today_site_visitors")
+      ]);
       if (error) throw error;
       const row = Array.isArray(data) ? data[0] : data;
       return {
         uniqueVisitors: Number(row?.unique_visitors || 0),
-        onlineVisitors: Number(row?.online_visitors || 0)
+        onlineVisitors: Number(row?.online_visitors || 0),
+        todayVisitors: Number(todayResult.data || 0)
       };
     },
 
@@ -150,7 +154,7 @@
 
     async listWhispers(userId = "", limit = 100) {
       let request = client.from("whispers")
-        .select("id, user_id, content, created_at, updated_at")
+        .select("id, user_id, parent_id, content, created_at, updated_at")
         .order("created_at", { ascending: false })
         .limit(limit);
       if (userId) request = request.eq("user_id", userId);
@@ -166,10 +170,10 @@
       return rows.map((item) => ({ ...item, profile: profilesById.get(item.user_id) || null }));
     },
 
-    async addWhisper(userId, content) {
+    async addWhisper(userId, content, parentId = null) {
       const { data, error } = await client.from("whispers")
-        .insert({ user_id: userId, content: String(content || "").trim() })
-        .select("id, user_id, content, created_at, updated_at")
+        .insert({ user_id: userId, parent_id: parentId || null, content: String(content || "").trim() })
+        .select("id, user_id, parent_id, content, created_at, updated_at")
         .single();
       if (error) throw error;
       return data;
@@ -183,7 +187,8 @@
     async getWhisperCount(userId) {
       const { count, error } = await client.from("whispers")
         .select("id", { count: "exact", head: true })
-        .eq("user_id", userId);
+        .eq("user_id", userId)
+        .is("parent_id", null);
       if (error) throw error;
       return count || 0;
     },
@@ -209,7 +214,27 @@
       return count || 0;
     },
 
+    async listWhisperTemplates() {
+      const { data, error } = await client.from("whisper_templates").select("id, content, sort_order, created_at").order("sort_order", { ascending: true }).order("created_at", { ascending: true });
+      if (error) throw error;
+      return data || [];
+    },
+
+    async addWhisperTemplate(content) {
+      const { data: latest } = await client.from("whisper_templates").select("sort_order").order("sort_order", { ascending: false }).limit(1).maybeSingle();
+      const { data, error } = await client.from("whisper_templates").insert({ content: String(content || "").trim(), sort_order: Number(latest?.sort_order || 0) + 10 }).select("id, content, sort_order, created_at").single();
+      if (error) throw error;
+      return data;
+    },
+
+    async deleteWhisperTemplate(templateId) {
+      const { error } = await client.from("whisper_templates").delete().eq("id", templateId);
+      if (error) throw error;
+    },
+
     async listJumpGameRanking(limit = 20) {
+      const { data: rpcRows, error: rpcError } = await client.rpc("list_jump_game_leaderboard", { p_limit: limit });
+      if (!rpcError) return (rpcRows || []).map((row) => ({ ...row, best_score: Number(row.best_score || 0), profile: { display_name: row.display_name, avatar_url: row.avatar_url } }));
       const { data, error } = await client.from("jump_game_scores")
         .select("user_id, best_score, updated_at")
         .order("best_score", { ascending: false })
@@ -256,6 +281,31 @@
         .single();
       if (writeError) throw error;
       return saved;
+    },
+
+    async submitGuestJumpGameScore(guestToken, score) {
+      const { data, error } = await client.rpc("submit_guest_jump_game_score", { p_guest_token: guestToken, p_score: Math.max(0, Math.floor(Number(score) || 0)) });
+      if (error) throw error;
+      const row = Array.isArray(data) ? data[0] : data;
+      return row ? { ...row, best_score: Number(row.best_score || 0) } : null;
+    },
+
+    async listFriendLinks() {
+      const { data, error } = await client.from("friend_links").select("*").order("sort_order", { ascending: true }).order("created_at", { ascending: true });
+      if (error) throw error;
+      return data || [];
+    },
+
+    async addFriendLink(link) {
+      const { data: latest } = await client.from("friend_links").select("sort_order").order("sort_order", { ascending: false }).limit(1).maybeSingle();
+      const { data, error } = await client.from("friend_links").insert({ ...link, sort_order: Number(latest?.sort_order || 0) + 10 }).select().single();
+      if (error) throw error;
+      return data;
+    },
+
+    async deleteFriendLink(linkId) {
+      const { error } = await client.from("friend_links").delete().eq("id", linkId);
+      if (error) throw error;
     },
 
     async getProfile(userId) {
@@ -371,6 +421,12 @@
         ? query.order("entry_date", { ascending: false }).order("created_at", { ascending: false })
         : query.order("created_at", { ascending: false });
       const { data, error } = await query;
+      if (error) throw error;
+      return data || [];
+    },
+
+    async listMomentTeasers(userId) {
+      const { data, error } = await client.rpc("list_locked_moment_teasers", { p_owner_id: userId });
       if (error) throw error;
       return data || [];
     },
@@ -541,6 +597,49 @@
       const { error } = await client.from("content_likes").insert({ content_type: contentType, content_id: contentId, user_id: userId });
       if (error) throw error;
       return true;
+    },
+
+    async getActivityStatus() {
+      const { data, error } = await client.rpc("get_my_activity_status");
+      if (error) throw error;
+      const row = Array.isArray(data) ? data[0] : data;
+      return row ? {
+        score: Number(row.score || 0),
+        title: row.title || "初入人",
+        checkedToday: Boolean(row.checked_today),
+        nextScore: Number(row.next_score || 0),
+        nextTitle: row.next_title || ""
+      } : null;
+    },
+
+    async dailyActivityCheckIn() {
+      const { data, error } = await client.rpc("daily_activity_checkin");
+      if (error) throw error;
+      const row = Array.isArray(data) ? data[0] : data;
+      return row ? { score: Number(row.score || 0), title: row.title || "初入人", checkedToday: true } : null;
+    },
+
+    async listActivityLeaderboard() {
+      const { data, error } = await client.rpc("list_activity_leaderboard");
+      if (error) throw error;
+      return (data || []).map((row) => ({
+        ...row,
+        score: Number(row.score || 0),
+        rank: Number(row.rank || 0)
+      }));
+    },
+
+    async getUserActivitySummary(userId) {
+      const { data, error } = await client.rpc("get_user_activity_summary", { p_user_id: userId });
+      if (error) throw error;
+      const row = Array.isArray(data) ? data[0] : data;
+      return row ? { score: Number(row.score || 0), title: row.title || "初入人" } : null;
+    },
+
+    async getActivityHeatmap(userId = null) {
+      const { data, error } = await client.rpc("get_activity_heatmap", { p_user_id: userId || null });
+      if (error) throw error;
+      return (data || []).map((row) => ({ date: row.activity_date, count: Number(row.activity_count || 0) }));
     },
 
     async listRegisteredUsers() {
