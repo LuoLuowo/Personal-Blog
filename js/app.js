@@ -3440,28 +3440,36 @@
   }
 
   function initGameDrawer() {
-    if (document.body.dataset.gameDrawerBound || !document.querySelector(".site-header")) return;
-    document.body.dataset.gameDrawerBound = "true";
-    const drawer = document.createElement("aside");
-    drawer.className = "blog-game-drawer";
-    drawer.innerHTML = `<button class="blog-game-tab" type="button" data-game-drawer-toggle aria-expanded="false" aria-label="打开小罗自制小游戏"><img src="./assets/images/xiaoluo-jump-game-icon.jpg" alt=""></button><div class="blog-game-drawer-panel"><button class="blog-game-close" type="button" data-game-drawer-close aria-label="关闭小游戏入口">×</button><img src="./assets/images/xiaoluo-jump-game-icon.jpg" alt="小罗跳一跳图标"><p class="mini-title">XIAOLUO MINI GAME</p><h2>小罗自制小游戏</h2><p>小罗跳一跳：按住蓄力，松开起跳。</p><a class="primary-button small" href="./game.html" data-game-entry>开玩</a></div>`;
-    document.body.appendChild(drawer);
-    const toggle = $("[data-game-drawer-toggle]", drawer);
-    const close = () => { drawer.classList.remove("open"); toggle.setAttribute("aria-expanded", "false"); };
-    toggle.onclick = () => { const open = drawer.classList.toggle("open"); toggle.setAttribute("aria-expanded", String(open)); };
-    $("[data-game-drawer-close]", drawer).onclick = close;
+    if (!document.querySelector(".site-header")) return;
+    let drawer = document.querySelector(".blog-game-drawer");
+    if (!drawer) {
+      drawer = document.createElement("aside");
+      drawer.className = "blog-game-drawer";
+      drawer.innerHTML = `<button class="blog-game-tab" type="button" data-game-drawer-toggle aria-expanded="false" aria-label="打开小罗自制小游戏"><img src="./assets/images/xiaoluo-jump-game-icon.jpg" alt=""></button><div class="blog-game-drawer-panel"><button class="blog-game-close" type="button" data-game-drawer-close aria-label="关闭小游戏入口">×</button><img src="./assets/images/xiaoluo-jump-game-icon.jpg" alt="小罗跳一跳图标"><p class="mini-title">XIAOLUO MINI GAME</p><h2>小罗自制小游戏</h2><p>小罗跳一跳：按住蓄力，松开起跳。</p><a class="primary-button small" href="./game.html" data-game-entry>开玩</a></div>`;
+      document.body.appendChild(drawer);
+      const toggle = $("[data-game-drawer-toggle]", drawer);
+      const close = () => { drawer.classList.remove("open"); toggle.setAttribute("aria-expanded", "false"); };
+      toggle.onclick = () => { const open = drawer.classList.toggle("open"); toggle.setAttribute("aria-expanded", String(open)); };
+      $("[data-game-drawer-close]", drawer).onclick = close;
+    }
+    // 游戏页面隐藏右侧抽屉
+    drawer.style.display = pageName() === "game" ? "none" : "";
   }
 
   function ensureJumpGame() {
-    if (window.initXiaoLuoJumpGame) { window.initXiaoLuoJumpGame(); return; }
-    let script = document.querySelector("script[data-jump-game-script]");
-    if (!script) {
-      script = document.createElement("script");
-      script.src = "./js/game.js";
-      script.dataset.jumpGameScript = "true";
-      script.onload = () => window.initXiaoLuoJumpGame?.();
-      document.body.appendChild(script);
-    }
+    const boot = () => {
+      if (window.initXiaoLuoJumpGame) { window.initXiaoLuoJumpGame(); return; }
+      let script = document.querySelector("script[data-jump-game-script]");
+      if (!script) {
+        script = document.createElement("script");
+        script.src = "./js/game.js";
+        script.dataset.jumpGameScript = "true";
+        script.onload = () => window.initXiaoLuoJumpGame?.();
+        document.body.appendChild(script);
+      }
+    };
+    // 双 rAF 确保 PJAX 替换的 DOM 完全就绪后再初始化游戏
+    requestAnimationFrame(() => requestAnimationFrame(boot));
   }
 
   async function navigate(url, push = true) {

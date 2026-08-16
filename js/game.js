@@ -225,7 +225,7 @@
   canvas.addEventListener("pointerleave", () => { if (charging) release(); }, { signal: events.signal });
   document.addEventListener("keydown", (event) => { if (event.code === "Space") { event.preventDefault(); start(); } if (event.code === "KeyR") reset(); }, { signal: events.signal });
   document.addEventListener("keyup", (event) => { if (event.code === "Space") { event.preventDefault(); release(); } }, { signal: events.signal });
-  restart.addEventListener("click", reset, { signal: events.signal });
+  if (restart) restart.addEventListener("click", reset, { signal: events.signal });
 
   // ===== 游客昵称 / 参与排行榜 =====
   const joinBtn = document.querySelector("[data-game-join-btn]");
