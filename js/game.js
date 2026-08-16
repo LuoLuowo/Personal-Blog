@@ -4,7 +4,8 @@
   if (!canvas || canvas.dataset.gameReady || canvas.dataset.gameBooting) return;
   canvas.dataset.gameBooting = "true";
   const api = window.XiaoLuoSupabase;
-  const session = await api?.getSession?.();
+  let session = null;
+  try { session = await api?.getSession?.(); } catch (e) { console.warn("Jump game session check failed:", e); }
   const guestStorageKey = "xiaoluo-jump-game-guest-token";
   const guestNicknameKey = "xiaoluo-jump-game-nickname";
   let guestToken = localStorage.getItem(guestStorageKey);
@@ -12,6 +13,11 @@
   const playerKey = session ? `user:${session.user.id}` : `guest:${guestToken}`;
   // 游客是否已设置昵称参与排行榜
   let guestRegistered = session ? true : Boolean(localStorage.getItem(guestNicknameKey));
+  // 管理员状态
+  let isAdmin = false;
+  if (session && api?.getProfile) {
+    try { const profile = await api.getProfile(session.user.id); isAdmin = Boolean(profile?.is_admin); } catch (e) { console.warn("Admin check failed:", e); }
+  }
   canvas.dataset.gameReady = "true";
   canvas.dataset.gameBooting = "";
   const ctx = canvas.getContext("2d");
@@ -229,11 +235,22 @@
 
   function updateJoinButton() {
     if (!joinBtn) return;
-    // 已登录用户不需要参与按钮，未注册游客显示
-    if (session || guestRegistered) {
-      joinBtn.hidden = true;
+    // 已登录用户：自动上榜，显示状态提示；未注册游客：显示参与按钮
+    if (session) {
+      joinBtn.hidden = false;
+      joinBtn.textContent = "已自动上榜";
+      joinBtn.disabled = true;
+      joinBtn.classList.add("is-active");
+    } else if (guestRegistered) {
+      joinBtn.hidden = false;
+      joinBtn.textContent = "已上榜";
+      joinBtn.disabled = true;
+      joinBtn.classList.add("is-active");
     } else {
       joinBtn.hidden = false;
+      joinBtn.textContent = "参与排行榜";
+      joinBtn.disabled = false;
+      joinBtn.classList.remove("is-active");
     }
   }
 
@@ -293,6 +310,53 @@
     const localBest = Number(localStorage.getItem("xiaoluo-jump-local-best") || 0);
     if (localBest > 0) { best = localBest; bestEl.textContent = best; }
   }
+
+  // ===== 管理员：管理游客榜单 =====
+  const adminPanel = document.querySelector("[data-game-admin-panel]");
+  const adminList = document.querySelector("[data-game-admin-list]");
+  const adminRefresh = document.querySelector("[data-game-admin-refresh]");
+
+  async function renderAdminGuestList() {
+    if (!isAdmin || !adminList || !api?.isConfigured) return;
+    try {
+      const rows = await api.listJumpGameRanking(50);
+      const guests = rows.filter((row) => row.is_guest);
+      if (!guests.length) {
+        adminList.innerHTML = '<li class="game-admin-empty">暂无游客记录</li>';
+        return;
+      }
+      adminList.innerHTML = guests.map((row) => {
+        const token = String(row.player_key || "").replace(/^guest:/, "");
+        return `<li><span class="game-admin-name">${escapeHtml(row.display_name || "游客")}</span><span class="game-admin-score">${row.best_score}分</span><button type="button" class="game-admin-delete" data-delete-guest="${escapeHtml(token)}" data-delete-name="${escapeHtml(row.display_name || "游客")}">删除</button></li>`;
+      }).join("");
+    } catch (error) {
+      adminList.innerHTML = '<li class="game-admin-empty">加载失败</li>';
+    }
+  }
+
+  if (isAdmin && adminPanel) {
+    adminPanel.hidden = false;
+    renderAdminGuestList();
+    if (adminRefresh) adminRefresh.addEventListener("click", renderAdminGuestList, { signal: events.signal });
+  }
+
+  // 删除游客（事件委托，排行榜行和管理面板都用）
+  document.addEventListener("click", async (event) => {
+    const btn = event.target.closest("[data-delete-guest]");
+    if (!btn || !isAdmin) return;
+    const token = btn.dataset.deleteGuest;
+    const name = btn.dataset.deleteName || "该游客";
+    if (!window.confirm(`确定删除游客「${name}」的榜单记录吗？`)) return;
+    btn.disabled = true;
+    try {
+      await api.deleteGuestJumpScore(token);
+      await renderRanking();
+      await renderAdminGuestList();
+    } catch (error) {
+      window.alert("删除失败：" + (error.message || "未知错误"));
+      btn.disabled = false;
+    }
+  }, { signal: events.signal });
 
   updateJoinButton();
   renderRanking();

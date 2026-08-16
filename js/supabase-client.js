@@ -541,7 +541,14 @@
 
     async listJumpGameRanking(limit = 20) {
       const { data: rpcRows, error: rpcError } = await client.rpc("list_jump_game_leaderboard", { p_limit: limit });
-      if (!rpcError) return (rpcRows || []).map((row) => ({ ...row, best_score: Number(row.best_score || 0), profile: { display_name: row.display_name, avatar_url: row.avatar_url } }));
+      if (!rpcError) return (rpcRows || []).map((row) => ({
+        player_key: row.out_player_key || row.player_key,
+        display_name: row.out_display_name || row.display_name,
+        avatar_url: row.out_avatar_url || row.avatar_url,
+        best_score: Number(row.out_best_score ?? row.best_score ?? 0),
+        is_guest: row.out_is_guest ?? row.is_guest,
+        profile: { display_name: row.out_display_name || row.display_name, avatar_url: row.out_avatar_url || row.avatar_url }
+      }));
       const { data, error } = await client.from("jump_game_scores")
         .select("user_id, best_score, updated_at")
         .order("best_score", { ascending: false })
@@ -575,7 +582,10 @@
 
     async submitJumpGameScore(score) {
       const { data, error } = await client.rpc("submit_jump_game_score", { p_score: Math.max(0, Math.floor(Number(score) || 0)) });
-      if (!error) return data;
+      if (!error) {
+        const row = Array.isArray(data) ? data[0] : data;
+        return row ? { best_score: Number(row.out_best_score ?? row.best_score ?? 0) } : null;
+      }
       const session = await this.getSession();
       if (!session) throw error;
       const nextScore = Math.max(0, Math.floor(Number(score) || 0));
@@ -594,14 +604,19 @@
       const { data, error } = await client.rpc("submit_guest_jump_game_score", { p_guest_token: guestToken, p_score: Math.max(0, Math.floor(Number(score) || 0)) });
       if (error) throw error;
       const row = Array.isArray(data) ? data[0] : data;
-      return row ? { ...row, best_score: Number(row.best_score || 0) } : null;
+      return row ? { display_name: row.out_display_name || row.display_name, best_score: Number(row.out_best_score ?? row.best_score ?? 0) } : null;
     },
 
     async setGuestNickname(guestToken, nickname) {
       const { data, error } = await client.rpc("set_guest_nickname", { p_guest_token: guestToken, p_nickname: String(nickname || "").trim() });
       if (error) throw error;
       const row = Array.isArray(data) ? data[0] : data;
-      return row ? { ...row, best_score: Number(row.best_score || 0) } : null;
+      return row ? { display_name: row.out_display_name || row.display_name, best_score: Number(row.out_best_score ?? row.best_score ?? 0) } : null;
+    },
+
+    async deleteGuestJumpScore(guestToken) {
+      const { error } = await client.rpc("delete_guest_jump_score", { p_guest_token: guestToken });
+      if (error) throw error;
     },
 
     async listFriendLinks() {

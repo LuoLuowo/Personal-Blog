@@ -42,12 +42,20 @@
           <div><p class="mini-title">LEADERBOARD</p><h2>跳一跳排行</h2></div>
           <div class="game-leaderboard-actions">
             <span>最高分</span>
-            <button type="button" class="game-join-btn" data-game-join-btn hidden>参与排行榜</button>
+            <button type="button" class="game-join-btn" data-game-join-btn>参与排行榜</button>
           </div>
         </div>
         <ol class="game-ranking-list" data-game-ranking-list>
           <li class="game-ranking-empty">正在加载排行榜…</li>
         </ol>
+        <div class="game-admin-panel" data-game-admin-panel hidden>
+          <div class="game-admin-head">
+            <p class="mini-title">ADMIN</p>
+            <h3>管理游客榜单</h3>
+            <button type="button" class="game-admin-refresh" data-game-admin-refresh>刷新</button>
+          </div>
+          <ol class="game-admin-list" data-game-admin-list></ol>
+        </div>
       </aside>
     </section>
   </main>
