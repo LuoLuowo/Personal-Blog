@@ -989,7 +989,7 @@
       el.textContent = state.isAdmin ? "管理员已登录，管理博客内容" : "小罗的个人博客";
     });
     $all("[data-dashboard-status-text]").forEach((el) => {
-      el.textContent = state.isAdmin ? "现在可以进入后台管理文章、动态和资料。" : "登录后可以参与点赞与评论。";
+      el.textContent = state.isAdmin ? "现在可以进入后台管理文章、动态和资料。" : "点赞无需登录，登录后可参与评论。";
     });
     return session;
   }
@@ -1609,11 +1609,11 @@
     const drawEngagement = async () => {
       try {
         await window.XiaoLuoSupabase.recordContentView(type, item.id, state.userId);
-        const engagement = await window.XiaoLuoSupabase.getContentEngagement(type, item.id, state.userId);
+        const engagement = await window.XiaoLuoSupabase.getContentEngagement(type, item.id, state.userId, window.XiaoLuoSupabase.getVisitorId());
         const button = $("[data-timeline-like]", modal);
         button.textContent = engagement.liked ? `已点赞 ${engagement.likes}` : `点赞 ${engagement.likes}`;
         button.classList.toggle("is-liked", engagement.liked);
-        button.onclick = async () => { if (!state.isLoggedIn) return alert("请先登录后再点赞。"); try { await window.XiaoLuoSupabase.toggleContentLike(type, item.id, state.userId, engagement.liked); await refreshAuthState(); drawEngagement(); } catch (error) { showCloudError(error); } };
+        button.onclick = async () => { try { await window.XiaoLuoSupabase.toggleContentLike(type, item.id, state.userId, engagement.liked, window.XiaoLuoSupabase.getVisitorId()); await refreshAuthState(); drawEngagement(); } catch (error) { showCloudError(error); } };
         $("[data-timeline-engagement]", modal).textContent = `阅读 ${engagement.views} · 评论 ${engagement.comments}`;
       } catch (error) { console.warn("Timeline engagement load failed:", error.message); }
     };
@@ -2286,7 +2286,7 @@
     if (!api?.isConfigured) return;
     try {
       await api.recordPostView(postId, state.userId);
-      const engagement = await api.getPostEngagement(postId, state.userId);
+      const engagement = await api.getPostEngagement(postId, state.userId, api.getVisitorId());
       const summary = $("[data-post-engagement]");
       if (summary) summary.textContent = `阅读 ${engagement.views} · 点赞 ${engagement.likes} · 评论 ${engagement.comments.length}`;
       const likeButton = $("[data-post-like]");
@@ -2294,8 +2294,7 @@
         likeButton.textContent = engagement.liked ? `已点赞 ${engagement.likes}` : `点赞 ${engagement.likes}`;
         likeButton.classList.toggle("is-liked", engagement.liked);
         likeButton.onclick = async () => {
-          if (!state.isLoggedIn) { alert("请先登录后再点赞。"); return; }
-          try { await api.togglePostLike(postId, state.userId, engagement.liked); await refreshAuthState(); await loadPostEngagement(postId); } catch (error) { showCloudError(error); }
+          try { await api.togglePostLike(postId, state.userId, engagement.liked, api.getVisitorId()); await refreshAuthState(); await loadPostEngagement(postId); } catch (error) { showCloudError(error); }
         };
       }
       const note = $("[data-comment-note]");
@@ -2362,7 +2361,7 @@
 
   async function loadTimelineCardEngagement(type, id, wrap) {
     try {
-      const engagement = await window.XiaoLuoSupabase.getContentEngagement(type, id, state.userId);
+      const engagement = await window.XiaoLuoSupabase.getContentEngagement(type, id, state.userId, window.XiaoLuoSupabase.getVisitorId());
       const card = wrap.querySelector(`[data-open-timeline-post][data-id="${id}"]`);
       const target = card?.querySelector("[data-timeline-card-engagement]");
       if (target) target.textContent = `阅读 ${engagement.views} · 点赞 ${engagement.likes} · 评论 ${engagement.comments}`;

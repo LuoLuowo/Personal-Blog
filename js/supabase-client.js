@@ -270,6 +270,7 @@
   window.XiaoLuoSupabase = {
     client,
     isConfigured,
+    getVisitorId,
 
     async signUpWithEmail(email, password) {
       if (!client) throw new Error("Supabase 还没有配置。");
@@ -789,12 +790,17 @@
       return data;
     },
 
-    async getPostEngagement(postId, userId) {
+    async getPostEngagement(postId, userId, visitorId) {
+      const ownLikeQuery = userId
+        ? client.from("post_likes").select("id").eq("post_id", postId).eq("user_id", userId).maybeSingle()
+        : visitorId
+          ? client.from("post_likes").select("id").eq("post_id", postId).eq("visitor_id", visitorId).maybeSingle()
+          : Promise.resolve({ data: null, error: null });
       const [likes, views, comments, ownLike] = await Promise.all([
         client.from("post_likes").select("id", { count: "exact", head: true }).eq("post_id", postId),
         client.from("post_views").select("id", { count: "exact", head: true }).eq("post_id", postId),
         client.from("post_comments").select("id, content, created_at, user_id, parent_id").eq("post_id", postId).order("created_at", { ascending: true }),
-        userId ? client.from("post_likes").select("id").eq("post_id", postId).eq("user_id", userId).maybeSingle() : Promise.resolve({ data: null, error: null })
+        ownLikeQuery
       ]);
       if (likes.error || views.error || comments.error || ownLike.error) throw likes.error || views.error || comments.error || ownLike.error;
       const commentRows = comments.data || [];
@@ -830,13 +836,20 @@
       if (error) throw error;
     },
 
-    async togglePostLike(postId, userId, liked) {
+    async togglePostLike(postId, userId, liked, visitorId) {
+      const isAnonymous = !userId && visitorId;
       if (liked) {
-        const { error } = await client.from("post_likes").delete().eq("post_id", postId).eq("user_id", userId);
+        let query = client.from("post_likes").delete().eq("post_id", postId);
+        query = isAnonymous ? query.eq("visitor_id", visitorId) : query.eq("user_id", userId);
+        const { error } = await query;
         if (error) throw error;
         return false;
       }
-      const { error } = await client.from("post_likes").insert({ post_id: postId, user_id: userId });
+      const { error } = await client.from("post_likes").insert({
+        post_id: postId,
+        user_id: userId || null,
+        visitor_id: isAnonymous ? visitorId : null
+      });
       if (error) throw error;
       return true;
     },
@@ -884,12 +897,17 @@
       if (error) throw error;
     },
 
-    async getContentEngagement(contentType, contentId, userId) {
+    async getContentEngagement(contentType, contentId, userId, visitorId) {
+      const ownLikeQuery = userId
+        ? client.from("content_likes").select("id").eq("content_type", contentType).eq("content_id", contentId).eq("user_id", userId).maybeSingle()
+        : visitorId
+          ? client.from("content_likes").select("id").eq("content_type", contentType).eq("content_id", contentId).eq("visitor_id", visitorId).maybeSingle()
+          : Promise.resolve({ data: null, error: null });
       const [likes, views, comments, ownLike] = await Promise.all([
         client.from("content_likes").select("id", { count: "exact", head: true }).eq("content_type", contentType).eq("content_id", contentId),
         client.from("content_views").select("id", { count: "exact", head: true }).eq("content_type", contentType).eq("content_id", contentId),
         client.from("content_comments").select("id", { count: "exact", head: true }).eq("content_type", contentType).eq("content_id", contentId),
-        userId ? client.from("content_likes").select("id").eq("content_type", contentType).eq("content_id", contentId).eq("user_id", userId).maybeSingle() : Promise.resolve({ data: null, error: null })
+        ownLikeQuery
       ]);
       if (likes.error || views.error || comments.error || ownLike.error) throw likes.error || views.error || comments.error || ownLike.error;
       return { likes: likes.count || 0, views: views.count || 0, comments: comments.count || 0, liked: Boolean(ownLike.data) };
@@ -901,13 +919,21 @@
       if (error) throw error;
     },
 
-    async toggleContentLike(contentType, contentId, userId, liked) {
+    async toggleContentLike(contentType, contentId, userId, liked, visitorId) {
+      const isAnonymous = !userId && visitorId;
       if (liked) {
-        const { error } = await client.from("content_likes").delete().eq("content_type", contentType).eq("content_id", contentId).eq("user_id", userId);
+        let query = client.from("content_likes").delete().eq("content_type", contentType).eq("content_id", contentId);
+        query = isAnonymous ? query.eq("visitor_id", visitorId) : query.eq("user_id", userId);
+        const { error } = await query;
         if (error) throw error;
         return false;
       }
-      const { error } = await client.from("content_likes").insert({ content_type: contentType, content_id: contentId, user_id: userId });
+      const { error } = await client.from("content_likes").insert({
+        content_type: contentType,
+        content_id: contentId,
+        user_id: userId || null,
+        visitor_id: isAnonymous ? visitorId : null
+      });
       if (error) throw error;
       return true;
     },
