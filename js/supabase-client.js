@@ -17,6 +17,225 @@
     return userId ? `user:${userId}` : `visitor:${getVisitorId()}`;
   }
 
+  // IP 信息缓存，避免每次心跳都请求第三方接口
+  let cachedIpInfo = null;
+  let ipInfoPromise = null;
+
+  // 用户信息缓存，避免每次心跳都查数据库
+  let cachedUserInfo = null;
+  let userInfoCacheTime = 0;
+
+  // 中国省份中英文映射
+  const CN_PROVINCE_MAP = {
+    "Beijing": "北京", "Tianjin": "天津", "Hebei": "河北", "Shanxi": "山西",
+    "Inner Mongolia": "内蒙古", "Liaoning": "辽宁", "Jilin": "吉林",
+    "Heilongjiang": "黑龙江", "Shanghai": "上海", "Jiangsu": "江苏",
+    "Zhejiang": "浙江", "Anhui": "安徽", "Fujian": "福建", "Jiangxi": "江西",
+    "Shandong": "山东", "Henan": "河南", "Hubei": "湖北", "Hunan": "湖南",
+    "Guangdong": "广东", "Guangxi": "广西", "Hainan": "海南",
+    "Chongqing": "重庆", "Sichuan": "四川", "Guizhou": "贵州",
+    "Yunnan": "云南", "Tibet": "西藏", "Shaanxi": "陕西", "Gansu": "甘肃",
+    "Qinghai": "青海", "Ningxia": "宁夏", "Xinjiang": "新疆",
+    "Taiwan": "台湾", "Hong Kong": "香港", "Macau": "澳门"
+  };
+
+  // 中国主要城市中英文映射
+  const CN_CITY_MAP = {
+    "Zhengzhou": "郑州", "Kaifeng": "开封", "Luoyang": "洛阳",
+    "Pingdingshan": "平顶山", "Anyang": "安阳", "Hebi": "鹤壁",
+    "Xinxiang": "新乡", "Jiaozuo": "焦作", "Puyang": "濮阳",
+    "Xuchang": "许昌", "Luohe": "漯河", "Sanmenxia": "三门峡",
+    "Nanyang": "南阳", "Shangqiu": "商丘", "Xinyang": "信阳",
+    "Zhoukou": "周口", "Zhumadian": "驻马店", "Jiyuan": "济源",
+    "Guangzhou": "广州", "Shenzhen": "深圳", "Hangzhou": "杭州",
+    "Nanjing": "南京", "Wuhan": "武汉", "Chengdu": "成都",
+    "Xi'an": "西安", "Xian": "西安", "Changsha": "长沙", "Jinan": "济南",
+    "Qingdao": "青岛", "Dalian": "大连", "Xiamen": "厦门",
+    "Suzhou": "苏州", "Wuxi": "无锡", "Ningbo": "宁波",
+    "Hefei": "合肥", "Fuzhou": "福州", "Harbin": "哈尔滨",
+    "Changchun": "长春", "Shenyang": "沈阳", "Shijiazhuang": "石家庄",
+    "Taiyuan": "太原", "Nanchang": "南昌", "Kunming": "昆明",
+    "Guiyang": "贵阳", "Lanzhou": "兰州", "Urumqi": "乌鲁木齐",
+    "Nanning": "南宁", "Haikou": "海口", "Lhasa": "拉萨",
+    "Yinchuan": "银川", "Xining": "西宁", "Tangshan": "唐山",
+    "Qinhuangdao": "秦皇岛", "Handan": "邯郸", "Baoding": "保定",
+    "Zhangjiakou": "张家口", "Chengde": "承德", "Cangzhou": "沧州",
+    "Langfang": "廊坊", "Hengshui": "衡水", "Datong": "大同",
+    "Yangquan": "阳泉", "Changzhi": "长治", "Jincheng": "晋城",
+    "Shuozhou": "朔州", "Jinzhong": "晋中", "Yuncheng": "运城",
+    "Xinzhou": "忻州", "Linfen": "临汾", "Lvliang": "吕梁",
+    "Wuhu": "芜湖", "Bengbu": "蚌埠", "Huainan": "淮南",
+    "Maanshan": "马鞍山", "Huaibei": "淮北", "Tongling": "铜陵",
+    "Anqing": "安庆", "Huangshan": "黄山", "Chuzhou": "滁州",
+    "Fuyang": "阜阳", "Suzhou-Anhui": "宿州", "Lu'an": "六安",
+    "Bozhou": "亳州", "Chizhou": "池州", "Xuancheng": "宣城",
+    "Putian": "莆田", "Sanming": "三明", "Quanzhou": "泉州",
+    "Zhangzhou": "漳州", "Nanping": "南平", "Longyan": "龙岩",
+    "Ningde": "宁德", "Jingdezhen": "景德镇", "Pingxiang": "萍乡",
+    "Jiujiang": "九江", "Xinyu": "新余", "Yingtan": "鹰潭",
+    "Ganzhou": "赣州", "Ji'an": "吉安", "Yichun": "宜春",
+    "Fuzhou-Jiangxi": "抚州", "Shangrao": "上饶", "Zibo": "淄博",
+    "Zaozhuang": "枣庄", "Dongying": "东营", "Yantai": "烟台",
+    "Weifang": "潍坊", "Jining": "济宁", "Tai'an": "泰安",
+    "Weihai": "威海", "Rizhao": "日照", "Linyi": "临沂",
+    "Dezhou": "德州", "Liaocheng": "聊城", "Binzhou": "滨州",
+    "Heze": "菏泽", "Huangshi": "黄石", "Shiyan": "十堰",
+    "Yichang": "宜昌", "Xiangyang": "襄阳", "Ezhou": "鄂州",
+    "Jingmen": "荆门", "Xiaogan": "孝感", "Jingzhou": "荆州",
+    "Huanggang": "黄冈", "Xianning": "咸宁", "Suizhou": "随州",
+    "Enshi": "恩施", "Zhuzhou": "株洲", "Xiangtan": "湘潭",
+    "Hengyang": "衡阳", "Shaoyang": "邵阳", "Yueyang": "岳阳",
+    "Changde": "常德", "Zhangjiajie": "张家界", "Yiyang": "益阳",
+    "Chenzhou": "郴州", "Yongzhou": "永州", "Huaihua": "怀化",
+    "Loudi": "娄底", "Xiangxi": "湘西", "Shaoguan": "韶关",
+    "Zhuhai": "珠海", "Shantou": "汕头", "Foshan": "佛山",
+    "Jiangmen": "江门", "Zhanjiang": "湛江", "Maoming": "茂名",
+    "Zhaoqing": "肇庆", "Huizhou": "惠州", "Meizhou": "梅州",
+    "Shanwei": "汕尾", "Heyuan": "河源", "Yangjiang": "阳江",
+    "Qingyuan": "清远", "Dongguan": "东莞", "Zhongshan": "中山",
+    "Chaozhou": "潮州", "Jieyang": "揭阳", "Yunfu": "云浮",
+    "Liuzhou": "柳州", "Guilin": "桂林", "Wuzhou": "梧州",
+    "Beihai": "北海", "Fangchenggang": "防城港", "Qinzhou": "钦州",
+    "Guigang": "贵港", "Yulin": "玉林", "Baise": "百色",
+    "Hezhou": "贺州", "Hechi": "河池", "Laibin": "来宾",
+    "Chongzuo": "崇左", "Sanya": "三亚", "Sansha": "三沙",
+    "Danzhou": "儋州", "Wuzhong": "吴忠", "Guyaun": "固原",
+    "Zhongwei": "中卫", "Shizuishan": "石嘴山", "Panzhihua": "攀枝花",
+    "Luzhou": "泸州", "Deyang": "德阳", "Mianyang": "绵阳",
+    "Guangyuan": "广元", "Suining": "遂宁", "Neijiang": "内江",
+    "Leshan": "乐山", "Nanchong": "南充", "Meishan": "眉山",
+    "Yibin": "宜宾", "Guang'an": "广安", "Dazhou": "达州",
+    "Ya'an": "雅安", "Bazhong": "巴中", "Ziyang": "资阳",
+    "Aba": "阿坝", "Garze": "甘孜", "Liangshan": "凉山",
+    "Liupanshui": "六盘水", "Zunyi": "遵义", "Anshun": "安顺",
+    "Bijie": "毕节", "Tongren": "铜仁", "Qujing": "曲靖",
+    "Yuxi": "玉溪", "Baoshan": "保山", "Zhaotong": "昭通",
+    "Lijiang": "丽江", "Pu'er": "普洱", "Lincang": "临沧",
+    "Chuxiong": "楚雄", "Honghe": "红河", "Wenshan": "文山",
+    "Xishuangbanna": "西双版纳", "Dali": "大理", "Dehong": "德宏",
+    "Nujiang": "怒江", "Diqu": "迪庆", "Lhasa": "拉萨",
+    "Tongchuan": "铜川", "Baoji": "宝鸡", "Xianyang": "咸阳",
+    "Weinan": "渭南", "Yan'an": "延安", "Hanzhong": "汉中",
+    "Yulin": "榆林", "Ankang": "安康", "Shangluo": "商洛",
+    "Jiayuguan": "嘉峪关", "Jinchang": "金昌", "Baiyin": "白银",
+    "Tianshui": "天水", "Wuwei": "武威", "Zhangye": "张掖",
+    "Pingliang": "平凉", "Jiuquan": "酒泉", "Qingyang": "庆阳",
+    "Dingxi": "定西", "Longnan": "陇南", "Linxia": "临夏",
+    "Gannan": "甘南", "Xiangyang": "襄阳", "Lijiang": "丽江"
+  };
+
+  function toChineseLocation(json) {
+    // 国内接口直接返回中文，拼接省/市/区
+    if (json.__chinese) {
+      const parts = [];
+      if (json.province) parts.push(json.province);
+      if (json.city && json.city !== json.province) parts.push(json.city);
+      if (json.district && json.district !== json.city) parts.push(json.district);
+      return parts.join(" ") || (json.country || "中国");
+    }
+    const isChina = json.country_code === "CN" || json.country === "China";
+    if (!isChina) {
+      const parts = [];
+      if (json.country) parts.push(json.country);
+      if (json.region && json.region !== json.country) parts.push(json.region);
+      if (json.city && json.city !== json.region) parts.push(json.city);
+      return parts.join(" ") || (json.country_code || "未知位置");
+    }
+    const province = CN_PROVINCE_MAP[json.region] || json.region || "";
+    const city = CN_CITY_MAP[json.city] || json.city || "";
+    const result = [province, city].filter(Boolean).join(" ");
+    return result || "中国";
+  }
+
+  async function fetchIpInfo() {
+    if (cachedIpInfo) return cachedIpInfo;
+    if (ipInfoPromise) return ipInfoPromise;
+    ipInfoPromise = (async () => {
+      // 同时查询多个国内IP库，取精度最高的结果
+      const candidates = await Promise.allSettled([
+        // 1. 太平洋电脑网IP库（国内老牌，精度到区县）
+        (async () => {
+          const resp = await fetch("https://whois.pconline.com.cn/ipJson.jsp?json=true", { cache: "no-store" });
+          if (!resp.ok) throw new Error("pconline status " + resp.status);
+          const text = await resp.text();
+          // 该接口可能返回JSONP或带BOM，尝试提取JSON
+          const jsonMatch = text.match(/\{[\s\S]*\}/);
+          if (!jsonMatch) throw new Error("pconline no json");
+          const d = JSON.parse(jsonMatch[0]);
+          if (!d || !d.ip) throw new Error("pconline invalid");
+          const parts = [];
+          if (d.pro) parts.push(d.pro.replace(/省$/, ""));
+          if (d.city && d.city !== d.pro) parts.push(d.city.replace(/市$/, ""));
+          if (d.region && d.region !== d.city) parts.push(d.region.replace(/县$/, "").replace(/区$/, ""));
+          return { ip: d.ip, location: parts.join(" ") || d.addr || "中国", precision: parts.length };
+        })(),
+        // 2. useragentinfo（国内接口）
+        (async () => {
+          const resp = await fetch("https://ip.useragentinfo.com/json", { cache: "no-store" });
+          if (!resp.ok) throw new Error("uai status");
+          const d = await resp.json();
+          if (!d || !d.ip) throw new Error("uai invalid");
+          const parts = [];
+          if (d.province) parts.push(d.province.replace(/省$/, ""));
+          if (d.city && d.city !== d.province) parts.push(d.city.replace(/市$/, ""));
+          if (d.district && d.district !== d.city) parts.push(d.district.replace(/县$/, "").replace(/区$/, ""));
+          return { ip: d.ip, location: parts.join(" ") || "中国", precision: parts.length };
+        })(),
+        // 3. ipwho.is（国外接口，兜底）
+        (async () => {
+          const resp = await fetch("https://ipwho.is/", { cache: "no-store" });
+          if (!resp.ok) throw new Error("ipwho status");
+          const d = await resp.json();
+          if (!d || d.success === false || !d.ip) throw new Error("ipwho invalid");
+          return { ip: d.ip, location: toChineseLocation(d), precision: d.city ? 2 : d.region ? 1 : 0 };
+        })()
+      ]);
+
+      // 从成功结果中选精度最高（precision最大）的
+      let best = null;
+      for (const r of candidates) {
+        if (r.status === "fulfilled" && r.value && r.value.ip) {
+          if (!best || r.value.precision > best.precision) best = r.value;
+        }
+      }
+
+      if (!best) {
+        console.warn("IP geolocation failed: all providers unavailable");
+        cachedIpInfo = { ip: "", location: "" };
+        ipInfoPromise = null;
+        return cachedIpInfo;
+      }
+      cachedIpInfo = { ip: best.ip, location: best.location };
+      return cachedIpInfo;
+    })();
+    return ipInfoPromise;
+  }
+
+  async function getCurrentUserInfo() {
+    if (!client) return { userId: null, userName: null };
+    const now = Date.now();
+    if (cachedUserInfo && now - userInfoCacheTime < 60000) return cachedUserInfo;
+    try {
+      const { data } = await client.auth.getUser();
+      const user = data?.user;
+      if (!user) { cachedUserInfo = { userId: null, userName: null }; userInfoCacheTime = now; return cachedUserInfo; }
+      const { data: profile } = await client.from("profiles")
+        .select("display_name")
+        .eq("id", user.id)
+        .maybeSingle();
+      cachedUserInfo = {
+        userId: user.id,
+        userName: profile?.display_name || user.email || "登录用户"
+      };
+      userInfoCacheTime = now;
+      return cachedUserInfo;
+    } catch (_) {
+      cachedUserInfo = { userId: null, userName: null };
+      userInfoCacheTime = now;
+      return cachedUserInfo;
+    }
+  }
+
   window.XiaoLuoSupabase = {
     client,
     isConfigured,
@@ -102,15 +321,35 @@
 
     async trackVisit(pagePath) {
       if (!client) return;
+      const results = await Promise.allSettled([fetchIpInfo(), getCurrentUserInfo()]);
+      const ipInfo = results[0].status === "fulfilled" ? results[0].value : { ip: "", location: "" };
+      const userInfo = results[1].status === "fulfilled" ? results[1].value : { userId: null, userName: null };
       await Promise.allSettled([
         client.from("page_views").insert({ page_path: pagePath, user_agent: navigator.userAgent }),
-        client.rpc("record_site_presence", { p_visitor_id: getVisitorId(), p_page_path: pagePath })
+        client.rpc("record_site_presence", {
+          p_visitor_id: getVisitorId(),
+          p_page_path: pagePath,
+          p_ip_address: ipInfo.ip || null,
+          p_ip_location: ipInfo.location || null,
+          p_user_id: userInfo.userId || null,
+          p_user_name: userInfo.userName || null
+        })
       ]);
     },
 
     async heartbeatPresence(pagePath) {
       if (!client) return;
-      const { error } = await client.rpc("record_site_presence", { p_visitor_id: getVisitorId(), p_page_path: pagePath });
+      const results = await Promise.allSettled([fetchIpInfo(), getCurrentUserInfo()]);
+      const ipInfo = results[0].status === "fulfilled" ? results[0].value : { ip: "", location: "" };
+      const userInfo = results[1].status === "fulfilled" ? results[1].value : { userId: null, userName: null };
+      const { error } = await client.rpc("record_site_presence", {
+        p_visitor_id: getVisitorId(),
+        p_page_path: pagePath,
+        p_ip_address: ipInfo.ip || null,
+        p_ip_location: ipInfo.location || null,
+        p_user_id: userInfo.userId || null,
+        p_user_name: userInfo.userName || null
+      });
       if (error && error.code !== "PGRST202") throw error;
     },
 
@@ -127,6 +366,27 @@
         onlineVisitors: Number(row?.online_visitors || 0),
         todayVisitors: Number(todayResult.data || 0)
       };
+    },
+
+    async getOnlineVisitorsDetail() {
+      if (!client) return [];
+      const { data, error } = await client.rpc("get_online_visitors_detail");
+      if (error) throw error;
+      return data || [];
+    },
+
+    async getTodayVisitorsDetail() {
+      if (!client) return [];
+      const { data, error } = await client.rpc("get_today_visitors_detail");
+      if (error) throw error;
+      return data || [];
+    },
+
+    async getAllVisitorsDetail() {
+      if (!client) return [];
+      const { data, error } = await client.rpc("get_all_visitors_detail");
+      if (error) throw error;
+      return data || [];
     },
 
     async listGuestbookMessages(limit = 40) {
@@ -285,6 +545,13 @@
 
     async submitGuestJumpGameScore(guestToken, score) {
       const { data, error } = await client.rpc("submit_guest_jump_game_score", { p_guest_token: guestToken, p_score: Math.max(0, Math.floor(Number(score) || 0)) });
+      if (error) throw error;
+      const row = Array.isArray(data) ? data[0] : data;
+      return row ? { ...row, best_score: Number(row.best_score || 0) } : null;
+    },
+
+    async setGuestNickname(guestToken, nickname) {
+      const { data, error } = await client.rpc("set_guest_nickname", { p_guest_token: guestToken, p_nickname: String(nickname || "").trim() });
       if (error) throw error;
       const row = Array.isArray(data) ? data[0] : data;
       return row ? { ...row, best_score: Number(row.best_score || 0) } : null;

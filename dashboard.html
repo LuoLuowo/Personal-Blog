@@ -44,6 +44,7 @@
       <a href="#progress-settings">进步簿</a>
       <a href="#about-settings">关于我设置</a>
       <a class="active" href="#dashboard">仪表盘</a>
+      <a href="#visitor-monitor">实时在线</a>
       <a href="#users">注册用户</a>
       <button type="button" data-placeholder-action="logout">退出登录</button>
     </aside>
@@ -89,6 +90,29 @@
           <h3>存储占用</h3>
           <p>小罗注意用量，数据库内存不多😊</p>
         </article>
+      </section>
+
+      <section class="admin-panel glass-card visitor-monitor-panel" id="visitor-monitor">
+        <div class="section-heading compact">
+          <div>
+            <p class="mini-title">REAL-TIME MONITOR (BETA)</p>
+            <h2>实时在线人数内测</h2>
+            <p>查看在线用户、今日访客和所有访客的 IP 位置与访问时间。</p>
+          </div>
+          <button class="primary-button small" type="button" data-visitor-toggle>查看在线用户</button>
+        </div>
+        <div class="visitor-monitor-body" data-visitor-body hidden>
+          <div class="visitor-tabs" data-visitor-tabs>
+            <button type="button" class="visitor-tab active" data-visitor-tab="online">实时在线</button>
+            <button type="button" class="visitor-tab" data-visitor-tab="today">今日访问</button>
+            <button type="button" class="visitor-tab" data-visitor-tab="all">所有访问</button>
+            <button type="button" class="visitor-refresh" data-visitor-refresh aria-label="刷新">↻</button>
+          </div>
+          <div class="visitor-list" data-visitor-list>
+            <p class="empty-state">点击上方按钮加载数据…</p>
+          </div>
+          <p class="visitor-note" data-visitor-note></p>
+        </div>
       </section>
 
       <section class="admin-panel glass-card" id="tags">

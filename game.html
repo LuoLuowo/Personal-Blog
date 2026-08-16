@@ -37,10 +37,13 @@
         <canvas data-jump-canvas width="800" height="1120" aria-label="小罗跳一跳游戏画面"></canvas>
         <p class="game-hint" data-game-hint>按住画面开始蓄力</p>
       </section>
-      <aside class="game-leaderboard" aria-label="鹧鸪跳一跳排行榜">
+      <aside class="game-leaderboard" aria-label="跳一跳排行榜">
         <div class="game-leaderboard-head">
           <div><p class="mini-title">LEADERBOARD</p><h2>跳一跳排行</h2></div>
-          <span>最高分</span>
+          <div class="game-leaderboard-actions">
+            <span>最高分</span>
+            <button type="button" class="game-join-btn" data-game-join-btn hidden>参与排行榜</button>
+          </div>
         </div>
         <ol class="game-ranking-list" data-game-ranking-list>
           <li class="game-ranking-empty">正在加载排行榜…</li>
@@ -48,5 +51,20 @@
       </aside>
     </section>
   </main>
+
+  <div class="modal game-nickname-modal" data-game-nickname-modal>
+    <button class="modal-backdrop" type="button" data-game-nickname-close aria-label="关闭"></button>
+    <section class="modal-card glass-card" role="dialog" aria-modal="true" aria-labelledby="game-nickname-title">
+      <button class="modal-close" type="button" data-game-nickname-close aria-label="关闭">×</button>
+      <p class="mini-title">JOIN LEADERBOARD</p>
+      <h2 id="game-nickname-title">参与排行榜</h2>
+      <p class="game-nickname-desc">请填写您的上榜名，参与竞争榜</p>
+      <form class="game-nickname-form" data-game-nickname-form>
+        <input type="text" name="nickname" maxlength="20" placeholder="输入你的昵称（1-20字）" required />
+        <button class="primary-button" type="submit">确认上榜</button>
+      </form>
+      <p class="game-nickname-error" data-game-nickname-error hidden></p>
+    </section>
+  </div>
 </body>
 </html>

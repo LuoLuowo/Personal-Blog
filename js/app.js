@@ -3042,6 +3042,118 @@
     });
   }
 
+  function formatVisitorTime(iso) {
+    if (!iso) return "--";
+    try {
+      const d = new Date(iso);
+      const pad = (n) => String(n).padStart(2, "0");
+      return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+    } catch (_) {
+      return String(iso);
+    }
+  }
+
+  let visitorMonitorState = { tab: "online", loading: false, allRows: [], displayCount: 20 };
+
+  async function renderVisitorDetail() {
+    const listEl = $("[data-visitor-list]");
+    const noteEl = $("[data-visitor-note]");
+    if (!listEl) return;
+    const api = window.XiaoLuoSupabase;
+    if (!api) { listEl.innerHTML = '<p class="empty-state">Supabase 未配置。</p>'; return; }
+    visitorMonitorState.loading = true;
+    listEl.innerHTML = '<p class="empty-state">正在加载…</p>';
+    try {
+      const tab = visitorMonitorState.tab;
+      let rows = [];
+      if (tab === "online") rows = await api.getOnlineVisitorsDetail?.() || [];
+      else if (tab === "today") rows = await api.getTodayVisitorsDetail?.() || [];
+      else rows = await api.getAllVisitorsDetail?.() || [];
+
+      visitorMonitorState.allRows = rows;
+      visitorMonitorState.displayCount = 20;
+
+      if (!rows.length) {
+        listEl.innerHTML = `<p class="empty-state">${tab === "online" ? "当前没有在线用户。" : tab === "today" ? "今天还没有带 IP 记录的访客。" : "暂无带 IP 记录的访客数据。"}</p>`;
+        if (noteEl) noteEl.textContent = tab === "all" ? "提示：此功能上线前的旧访客没有 IP 记录，已自动过滤。" : "";
+        return;
+      }
+
+      renderVisitorRows();
+    } catch (error) {
+      listEl.innerHTML = `<p class="empty-state">加载失败：${escapeHtml(error.message || "未知错误")}</p>`;
+      console.warn("Visitor detail load failed:", error);
+    } finally {
+      visitorMonitorState.loading = false;
+    }
+  }
+
+  function renderVisitorRows() {
+    const listEl = $("[data-visitor-list]");
+    const noteEl = $("[data-visitor-note]");
+    if (!listEl) return;
+    const tab = visitorMonitorState.tab;
+    const rows = visitorMonitorState.allRows || [];
+    const count = visitorMonitorState.displayCount || 20;
+    const visible = rows.slice(0, count);
+    const html = visible.map((row) => {
+      const isLoggedIn = Boolean(row.user_name);
+      const nameBadge = isLoggedIn
+        ? `<span class="visitor-badge logged-in">${escapeHtml(row.user_name)}</span>`
+        : `<span class="visitor-badge guest">未登录</span>`;
+      const ipText = row.ip_address ? escapeHtml(row.ip_address) : "未知 IP";
+      const locText = row.ip_location ? escapeHtml(row.ip_location) : "未知位置";
+      const timeText = formatVisitorTime(row.last_seen);
+      return `<article class="visitor-row">
+        <div class="visitor-row-main">
+          ${nameBadge}
+          <span class="visitor-ip">${ipText}</span>
+          <span class="visitor-loc">${locText}</span>
+        </div>
+        <time class="visitor-time">${timeText}</time>
+      </article>`;
+    }).join("");
+    const hasMore = rows.length > count;
+    listEl.innerHTML = html + (hasMore ? `<button class="visitor-load-more" type="button" data-visitor-load-more>加载更多（还有 ${rows.length - count} 条）</button>` : "");
+    if (noteEl) {
+      noteEl.textContent = `共 ${rows.length} 条记录${tab === "all" ? "（仅显示有 IP 记录的访客，旧数据已过滤）" : ""}。`;
+    }
+  }
+
+  function initVisitorMonitor() {
+    const toggleBtn = $("[data-visitor-toggle]");
+    const body = $("[data-visitor-body]");
+    if (!toggleBtn || !body) return;
+    toggleBtn.addEventListener("click", () => {
+      const isHidden = body.hasAttribute("hidden");
+      if (isHidden) {
+        body.removeAttribute("hidden");
+        toggleBtn.textContent = "收起";
+        renderVisitorDetail();
+      } else {
+        body.setAttribute("hidden", "");
+        toggleBtn.textContent = "查看在线用户";
+      }
+    });
+    $all("[data-visitor-tab]").forEach((tabBtn) => {
+      tabBtn.addEventListener("click", () => {
+        $all("[data-visitor-tab]").forEach((b) => b.classList.remove("active"));
+        tabBtn.classList.add("active");
+        visitorMonitorState.tab = tabBtn.dataset.visitorTab;
+        renderVisitorDetail();
+      });
+    });
+    const refreshBtn = $("[data-visitor-refresh]");
+    if (refreshBtn) refreshBtn.addEventListener("click", () => { if (!visitorMonitorState.loading) renderVisitorDetail(); });
+    // 加载更多按钮（事件委托，因为按钮是动态生成的）
+    document.addEventListener("click", (event) => {
+      const btn = event.target.closest("[data-visitor-load-more]");
+      if (!btn) return;
+      visitorMonitorState.displayCount = (visitorMonitorState.displayCount || 20) + 20;
+      renderVisitorRows();
+    });
+  }
+
   function renderContentManagers() {
     const albumWrap = $("[data-album-manager]");
     const momentWrap = $("[data-moment-manager]");
@@ -3175,6 +3287,7 @@
         if (!state.isAdmin) return;
         initDashboardSectionSpy();
         initContentManagement();
+        initVisitorMonitor();
         renderAdminPosts();
         renderContentManagers();
         renderDashboardStats();

@@ -6,9 +6,12 @@
   const api = window.XiaoLuoSupabase;
   const session = await api?.getSession?.();
   const guestStorageKey = "xiaoluo-jump-game-guest-token";
+  const guestNicknameKey = "xiaoluo-jump-game-nickname";
   let guestToken = localStorage.getItem(guestStorageKey);
   if (!session && !guestToken) { guestToken = crypto.randomUUID(); localStorage.setItem(guestStorageKey, guestToken); }
   const playerKey = session ? `user:${session.user.id}` : `guest:${guestToken}`;
+  // 游客是否已设置昵称参与排行榜
+  let guestRegistered = session ? true : Boolean(localStorage.getItem(guestNicknameKey));
   canvas.dataset.gameReady = "true";
   canvas.dataset.gameBooting = "";
   const ctx = canvas.getContext("2d");
@@ -45,7 +48,7 @@
   const renderRanking = async () => {
     if (!rankingList || !api?.isConfigured) return;
     try {
-      const rows = await api.listJumpGameRanking(20);
+      const rows = await api.listJumpGameRanking(50);
       const rowKey = (row) => row.player_key || (row.user_id ? `user:${row.user_id}` : `guest:${row.guest_token}`);
       let mine = rows.find((row) => rowKey(row) === playerKey);
       if (!mine && session) mine = await api.getMyJumpGameScore(session.user.id);
@@ -57,10 +60,10 @@
         const key = rowKey(row);
         const profileUserId = row.user_id || (String(key).startsWith("user:") ? String(key).slice(5) : "");
         const isMine = key === playerKey;
-        const name = profile.display_name || row.display_name || (isMine ? (session ? "我" : "罗星人") : `普通用户${index + 1}`);
+        const name = profile.display_name || row.display_name || `玩家${index + 1}`;
         const avatarStyle = profile.avatar_url ? ` style="background-image:url('${escapeHtml(profile.avatar_url)}')"` : "";
         const rank = isMine && !rows.some((entry) => rowKey(entry) === playerKey) ? "我" : index + 1;
-        const avatar = row.is_guest ? '<span class="game-ranking-avatar game-guest-avatar">罗</span>' : `<button class="game-ranking-avatar" type="button" data-profile-user-id="${escapeHtml(profileUserId)}" aria-label="查看${escapeHtml(name)}的资料"${avatarStyle}>${profile.avatar_url ? "" : escapeHtml(name.slice(0, 1))}</button>`;
+        const avatar = row.is_guest ? '<span class="game-ranking-avatar game-guest-avatar">游</span>' : `<button class="game-ranking-avatar" type="button" data-profile-user-id="${escapeHtml(profileUserId)}" aria-label="查看${escapeHtml(name)}的资料"${avatarStyle}>${profile.avatar_url ? "" : escapeHtml(name.slice(0, 1))}</button>`;
         return `<li class="game-ranking-row${isMine ? " is-me" : ""}"><span class="game-ranking-rank">${rank}</span>${avatar}<strong class="game-ranking-name">${escapeHtml(name)}${isMine ? "（我）" : ""}</strong><span class="game-ranking-score">${row.best_score}</span></li>`;
       }).join("") || '<li class="game-ranking-empty">完成一局游戏后，这里会显示你的成绩。</li>';
     } catch (error) {
@@ -71,6 +74,14 @@
 
   const saveScore = async () => {
     if (!api?.isConfigured || score <= 0) return;
+    // 游客未设置昵称时不上传成绩，仅保留本地最高分
+    if (!session && !guestRegistered) {
+      const localBest = Number(localStorage.getItem("xiaoluo-jump-local-best") || 0);
+      if (score > localBest) localStorage.setItem("xiaoluo-jump-local-best", String(score));
+      best = Math.max(best, score);
+      bestEl.textContent = best;
+      return;
+    }
     try {
       const saved = session ? await api.submitJumpGameScore(score) : await api.submitGuestJumpGameScore(guestToken, score);
       best = Math.max(best, Number(saved?.best_score || 0));
@@ -209,6 +220,81 @@
   document.addEventListener("keydown", (event) => { if (event.code === "Space") { event.preventDefault(); start(); } if (event.code === "KeyR") reset(); }, { signal: events.signal });
   document.addEventListener("keyup", (event) => { if (event.code === "Space") { event.preventDefault(); release(); } }, { signal: events.signal });
   restart.addEventListener("click", reset, { signal: events.signal });
+
+  // ===== 游客昵称 / 参与排行榜 =====
+  const joinBtn = document.querySelector("[data-game-join-btn]");
+  const nicknameModal = document.querySelector("[data-game-nickname-modal]");
+  const nicknameForm = document.querySelector("[data-game-nickname-form]");
+  const nicknameError = document.querySelector("[data-game-nickname-error]");
+
+  function updateJoinButton() {
+    if (!joinBtn) return;
+    // 已登录用户不需要参与按钮，未注册游客显示
+    if (session || guestRegistered) {
+      joinBtn.hidden = true;
+    } else {
+      joinBtn.hidden = false;
+    }
+  }
+
+  function openNicknameModal() {
+    if (!nicknameModal) return;
+    nicknameModal.classList.add("open");
+    const input = nicknameForm?.querySelector("input[name='nickname']");
+    if (input) { input.value = ""; setTimeout(() => input.focus(), 50); }
+    if (nicknameError) nicknameError.hidden = true;
+  }
+
+  function closeNicknameModal() {
+    if (!nicknameModal) return;
+    nicknameModal.classList.remove("open");
+  }
+
+  if (joinBtn) joinBtn.addEventListener("click", openNicknameModal, { signal: events.signal });
+  document.querySelectorAll("[data-game-nickname-close]").forEach((btn) => {
+    btn.addEventListener("click", closeNicknameModal, { signal: events.signal });
+  });
+
+  if (nicknameForm) {
+    nicknameForm.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      const input = nicknameForm.querySelector("input[name='nickname']");
+      const nickname = input?.value?.trim();
+      if (!nickname) return;
+      if (nicknameError) { nicknameError.hidden = true; nicknameError.textContent = ""; }
+      try {
+        const result = await api.setGuestNickname(guestToken, nickname);
+        if (result) {
+          localStorage.setItem(guestNicknameKey, result.display_name);
+          guestRegistered = true;
+          updateJoinButton();
+          closeNicknameModal();
+          // 如果当前有本地最高分，立即上传
+          const localBest = Number(localStorage.getItem("xiaoluo-jump-local-best") || 0);
+          if (localBest > 0) {
+            await api.submitGuestJumpGameScore(guestToken, localBest);
+            localStorage.removeItem("xiaoluo-jump-local-best");
+          }
+          best = Number(result.best_score || 0);
+          bestEl.textContent = best;
+          renderRanking();
+        }
+      } catch (error) {
+        if (nicknameError) {
+          nicknameError.textContent = error.message || "设置失败，请重试";
+          nicknameError.hidden = false;
+        }
+      }
+    }, { signal: events.signal });
+  }
+
+  // 未注册游客加载本地最高分
+  if (!session && !guestRegistered) {
+    const localBest = Number(localStorage.getItem("xiaoluo-jump-local-best") || 0);
+    if (localBest > 0) { best = localBest; bestEl.textContent = best; }
+  }
+
+  updateJoinButton();
   renderRanking();
   reset();
   window.destroyXiaoLuoJumpGame = () => {

@@ -2397,3 +2397,252 @@ body.dark-mode .about-contact-link.instagram > i { color: #e4405f; }
   .hero-search { transform: translateY(-42%); }
   .hero-search:focus-within { transform: translateY(calc(-42% - 2px)); }
 }
+
+/* ===== 实时在线人数内测 (Visitor Monitor) ===== */
+.visitor-monitor-panel .section-heading { align-items: center; }
+.visitor-monitor-body { margin-top: 18px; }
+.visitor-tabs {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 16px;
+  flex-wrap: wrap;
+}
+.visitor-tab {
+  padding: 7px 18px;
+  border-radius: 999px;
+  border: 1px solid var(--border-color, rgba(255,255,255,.14));
+  background: transparent;
+  color: var(--text-secondary, #999);
+  font-size: 14px;
+  cursor: pointer;
+  transition: all .2s;
+}
+.visitor-tab:hover { color: var(--text-primary, #fff); border-color: rgba(255,255,255,.3); }
+.visitor-tab.active {
+  background: var(--accent, #6366f1);
+  color: #fff;
+  border-color: var(--accent, #6366f1);
+}
+.visitor-refresh {
+  margin-left: auto;
+  width: 34px; height: 34px;
+  border-radius: 50%;
+  border: 1px solid var(--border-color, rgba(255,255,255,.14));
+  background: transparent;
+  color: var(--text-secondary, #999);
+  font-size: 16px;
+  cursor: pointer;
+  transition: all .2s;
+}
+.visitor-refresh:hover { color: var(--text-primary, #fff); transform: rotate(90deg); }
+.visitor-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  max-height: 480px;
+  overflow-y: auto;
+  padding-right: 4px;
+}
+.visitor-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 16px;
+  border-radius: 14px;
+  background: rgba(255,255,255,.04);
+  border: 1px solid rgba(255,255,255,.06);
+  transition: background .2s;
+}
+.visitor-row:hover { background: rgba(255,255,255,.07); }
+.visitor-row-main {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  min-width: 0;
+}
+.visitor-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.visitor-badge.logged-in { background: rgba(34,197,94,.15); color: #4ade80; border: 1px solid rgba(34,197,94,.3); }
+.visitor-badge.guest { background: rgba(148,163,184,.12); color: #94a3b8; border: 1px solid rgba(148,163,184,.25); }
+.visitor-ip {
+  font-family: 'Courier New', monospace;
+  font-size: 13px;
+  color: var(--text-primary, #e5e7eb);
+  background: rgba(255,255,255,.05);
+  padding: 3px 8px;
+  border-radius: 6px;
+}
+.visitor-loc {
+  font-size: 13px;
+  color: var(--text-secondary, #a0a0a0);
+}
+.visitor-page {
+  font-size: 12px;
+  color: var(--text-muted, #777);
+  background: rgba(255,255,255,.03);
+  padding: 2px 7px;
+  border-radius: 5px;
+  max-width: 180px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.visitor-time {
+  font-size: 12px;
+  color: var(--text-muted, #888);
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+.visitor-note {
+  margin-top: 12px;
+  font-size: 12px;
+  color: var(--text-muted, #777);
+}
+@media (max-width: 640px) {
+  .visitor-row { flex-direction: column; align-items: flex-start; }
+  .visitor-time { align-self: flex-end; }
+}
+
+/* ===== 跳一跳排行榜：参与排行榜按钮 + 昵称弹窗 + 移动端提示 ===== */
+.game-leaderboard-actions {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 8px;
+}
+.game-leaderboard-actions > span {
+  font-size: 12px;
+  color: var(--text-muted, #888);
+}
+.game-join-btn {
+  padding: 5px 14px;
+  border-radius: 999px;
+  border: 1px solid rgba(99,102,241,.5);
+  background: rgba(99,102,241,.12);
+  color: #a5b4fc;
+  font-size: 12px;
+  cursor: pointer;
+  transition: all .2s;
+  white-space: nowrap;
+}
+.game-join-btn:hover {
+  background: rgba(99,102,241,.25);
+  color: #c7d2fe;
+  border-color: rgba(99,102,241,.8);
+}
+.game-nickname-modal .modal-card {
+  max-width: 380px;
+  text-align: center;
+}
+.game-nickname-modal h2 { margin: 8px 0 6px; }
+.game-nickname-desc {
+  font-size: 14px;
+  color: var(--text-secondary, #a0a0a0);
+  margin-bottom: 20px;
+}
+.game-nickname-form {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.game-nickname-form input {
+  width: 100%;
+  padding: 12px 16px;
+  border-radius: 12px;
+  border: 1px solid var(--border-color, rgba(255,255,255,.14));
+  background: rgba(255,255,255,.05);
+  color: var(--text-primary, #fff);
+  font-size: 15px;
+  outline: none;
+  transition: border-color .2s;
+}
+.game-nickname-form input:focus {
+  border-color: rgba(99,102,241,.6);
+}
+.game-nickname-form .primary-button {
+  width: 100%;
+}
+.game-nickname-error {
+  margin-top: 10px;
+  font-size: 13px;
+  color: #f87171;
+}
+.game-mobile-toast {
+  position: fixed;
+  bottom: 20px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 900;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 16px;
+  border-radius: 14px;
+  background: rgba(15,23,42,.95);
+  border: 1px solid rgba(99,102,241,.4);
+  box-shadow: 0 8px 32px rgba(0,0,0,.4);
+  max-width: calc(100vw - 32px);
+  backdrop-filter: blur(12px);
+}
+.game-mobile-toast p {
+  font-size: 13px;
+  color: #e2e8f0;
+  margin: 0;
+  white-space: nowrap;
+}
+.game-mobile-toast button[type='button']:not(.game-mobile-toast-close) {
+  padding: 6px 14px;
+  border-radius: 8px;
+  border: none;
+  background: #6366f1;
+  color: #fff;
+  font-size: 13px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.game-mobile-toast-close {
+  background: none;
+  border: none;
+  color: #94a3b8;
+  font-size: 18px;
+  cursor: pointer;
+  padding: 0 4px;
+  line-height: 1;
+}
+.game-guest-avatar {
+  background: rgba(148,163,184,.2) !important;
+  color: #94a3b8 !important;
+}
+@media (max-width: 768px) {
+  .game-leaderboard-actions { flex-direction: row; align-items: center; }
+}
+
+/* 访客列表加载更多按钮 */
+.visitor-load-more {
+  display: block;
+  width: 100%;
+  margin-top: 10px;
+  padding: 10px;
+  border-radius: 10px;
+  border: 1px dashed var(--border-color, rgba(255,255,255,.18));
+  background: transparent;
+  color: var(--text-secondary, #a0a0a0);
+  font-size: 13px;
+  cursor: pointer;
+  transition: all .2s;
+}
+.visitor-load-more:hover {
+  border-color: rgba(99,102,241,.5);
+  color: #a5b4fc;
+  background: rgba(99,102,241,.06);
+}
