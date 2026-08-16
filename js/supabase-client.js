@@ -151,9 +151,33 @@
     if (cachedIpInfo) return cachedIpInfo;
     if (ipInfoPromise) return ipInfoPromise;
     ipInfoPromise = (async () => {
-      // 同时查询多个IP库，支持IPv4和IPv6，取有位置且精度最高的
+      // 优先调用服务端接口（Vercel Serverless Function，最稳妥）
+      try {
+        const resp = await fetch("/api/visitor-info", { cache: "no-store" });
+        if (resp.ok) {
+          const data = await resp.json();
+          if (data && data.ip) {
+            const location = data.location
+              ? data.location
+              : toChineseLocation({
+                  country: data.country,
+                  country_code: data.country_code,
+                  region: data.region,
+                  city: data.city
+                });
+            cachedIpInfo = {
+              ip: data.ip,
+              location: location && location !== "中国" ? location : "未知地址"
+            };
+            return cachedIpInfo;
+          }
+        }
+      } catch (_) {
+        // 服务端接口不可用（如本地开发），降级到前端方案
+      }
+
+      // 降级：前端同时查询多个IP库，取有位置且精度最高的
       const candidates = await Promise.allSettled([
-        // 1. 太平洋电脑网IP库（国内老牌，IPv4精度到区县）
         (async () => {
           const resp = await fetch("https://whois.pconline.com.cn/ipJson.jsp?json=true", { cache: "no-store" });
           if (!resp.ok) throw new Error("pconline status");
@@ -168,7 +192,6 @@
           if (d.region && d.region !== d.city) parts.push(d.region.replace(/县$/, "").replace(/区$/, ""));
           return { ip: d.ip, location: parts.join(" ") || (d.addr && d.addr !== "中国" ? d.addr : ""), precision: parts.length };
         })(),
-        // 2. useragentinfo（国内接口，支持IPv6）
         (async () => {
           const resp = await fetch("https://ip.useragentinfo.com/json", { cache: "no-store" });
           if (!resp.ok) throw new Error("uai status");
@@ -180,7 +203,6 @@
           if (d.district && d.district !== d.city) parts.push(d.district.replace(/县$/, "").replace(/区$/, ""));
           return { ip: d.ip, location: parts.join(" "), precision: parts.length };
         })(),
-        // 3. api.ip.sb（支持IPv6，返回英文）
         (async () => {
           const resp = await fetch("https://api.ip.sb/geoip", { cache: "no-store" });
           if (!resp.ok) throw new Error("ipsb status");
@@ -188,7 +210,6 @@
           if (!d || !d.ip) throw new Error("ipsb invalid");
           return { ip: d.ip, location: toChineseLocation({ country: d.country, country_code: d.country_code, region: d.region, city: d.city }), precision: d.city ? 2 : d.region ? 1 : 0 };
         })(),
-        // 4. ipwho.is（支持IPv6，兜底）
         (async () => {
           const resp = await fetch("https://ipwho.is/", { cache: "no-store" });
           if (!resp.ok) throw new Error("ipwho status");
@@ -198,28 +219,23 @@
         })()
       ]);
 
-      // 优先选有位置的，再按精度排序
       let best = null;
       for (const r of candidates) {
         if (r.status !== "fulfilled" || !r.value || !r.value.ip) continue;
         const hasLocation = r.value.location && r.value.location !== "中国" && r.value.location !== "未知位置";
         if (!best) { best = r.value; continue; }
         const bestHasLoc = best.location && best.location !== "中国" && best.location !== "未知位置";
-        // 有位置的优先于没位置的
         if (hasLocation && !bestHasLoc) { best = r.value; continue; }
         if (!hasLocation && bestHasLoc) continue;
-        // 都有位置或都没位置，按精度
         if (r.value.precision > best.precision) best = r.value;
       }
 
       if (!best) {
-        console.warn("IP geolocation failed: all providers unavailable");
-        cachedIpInfo = { ip: "", location: "" };
+        cachedIpInfo = { ip: "", location: "未知地址" };
         ipInfoPromise = null;
         return cachedIpInfo;
       }
-      // 如果位置为空或只有"中国"，标记为未知
-      if (!best.location || best.location === "中国") best.location = "未知位置";
+      if (!best.location || best.location === "中国") best.location = "未知地址";
       cachedIpInfo = { ip: best.ip, location: best.location };
       return cachedIpInfo;
     })();
@@ -347,7 +363,8 @@
           p_ip_address: ipInfo.ip || null,
           p_ip_location: ipInfo.location || null,
           p_user_id: userInfo.userId || null,
-          p_user_name: userInfo.userName || null
+          p_user_name: userInfo.userName || null,
+          p_increment_count: true
         })
       ]);
     },
@@ -400,6 +417,20 @@
     async getAllVisitorsDetail() {
       if (!client) return [];
       const { data, error } = await client.rpc("get_all_visitors_detail");
+      if (error) throw error;
+      return data || [];
+    },
+
+    async getRepeatVisitorsDetail() {
+      if (!client) return [];
+      const { data, error } = await client.rpc("get_repeat_visitors_detail");
+      if (error) throw error;
+      return data || [];
+    },
+
+    async getRepeatVisitorsDetail() {
+      if (!client) return [];
+      const { data, error } = await client.rpc("get_repeat_visitors_detail");
       if (error) throw error;
       return data || [];
     },

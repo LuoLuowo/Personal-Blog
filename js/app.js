@@ -350,7 +350,12 @@
   }
 
   function formatExcerpt(paragraphs) {
-    return (paragraphs || []).filter(Boolean).slice(0, 2).map((paragraph) => `<p>${formatRichText(paragraph)}</p>`).join("") || "<p>点击查看文章详情。</p>";
+    const items = (paragraphs || []).filter(Boolean).slice(0, 2);
+    if (!items.length) return "<p>点击查看文章详情。</p>";
+    // 首页摘要：剥离 HTML 标签，纯文本截断，避免列表/代码块撑开卡片
+    const plain = items.map((item) => String(item).replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim()).filter(Boolean).join(" ");
+    const truncated = plain.length > 90 ? plain.slice(0, 90) + "…" : plain;
+    return `<p>${escapeHtml(truncated)}</p>`;
   }
 
   function sortTimelineByDate(items) {
@@ -2249,7 +2254,7 @@
         <h1>${escapeHtml(post.title)}</h1>
         <div class="article-meta detail-meta"><span>${escapeHtml(post.author)}</span><span>${formatPostDate(post.publishedAt)}</span><span>${escapeHtml(post.category)}</span></div>
         <div class="tag-row">${post.tags.map((tag) => `<a href="./articles.html?tag=${encodeURIComponent(tag)}">#${escapeHtml(tag)}</a>`).join("")}</div>
-        ${post.coverUrl ? `<div class="detail-cover ${post.coverClass}" style="background-image:url('${post.coverUrl}')"></div>` : ""}
+        ${post.coverUrl ? `<div class="detail-cover"><img src="${post.coverUrl}" alt="${escapeHtml(post.title)} 封面"></div>` : ""}
         <div class="post-content">${renderPostContent(post.content)}</div>
         ${post.attachments?.length ? `<section class="post-attachments"><h2>附件下载</h2>${post.attachments.map((file) => `<a href="${file.url}" data-protected-download download="${escapeHtml(file.name)}" target="_blank" rel="noopener">下载：${escapeHtml(file.name)}</a>`).join("")}</section>` : ""}
         <div class="post-actions">
@@ -3068,13 +3073,14 @@
       let rows = [];
       if (tab === "online") rows = await api.getOnlineVisitorsDetail?.() || [];
       else if (tab === "today") rows = await api.getTodayVisitorsDetail?.() || [];
+      else if (tab === "repeat") rows = await api.getRepeatVisitorsDetail?.() || [];
       else rows = await api.getAllVisitorsDetail?.() || [];
 
       visitorMonitorState.allRows = rows;
       visitorMonitorState.displayCount = 20;
 
       if (!rows.length) {
-        listEl.innerHTML = `<p class="empty-state">${tab === "online" ? "当前没有在线用户。" : tab === "today" ? "今天还没有带 IP 记录的访客。" : "暂无带 IP 记录的访客数据。"}</p>`;
+        listEl.innerHTML = `<p class="empty-state">${tab === "online" ? "当前没有在线用户。" : tab === "today" ? "今天还没有带 IP 记录的访客。" : tab === "repeat" ? "暂无访问 2 次及以上的重复访客。" : "暂无带 IP 记录的访客数据。"}</p>`;
         if (noteEl) noteEl.textContent = tab === "all" ? "提示：此功能上线前的旧访客没有 IP 记录，已自动过滤。" : "";
         return;
       }
@@ -3101,19 +3107,34 @@
       const nameBadge = isLoggedIn
         ? `<span class="visitor-badge logged-in">${escapeHtml(row.user_name)}</span>`
         : `<span class="visitor-badge guest">未登录</span>`;
-      // IPv6截断显示，IPv4正常显示
-      let ipText = row.ip_address ? escapeHtml(row.ip_address) : "未知 IP";
-      if (row.ip_address && row.ip_address.includes(":") && row.ip_address.length > 20) {
-        const segs = row.ip_address.split(":");
+      // IPv6截断显示，IPv4正常显示；点击可复制完整地址
+      const fullIp = row.ip_address || "";
+      let ipText = fullIp ? escapeHtml(fullIp) : "未知 IP";
+      if (fullIp && fullIp.includes(":") && fullIp.length > 20) {
+        const segs = fullIp.split(":");
         ipText = escapeHtml(segs.slice(0, 3).join(":") + "…" + segs.slice(-1)[0]);
       }
-      const locText = row.ip_location ? escapeHtml(row.ip_location) : "未知位置";
+      const ipEl = fullIp
+        ? `<button type="button" class="visitor-ip" data-copy-ip="${escapeHtml(fullIp)}" title="点击复制完整 IP 地址">${ipText}</button>`
+        : `<span class="visitor-ip">未知 IP</span>`;
+      // 访问次数徽章
+      const visitCount = Number(row.visit_count) || 1;
+      const countBadge = `<span class="visitor-count" title="累计访问次数">第${visitCount}次</span>`;
+      // 位置显示，未知位置提供 hiofd 手动查询链接
+      let locEl;
+      if (row.ip_location && row.ip_location !== "未知地址") {
+        locEl = `<span class="visitor-loc">${escapeHtml(row.ip_location)}</span>`;
+      } else {
+        const queryUrl = `https://tool.hiofd.com/ip/?ip=${encodeURIComponent(fullIp)}`;
+        locEl = `<span class="visitor-loc unknown">未知位置 <a href="${queryUrl}" target="_blank" rel="noopener" class="visitor-loc-lookup" title="使用 hiofd 查询此 IP 归属地">查位置</a></span>`;
+      }
       const timeText = formatVisitorTime(row.last_seen);
       return `<article class="visitor-row">
         <div class="visitor-row-main">
           ${nameBadge}
-          <span class="visitor-ip" title="${escapeHtml(row.ip_address || "")}">${ipText}</span>
-          <span class="visitor-loc">${locText}</span>
+          ${ipEl}
+          ${countBadge}
+          ${locEl}
         </div>
         <time class="visitor-time">${timeText}</time>
       </article>`;
@@ -3121,8 +3142,52 @@
     const hasMore = rows.length > count;
     listEl.innerHTML = html + (hasMore ? `<button class="visitor-load-more" type="button" data-visitor-load-more>加载更多（还有 ${rows.length - count} 条）</button>` : "");
     if (noteEl) {
-      noteEl.textContent = `共 ${rows.length} 条记录${tab === "all" ? "（仅显示有 IP 记录的访客，旧数据已过滤）" : ""}。`;
+      noteEl.textContent = `共 ${rows.length} 条记录${tab === "all" ? "（仅显示有 IP 记录的访客，旧数据已过滤）" : ""}。点击 IP 地址可复制完整地址。`;
     }
+  }
+
+  // ===== IP 查询网站自定义管理 =====
+  const IP_TOOLS_KEY = "xiaoluo-ip-query-tools";
+  const DEFAULT_IP_TOOLS = [
+    { name: "hiofd", url: "https://tool.hiofd.com/ip/" }
+  ];
+
+  function loadIpTools() {
+    try {
+      const raw = localStorage.getItem(IP_TOOLS_KEY);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed) && parsed.length) return parsed;
+      }
+    } catch (_) {}
+    return [...DEFAULT_IP_TOOLS];
+  }
+
+  function saveIpTools(tools) {
+    try { localStorage.setItem(IP_TOOLS_KEY, JSON.stringify(tools)); } catch (_) {}
+  }
+
+  function renderIpTools() {
+    const listEl = $("[data-ip-tools-list]");
+    if (!listEl) return;
+    const tools = loadIpTools();
+    listEl.innerHTML = tools.map((tool, i) => `
+      <a class="ip-tool-link" href="${escapeHtml(tool.url)}" target="_blank" rel="noopener" title="${escapeHtml(tool.url)}">${escapeHtml(tool.name)}</a>
+      <button type="button" class="ip-tool-remove" data-ip-tool-remove="${i}" title="删除">×</button>
+    `).join("");
+  }
+
+  function addIpTool() {
+    const name = prompt("请输入网站名称（如：ip138）");
+    if (!name || !name.trim()) return;
+    let url = prompt("请输入网站网址（如：https://www.ip138.com/）");
+    if (!url) return;
+    url = url.trim();
+    if (!/^https?:\/\//i.test(url)) url = "https://" + url;
+    const tools = loadIpTools();
+    tools.push({ name: name.trim(), url });
+    saveIpTools(tools);
+    renderIpTools();
   }
 
   function initVisitorMonitor() {
@@ -3137,7 +3202,7 @@
         renderVisitorDetail();
       } else {
         body.setAttribute("hidden", "");
-        toggleBtn.textContent = "查看在线用户";
+        toggleBtn.textContent = "查看日志";
       }
     });
     $all("[data-visitor-tab]").forEach((tabBtn) => {
@@ -3156,6 +3221,50 @@
       if (!btn) return;
       visitorMonitorState.displayCount = (visitorMonitorState.displayCount || 20) + 20;
       renderVisitorRows();
+    });
+    // IP 地址点击复制（事件委托）
+    document.addEventListener("click", async (event) => {
+      const ipBtn = event.target.closest("[data-copy-ip]");
+      if (!ipBtn) return;
+      const ip = ipBtn.dataset.copyIp;
+      if (!ip) return;
+      try {
+        await navigator.clipboard.writeText(ip);
+        const original = ipBtn.textContent;
+        ipBtn.textContent = "已复制";
+        ipBtn.classList.add("copied");
+        setTimeout(() => { ipBtn.textContent = original; ipBtn.classList.remove("copied"); }, 1200);
+      } catch (_) {
+        // 降级方案：创建临时 textarea
+        const ta = document.createElement("textarea");
+        ta.value = ip;
+        ta.style.position = "fixed";
+        ta.style.opacity = "0";
+        document.body.appendChild(ta);
+        ta.select();
+        try { document.execCommand("copy"); } catch (_) {}
+        document.body.removeChild(ta);
+        const original = ipBtn.textContent;
+        ipBtn.textContent = "已复制";
+        ipBtn.classList.add("copied");
+        setTimeout(() => { ipBtn.textContent = original; ipBtn.classList.remove("copied"); }, 1200);
+      }
+    });
+    // IP 查询网站：渲染 + 添加 + 删除
+    renderIpTools();
+    const addBtn = $("[data-ip-tools-add]");
+    if (addBtn) addBtn.addEventListener("click", addIpTool);
+    document.addEventListener("click", (event) => {
+      const removeBtn = event.target.closest("[data-ip-tool-remove]");
+      if (!removeBtn) return;
+      event.preventDefault();
+      const idx = Number(removeBtn.dataset.ipToolRemove);
+      const tools = loadIpTools();
+      if (idx >= 0 && idx < tools.length) {
+        tools.splice(idx, 1);
+        saveIpTools(tools);
+        renderIpTools();
+      }
     });
   }
 
