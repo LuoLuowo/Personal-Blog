@@ -3101,13 +3101,18 @@
       const nameBadge = isLoggedIn
         ? `<span class="visitor-badge logged-in">${escapeHtml(row.user_name)}</span>`
         : `<span class="visitor-badge guest">未登录</span>`;
-      const ipText = row.ip_address ? escapeHtml(row.ip_address) : "未知 IP";
+      // IPv6截断显示，IPv4正常显示
+      let ipText = row.ip_address ? escapeHtml(row.ip_address) : "未知 IP";
+      if (row.ip_address && row.ip_address.includes(":") && row.ip_address.length > 20) {
+        const segs = row.ip_address.split(":");
+        ipText = escapeHtml(segs.slice(0, 3).join(":") + "…" + segs.slice(-1)[0]);
+      }
       const locText = row.ip_location ? escapeHtml(row.ip_location) : "未知位置";
       const timeText = formatVisitorTime(row.last_seen);
       return `<article class="visitor-row">
         <div class="visitor-row-main">
           ${nameBadge}
-          <span class="visitor-ip">${ipText}</span>
+          <span class="visitor-ip" title="${escapeHtml(row.ip_address || "")}">${ipText}</span>
           <span class="visitor-loc">${locText}</span>
         </div>
         <time class="visitor-time">${timeText}</time>

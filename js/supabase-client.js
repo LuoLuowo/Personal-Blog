@@ -151,14 +151,13 @@
     if (cachedIpInfo) return cachedIpInfo;
     if (ipInfoPromise) return ipInfoPromise;
     ipInfoPromise = (async () => {
-      // 同时查询多个国内IP库，取精度最高的结果
+      // 同时查询多个IP库，支持IPv4和IPv6，取有位置且精度最高的
       const candidates = await Promise.allSettled([
-        // 1. 太平洋电脑网IP库（国内老牌，精度到区县）
+        // 1. 太平洋电脑网IP库（国内老牌，IPv4精度到区县）
         (async () => {
           const resp = await fetch("https://whois.pconline.com.cn/ipJson.jsp?json=true", { cache: "no-store" });
-          if (!resp.ok) throw new Error("pconline status " + resp.status);
+          if (!resp.ok) throw new Error("pconline status");
           const text = await resp.text();
-          // 该接口可能返回JSONP或带BOM，尝试提取JSON
           const jsonMatch = text.match(/\{[\s\S]*\}/);
           if (!jsonMatch) throw new Error("pconline no json");
           const d = JSON.parse(jsonMatch[0]);
@@ -167,9 +166,9 @@
           if (d.pro) parts.push(d.pro.replace(/省$/, ""));
           if (d.city && d.city !== d.pro) parts.push(d.city.replace(/市$/, ""));
           if (d.region && d.region !== d.city) parts.push(d.region.replace(/县$/, "").replace(/区$/, ""));
-          return { ip: d.ip, location: parts.join(" ") || d.addr || "中国", precision: parts.length };
+          return { ip: d.ip, location: parts.join(" ") || (d.addr && d.addr !== "中国" ? d.addr : ""), precision: parts.length };
         })(),
-        // 2. useragentinfo（国内接口）
+        // 2. useragentinfo（国内接口，支持IPv6）
         (async () => {
           const resp = await fetch("https://ip.useragentinfo.com/json", { cache: "no-store" });
           if (!resp.ok) throw new Error("uai status");
@@ -179,9 +178,17 @@
           if (d.province) parts.push(d.province.replace(/省$/, ""));
           if (d.city && d.city !== d.province) parts.push(d.city.replace(/市$/, ""));
           if (d.district && d.district !== d.city) parts.push(d.district.replace(/县$/, "").replace(/区$/, ""));
-          return { ip: d.ip, location: parts.join(" ") || "中国", precision: parts.length };
+          return { ip: d.ip, location: parts.join(" "), precision: parts.length };
         })(),
-        // 3. ipwho.is（国外接口，兜底）
+        // 3. api.ip.sb（支持IPv6，返回英文）
+        (async () => {
+          const resp = await fetch("https://api.ip.sb/geoip", { cache: "no-store" });
+          if (!resp.ok) throw new Error("ipsb status");
+          const d = await resp.json();
+          if (!d || !d.ip) throw new Error("ipsb invalid");
+          return { ip: d.ip, location: toChineseLocation({ country: d.country, country_code: d.country_code, region: d.region, city: d.city }), precision: d.city ? 2 : d.region ? 1 : 0 };
+        })(),
+        // 4. ipwho.is（支持IPv6，兜底）
         (async () => {
           const resp = await fetch("https://ipwho.is/", { cache: "no-store" });
           if (!resp.ok) throw new Error("ipwho status");
@@ -191,12 +198,18 @@
         })()
       ]);
 
-      // 从成功结果中选精度最高（precision最大）的
+      // 优先选有位置的，再按精度排序
       let best = null;
       for (const r of candidates) {
-        if (r.status === "fulfilled" && r.value && r.value.ip) {
-          if (!best || r.value.precision > best.precision) best = r.value;
-        }
+        if (r.status !== "fulfilled" || !r.value || !r.value.ip) continue;
+        const hasLocation = r.value.location && r.value.location !== "中国" && r.value.location !== "未知位置";
+        if (!best) { best = r.value; continue; }
+        const bestHasLoc = best.location && best.location !== "中国" && best.location !== "未知位置";
+        // 有位置的优先于没位置的
+        if (hasLocation && !bestHasLoc) { best = r.value; continue; }
+        if (!hasLocation && bestHasLoc) continue;
+        // 都有位置或都没位置，按精度
+        if (r.value.precision > best.precision) best = r.value;
       }
 
       if (!best) {
@@ -205,6 +218,8 @@
         ipInfoPromise = null;
         return cachedIpInfo;
       }
+      // 如果位置为空或只有"中国"，标记为未知
+      if (!best.location || best.location === "中国") best.location = "未知位置";
       cachedIpInfo = { ip: best.ip, location: best.location };
       return cachedIpInfo;
     })();
