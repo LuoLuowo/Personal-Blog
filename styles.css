@@ -2471,18 +2471,18 @@ body.dark-mode .about-contact-link.instagram > i { color: #e4405f; }
 .visitor-search-input {
   padding: 6px 12px;
   border-radius: 8px;
-  border: 1px solid rgba(255,255,255,.15);
-  background: rgba(255,255,255,.06);
-  color: var(--text-primary, #fff);
+  border: 1px solid var(--line);
+  background: var(--card);
+  color: var(--ink);
   font-size: 13px;
   width: 200px;
   outline: none;
-  transition: border-color .15s, background .15s;
+  transition: border-color .15s, box-shadow .15s;
 }
-.visitor-search-input::placeholder { color: rgba(255,255,255,.4); }
+.visitor-search-input::placeholder { color: var(--muted); }
 .visitor-search-input:focus {
-  border-color: rgba(139,180,255,.5);
-  background: rgba(255,255,255,.1);
+  border-color: var(--blue);
+  box-shadow: 0 0 0 3px rgba(79,124,255,.14);
 }
 .visitor-ip-tools-label {
   font-size: 12px;
