@@ -7,6 +7,7 @@
     musicIndex: 0,
     seeking: false,
     musicReady: false,
+    navigating: false,
     userId: null,
     cloudOwnerId: null,
     adminId: null,
@@ -2577,6 +2578,8 @@
 
     document.addEventListener("xiaoluo-play-track", (event) => loadTrack(event.detail?.index || 0, Boolean(event.detail?.play)));
     document.addEventListener("xiaoluo-music-library-updated", () => {
+      // 导航期间不响应歌单更新，避免切歌
+      if (state.navigating) return;
       const current = data.music[state.musicIndex] || data.music[0];
       if (!current) { audio.pause(); audio.removeAttribute("src"); updateButtons(); return; }
       loadTrack(Math.min(state.musicIndex, data.music.length - 1), false);
@@ -3313,8 +3316,11 @@
   async function protectDashboard() {
     const api = window.XiaoLuoSupabase;
     if (!api?.isConfigured) return;
-    const session = await refreshAuthState();
-    if (!session) window.location.href = "./login.html";
+    // 导航时不重新请求 session，使用已有的认证状态
+    if (!state.sessionLoaded) {
+      await refreshAuthState();
+    }
+    if (!state.isLoggedIn) window.location.href = "./login.html";
     else if (!state.isAdmin) window.location.href = "./index.html";
   }
 
@@ -3507,8 +3513,21 @@
   }
 
   async function navigate(url, push = true) {
+    // 保存音乐状态，导航后强制恢复
+    const audio = document.body.querySelector(":scope > [data-music-player]");
+    const savedMusic = audio ? {
+      src: audio.currentSrc || audio.src,
+      currentTime: audio.currentTime,
+      paused: audio.paused,
+      volume: audio.volume,
+      muted: audio.muted,
+      musicIndex: state.musicIndex
+    } : null;
+    state.navigating = true;
+
     const response = await fetch(url, { cache: "no-store" });
     if (!response.ok) {
+      state.navigating = false;
       window.location.href = url;
       return;
     }
@@ -3519,21 +3538,47 @@
     const currentHasHeader = Boolean(document.querySelector(".site-header"));
     const nextHasHeader = Boolean(nextDoc.querySelector(".site-header"));
     if (!nextMain || !currentMain || currentHasHeader !== nextHasHeader) {
+      state.navigating = false;
       window.location.href = url;
       return;
     }
     if (pageName() === "game") window.destroyXiaoLuoJumpGame?.();
     document.title = nextDoc.title;
-    // 只更新 data-page 和必要的页面 class（如 game-page），不整体替换 className，避免全局样式重计算
     document.body.dataset.page = nextDoc.body.dataset.page || "home";
     document.body.classList.toggle("game-page", nextDoc.body.classList.contains("game-page"));
     currentMain.replaceWith(nextMain);
     if (push) history.pushState({}, "", url);
     window.scrollTo({ top: 0, behavior: "smooth" });
-    // 只用内存中已有的认证状态更新 UI，不发网络请求，不重置数据
     applyAuthUI();
-    // 延迟渲染，让音频播放不被阻塞
-    requestAnimationFrame(() => renderCurrentPage());
+
+    // 恢复音乐状态的函数
+    const restoreMusic = () => {
+      if (!audio || !savedMusic) return;
+      const curSrc = audio.currentSrc || audio.src;
+      if (curSrc !== savedMusic.src) {
+        audio.src = savedMusic.src;
+      }
+      if (savedMusic.currentTime > 0 && Math.abs(audio.currentTime - savedMusic.currentTime) > 1) {
+        try { audio.currentTime = savedMusic.currentTime; } catch (_) {}
+      }
+      audio.volume = savedMusic.volume;
+      audio.muted = savedMusic.muted;
+      state.musicIndex = savedMusic.musicIndex;
+      if (!savedMusic.paused && audio.paused) {
+        audio.play().catch(() => {});
+      }
+    };
+
+    // 渲染页面
+    requestAnimationFrame(() => {
+      renderCurrentPage();
+      restoreMusic();
+      // 多次延迟恢复，防止异步操作导致切歌
+      setTimeout(restoreMusic, 0);
+      setTimeout(restoreMusic, 100);
+      setTimeout(restoreMusic, 300);
+      setTimeout(() => { restoreMusic(); state.navigating = false; }, 600);
+    });
   }
 
   function initPjax() {
