@@ -3057,7 +3057,7 @@
     }
   }
 
-  let visitorMonitorState = { tab: "online", loading: false, allRows: [], displayCount: 20 };
+  let visitorMonitorState = { tab: "online", loading: false, allRows: [], displayCount: 20, searchQuery: "" };
 
   async function renderVisitorDetail() {
     const listEl = $("[data-visitor-list]");
@@ -3074,6 +3074,9 @@
       else if (tab === "today") rows = await api.getTodayVisitorsDetail?.() || [];
       else if (tab === "repeat") rows = await api.getRepeatVisitorsDetail?.() || [];
       else rows = await api.getAllVisitorsDetail?.() || [];
+
+      // 按日期从最新往下排
+      rows.sort((a, b) => new Date(b.last_seen || 0) - new Date(a.last_seen || 0));
 
       visitorMonitorState.allRows = rows;
       visitorMonitorState.displayCount = 20;
@@ -3098,9 +3101,22 @@
     const noteEl = $("[data-visitor-note]");
     if (!listEl) return;
     const tab = visitorMonitorState.tab;
-    const rows = visitorMonitorState.allRows || [];
+    const query = (visitorMonitorState.searchQuery || "").trim().toLowerCase();
+    let rows = visitorMonitorState.allRows || [];
+    // IP 搜索过滤（支持 IPv4 / IPv6，部分匹配）
+    if (query) {
+      rows = rows.filter((row) => {
+        const ip = (row.ip_address || "").toLowerCase();
+        return ip.includes(query);
+      });
+    }
     const count = visitorMonitorState.displayCount || 20;
     const visible = rows.slice(0, count);
+    if (!visible.length) {
+      listEl.innerHTML = `<p class="empty-state">${query ? "没有找到匹配该 IP 的记录。" : "暂无数据。"}</p>`;
+      if (noteEl) noteEl.textContent = query ? `搜索关键词：${escapeHtml(visitorMonitorState.searchQuery)}，共 ${rows.length} 条结果` : "";
+      return;
+    }
     const html = visible.map((row) => {
       const isLoggedIn = Boolean(row.user_name);
       const nameBadge = isLoggedIn
@@ -3141,7 +3157,11 @@
     const hasMore = rows.length > count;
     listEl.innerHTML = html + (hasMore ? `<button class="visitor-load-more" type="button" data-visitor-load-more>加载更多（还有 ${rows.length - count} 条）</button>` : "");
     if (noteEl) {
-      noteEl.textContent = `共 ${rows.length} 条记录${tab === "all" ? "（仅显示有 IP 记录的访客，旧数据已过滤）" : ""}。点击 IP 地址可复制完整地址。`;
+      if (query) {
+        noteEl.textContent = `搜索 "${visitorMonitorState.searchQuery}"，共找到 ${rows.length} 条记录。点击 IP 地址可复制完整地址。`;
+      } else {
+        noteEl.textContent = `共 ${rows.length} 条记录${tab === "all" ? "（仅显示有 IP 记录的访客，旧数据已过滤）" : ""}。点击 IP 地址可复制完整地址。`;
+      }
     }
   }
 
@@ -3214,6 +3234,15 @@
     });
     const refreshBtn = $("[data-visitor-refresh]");
     if (refreshBtn) refreshBtn.addEventListener("click", () => { if (!visitorMonitorState.loading) renderVisitorDetail(); });
+    // IP 搜索框
+    const searchInput = $("[data-visitor-search]");
+    if (searchInput) {
+      searchInput.addEventListener("input", () => {
+        visitorMonitorState.searchQuery = searchInput.value;
+        visitorMonitorState.displayCount = 20;
+        renderVisitorRows();
+      });
+    }
     // 加载更多按钮（事件委托，因为按钮是动态生成的）
     document.addEventListener("click", (event) => {
       const btn = event.target.closest("[data-visitor-load-more]");
