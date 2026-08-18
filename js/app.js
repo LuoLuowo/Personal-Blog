@@ -901,6 +901,12 @@
     clearOversizedSettings();
     resetPublicView();
     state.sessionLoaded = true;
+    applyAuthUI();
+    return session;
+  }
+
+  // 只根据内存中已有的 state 更新登录相关 UI，不发网络请求，不重置数据
+  function applyAuthUI() {
     document.body.classList.toggle("is-logged-in", state.isLoggedIn);
     $all("[data-auth-only]").forEach((el) => { el.hidden = !state.isLoggedIn; });
     $all("[data-guest-only]").forEach((el) => { el.hidden = state.isLoggedIn; });
@@ -991,7 +997,6 @@
     $all("[data-dashboard-status-text]").forEach((el) => {
       el.textContent = state.isAdmin ? "现在可以进入后台管理文章、动态和资料。" : "点赞无需登录，登录后可参与评论。";
     });
-    return session;
   }
 
   async function loadCloudData() {
@@ -3519,16 +3524,16 @@
     }
     if (pageName() === "game") window.destroyXiaoLuoJumpGame?.();
     document.title = nextDoc.title;
-    const darkMode = document.body.classList.contains("dark-mode");
-    document.body.className = nextDoc.body.className;
-    if (darkMode) document.body.classList.add("dark-mode");
+    // 只更新 data-page 和必要的页面 class（如 game-page），不整体替换 className，避免全局样式重计算
     document.body.dataset.page = nextDoc.body.dataset.page || "home";
+    document.body.classList.toggle("game-page", nextDoc.body.classList.contains("game-page"));
     currentMain.replaceWith(nextMain);
     if (push) history.pushState({}, "", url);
     window.scrollTo({ top: 0, behavior: "smooth" });
-    await refreshAuthState();
-    renderCurrentPage();
-    await loadCloudData();
+    // 只用内存中已有的认证状态更新 UI，不发网络请求，不重置数据
+    applyAuthUI();
+    // 延迟渲染，让音频播放不被阻塞
+    requestAnimationFrame(() => renderCurrentPage());
   }
 
   function initPjax() {
