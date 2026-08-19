@@ -1895,13 +1895,13 @@
           const replyPrefix = replyToName ? `<span class="whisper-reply-to">回复 @${escapeHtml(replyToName)}</span>` : "";
           return `<article class="whisper-reply"><button class="whisper-avatar comment-avatar${avatar ? " has-image" : ""}" type="button" data-profile-user-id="${item.user_id}"${avatar ? ` style="background-image:url('${escapeHtml(avatar)}')"` : ""}>${avatar ? "" : escapeHtml(name.slice(0, 1))}</button><div><header><button type="button" data-profile-user-id="${item.user_id}">${escapeHtml(name)}</button>${replyPrefix}<time>${formatPostDate(item.created_at)}</time></header><p class="whisper-rich-text">${renderWhisperContent(item.content)}</p><button class="comment-reply-button whisper-reply-btn" type="button" data-reply-whisper="${item.id}" data-reply-name="${escapeHtml(name)}">回复</button></div>${canDelete ? `<button class="whisper-delete" type="button" data-delete-whisper="${item.id}">删除</button>` : ""}</article>`;
         };
+        const PREVIEW_COUNT = 2;
         feed.innerHTML = items.filter((item) => !item.parent_id).map((item) => {
           const itemProfile = item.profile || {};
           const name = itemProfile.display_name || "普通用户";
           const avatar = itemProfile.avatar_url || "";
           const canDelete = state.isAdmin || item.user_id === state.userId;
           const replies = (repliesByRoot.get(item.id) || []).sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
-          const PREVIEW_COUNT = 2;
           const hasMore = replies.length > PREVIEW_COUNT;
           const visibleReplies = hasMore ? replies.slice(0, PREVIEW_COUNT) : replies;
           const repliesHtml = replies.length ? `
