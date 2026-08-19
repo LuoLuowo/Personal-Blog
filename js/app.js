@@ -1127,10 +1127,9 @@
   }
 
   function postCard(post) {
-    // 计算字数和阅读时长
+    // 计算字数
     const contentText = (post.content || []).map((b) => b?.text || "").join("") || (post.excerpt || "");
     const wordCount = contentText.replace(/\s/g, "").length;
-    const readMinutes = Math.max(1, Math.round(wordCount / 300));
     return `
       <article class="article-card glass-card ${post.coverUrl ? "has-cover" : "no-cover"}" data-post-id="${escapeHtml(post.id)}">
         <a class="article-card-hit" href="./article-detail.html?id=${post.id}" aria-label="阅读 ${escapeHtml(post.title)}"></a>
@@ -1139,10 +1138,13 @@
           <p class="mini-title">${escapeHtml(post.category)}</p>
           <h3>${escapeHtml(post.title)}</h3>
           <div class="article-excerpt">${formatExcerpt(post.content || [post.excerpt])}</div>
-          <div class="article-meta"><span>${formatPostDate(post.publishedAt)}</span><span>${escapeHtml(post.author)}</span><span class="article-word-count">${wordCount}字 · ${readMinutes}分钟</span></div>
+          <div class="article-meta"><span>${formatPostDate(post.publishedAt)}</span><span>${escapeHtml(post.author)}</span></div>
           <span class="article-engagement" data-post-card-engagement data-post-card-id="${escapeHtml(post.id)}">阅读 0 · 点赞 0 · 评论 0</span>
           ${post.attachments?.length ? `<p class="article-attachment-hint">含 ${post.attachments.length} 个附件，进入详情可下载</p>` : ""}
-          <div class="tag-row">${post.tags.map((tag) => `<a href="./articles.html?tag=${encodeURIComponent(tag)}">#${escapeHtml(tag)}</a>`).join("")}</div>
+          <div class="tag-row">
+            <div class="tag-row-left">${post.tags.map((tag) => `<a href="./articles.html?tag=${encodeURIComponent(tag)}">#${escapeHtml(tag)}</a>`).join("")}</div>
+            <span class="article-word-count">${wordCount}字</span>
+          </div>
         </div>
       </article>
     `;
