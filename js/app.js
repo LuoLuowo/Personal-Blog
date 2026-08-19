@@ -3119,7 +3119,7 @@
     const tab = visitorMonitorState.tab;
     const query = (visitorMonitorState.searchQuery || "").trim();
 
-    // 搜索模式：按IP分组显示访问记录
+    // 搜索模式：逐条显示该IP的每次访问记录
     if (query) {
       if (visitorMonitorState.searching) {
         listEl.innerHTML = '<p class="empty-state">正在搜索…</p>';
@@ -3131,24 +3131,12 @@
         if (noteEl) noteEl.textContent = "提示：需先在 Supabase 运行 visitor-logs-by-visit.sql 才会记录每次访问。";
         return;
       }
-      // 按IP分组
-      const groups = {};
-      logs.forEach((log) => {
-        const key = log.ip_address || "未知 IP";
-        if (!groups[key]) {
-          groups[key] = { ip: log.ip_address, location: log.ip_location, userName: log.user_name, visits: [] };
-        }
-        groups[key].visits.push({ page: log.page_path, time: log.visited_at });
-        // 保留最新的位置和用户名
-        if (log.ip_location) groups[key].location = log.ip_location;
-        if (log.user_name) groups[key].userName = log.user_name;
-      });
-      const html = Object.values(groups).map((g) => {
-        const isLoggedIn = Boolean(g.userName);
+      const html = logs.map((log) => {
+        const isLoggedIn = Boolean(log.user_name);
         const nameBadge = isLoggedIn
-          ? `<span class="visitor-badge logged-in">${escapeHtml(g.userName)}</span>`
+          ? `<span class="visitor-badge logged-in">${escapeHtml(log.user_name)}</span>`
           : `<span class="visitor-badge guest">未登录</span>`;
-        const fullIp = g.ip || "";
+        const fullIp = log.ip_address || "";
         let ipText = fullIp ? escapeHtml(fullIp) : "未知 IP";
         if (fullIp && fullIp.includes(":") && fullIp.length > 20) {
           const segs = fullIp.split(":");
@@ -3157,26 +3145,23 @@
         const ipEl = fullIp
           ? `<button type="button" class="visitor-ip" data-copy-ip="${escapeHtml(fullIp)}" title="点击复制完整 IP 地址">${ipText}</button>`
           : `<span class="visitor-ip">未知 IP</span>`;
-        const locEl = (g.location && g.location !== "未知地址")
-          ? `<span class="visitor-loc">${escapeHtml(g.location)}</span>`
+        const pageEl = log.page_path ? `<span class="visitor-page">${escapeHtml(log.page_path)}</span>` : "";
+        const locEl = (log.ip_location && log.ip_location !== "未知地址")
+          ? `<span class="visitor-loc">${escapeHtml(log.ip_location)}</span>`
           : `<span class="visitor-loc unknown">未知位置</span>`;
-        const visitList = g.visits.map((v) => {
-          const pageText = v.page ? escapeHtml(v.page) : "未知页面";
-          const timeText = formatVisitorTime(v.time);
-          return `<li class="visitor-log-item"><span class="visitor-log-page">${pageText}</span><time class="visitor-log-time">${timeText}</time></li>`;
-        }).join("");
-        return `<article class="visitor-row visitor-log-group">
+        const timeText = formatVisitorTime(log.visited_at);
+        return `<article class="visitor-row">
           <div class="visitor-row-main">
             ${nameBadge}
             ${ipEl}
+            ${pageEl}
             ${locEl}
-            <span class="visitor-count">共${g.visits.length}次</span>
           </div>
-          <ul class="visitor-log-list">${visitList}</ul>
+          <time class="visitor-time">${timeText}</time>
         </article>`;
       }).join("");
       listEl.innerHTML = html;
-      if (noteEl) noteEl.textContent = `匹配到 ${Object.keys(groups).length} 个 IP，共 ${logs.length} 条访问记录（每个访客仅保留最近10条）。`;
+      if (noteEl) noteEl.textContent = `匹配到 ${logs.length} 条访问记录（每个访客仅保留最近10条）。`;
       return;
     }
 
