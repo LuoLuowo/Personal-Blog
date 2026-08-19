@@ -3784,8 +3784,17 @@
   function initWebSearch() {
     if (document.body.dataset.webSearchBound) return;
     document.body.dataset.webSearchBound = "true";
-    let currentEngine = "baidu";
     const engineNames = { baidu: "百度", google: "谷歌", bing: "必应" };
+    let currentEngine = localStorage.getItem("xiaoluo-search-engine") || "baidu";
+
+    // 初始化按钮显示
+    document.querySelectorAll("[data-search-engine-current]").forEach((btn) => {
+      const label = btn.querySelector(".search-engine-label");
+      if (label) label.textContent = engineNames[currentEngine] || "百度";
+    });
+    document.querySelectorAll(".search-engine-option").forEach((opt) => {
+      opt.classList.toggle("active", opt.dataset.engine === currentEngine);
+    });
 
     // 下拉菜单展开/收起
     document.addEventListener("click", (event) => {
@@ -3806,6 +3815,7 @@
       const dropdown = option.closest("[data-search-engine-dropdown]");
       if (!dropdown) return;
       currentEngine = option.dataset.engine;
+      localStorage.setItem("xiaoluo-search-engine", currentEngine);
       const label = dropdown.querySelector(".search-engine-label");
       if (label) label.textContent = engineNames[currentEngine] || currentEngine;
       dropdown.querySelectorAll(".search-engine-option").forEach((opt) => {
