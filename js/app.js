@@ -3784,11 +3784,41 @@
   function initWebSearch() {
     if (document.body.dataset.webSearchBound) return;
     document.body.dataset.webSearchBound = "true";
+    let currentEngine = "baidu";
+    const engineNames = { baidu: "百度", google: "谷歌", bing: "必应" };
+
+    // 下拉菜单展开/收起
+    document.addEventListener("click", (event) => {
+      const dropdown = event.target.closest("[data-search-engine-dropdown]");
+      const allDropdowns = document.querySelectorAll("[data-search-engine-dropdown]");
+      allDropdowns.forEach((dd) => {
+        if (dd !== dropdown) dd.classList.remove("open");
+      });
+      if (dropdown) {
+        dropdown.classList.toggle("open");
+      }
+    });
+
+    // 选择搜索引擎
+    document.addEventListener("click", (event) => {
+      const option = event.target.closest("[data-engine]");
+      if (!option) return;
+      const dropdown = option.closest("[data-search-engine-dropdown]");
+      if (!dropdown) return;
+      currentEngine = option.dataset.engine;
+      const label = dropdown.querySelector("[data-search-engine-label]");
+      if (label) label.textContent = engineNames[currentEngine] || currentEngine;
+      dropdown.querySelectorAll(".search-engine-option").forEach((opt) => {
+        opt.classList.toggle("active", opt.dataset.engine === currentEngine);
+      });
+      dropdown.classList.remove("open");
+    });
+
+    // 搜索提交
     document.addEventListener("submit", (event) => {
       const form = event.target.closest("[data-web-search]");
       if (!form) return;
       event.preventDefault();
-      const engine = form.querySelector("[data-search-engine]")?.value || "baidu";
       const query = form.querySelector("input[name='q']")?.value?.trim();
       if (!query) return;
       const urls = {
@@ -3796,7 +3826,7 @@
         google: `https://www.google.com/search?q=${encodeURIComponent(query)}`,
         bing: `https://www.bing.com/search?q=${encodeURIComponent(query)}`
       };
-      window.open(urls[engine] || urls.baidu, "_blank");
+      window.open(urls[currentEngine] || urls.baidu, "_blank");
     });
   }
 

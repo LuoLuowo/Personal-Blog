@@ -50,11 +50,17 @@
         </div>
       </div>
       <form class="search-card hero-search" data-web-search>
-        <select class="search-engine-select" data-search-engine>
-          <option value="baidu">百度</option>
-          <option value="google">谷歌</option>
-          <option value="bing">必应</option>
-        </select>
+        <div class="search-engine-dropdown" data-search-engine-dropdown>
+          <button type="button" class="search-engine-current" data-search-engine-current>
+            <span class="search-engine-label">百度</span>
+            <svg class="search-engine-arrow" width="10" height="10" viewBox="0 0 10 10"><path fill="currentColor" d="M5 7L1 3h8z"/></svg>
+          </button>
+          <ul class="search-engine-menu" data-search-engine-menu>
+            <li class="search-engine-option" data-engine="baidu"><span class="engine-dot" style="background:#2932e1"></span>百度</li>
+            <li class="search-engine-option" data-engine="google"><span class="engine-dot" style="background:#ea4335"></span>谷歌</li>
+            <li class="search-engine-option" data-engine="bing"><span class="engine-dot" style="background:#008373"></span>必应</li>
+          </ul>
+        </div>
         <span class="search-icon">⌕</span>
         <input name="q" type="search" placeholder="输入关键词搜索" />
         <button type="submit">搜索</button>
