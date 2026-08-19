@@ -3,6 +3,29 @@
   const canvas = document.querySelector("[data-jump-canvas]");
   if (!canvas || canvas.dataset.gameReady || canvas.dataset.gameBooting) return;
   canvas.dataset.gameBooting = "true";
+
+  // 动态创建昵称弹窗（PJAX导航时main外的元素不会被替换，需要确保存在）
+  if (!document.querySelector("[data-game-nickname-modal]")) {
+    const modal = document.createElement("div");
+    modal.className = "modal game-nickname-modal";
+    modal.dataset.gameNicknameModal = "";
+    modal.innerHTML = `
+      <button class="modal-backdrop" type="button" data-game-nickname-close aria-label="关闭"></button>
+      <section class="modal-card glass-card" role="dialog" aria-modal="true" aria-labelledby="game-nickname-title">
+        <button class="modal-close" type="button" data-game-nickname-close aria-label="关闭">×</button>
+        <p class="mini-title">JOIN LEADERBOARD</p>
+        <h2 id="game-nickname-title">参与排行榜</h2>
+        <p class="game-nickname-desc">请填写您的上榜名，参与竞争榜</p>
+        <form class="game-nickname-form" data-game-nickname-form>
+          <input type="text" name="nickname" maxlength="20" placeholder="输入你的昵称（1-20字）" required />
+          <button class="primary-button" type="submit">确认上榜</button>
+        </form>
+        <p class="game-nickname-error" data-game-nickname-error hidden></p>
+      </section>
+    `;
+    document.body.appendChild(modal);
+  }
+
   const api = window.XiaoLuoSupabase;
   let session = null;
   try { session = await api?.getSession?.(); } catch (e) { console.warn("Jump game session check failed:", e); }

@@ -436,6 +436,13 @@
       return data || [];
     },
 
+    async searchVisitorLogs(ip) {
+      if (!client || !ip) return [];
+      const { data, error } = await client.rpc("search_visitor_logs", { p_ip: ip });
+      if (error) throw error;
+      return data || [];
+    },
+
     async listGuestbookMessages(limit = 40) {
       const { data, error } = await client.from("guestbook_messages")
         .select("id, nickname, message, created_at")

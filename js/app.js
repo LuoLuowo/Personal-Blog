@@ -3065,7 +3065,7 @@
     }
   }
 
-  let visitorMonitorState = { tab: "online", loading: false, allRows: [], displayCount: 20, searchQuery: "" };
+  let visitorMonitorState = { tab: "online", loading: false, allRows: [], displayCount: 20, searchQuery: "", searchResults: [], searching: false };
 
   async function renderVisitorDetail() {
     const listEl = $("[data-visitor-list]");
@@ -3109,15 +3109,59 @@
     const noteEl = $("[data-visitor-note]");
     if (!listEl) return;
     const tab = visitorMonitorState.tab;
-    const query = (visitorMonitorState.searchQuery || "").trim().toLowerCase();
-    let rows = visitorMonitorState.allRows || [];
-    // IP 搜索过滤（支持 IPv4 / IPv6，部分匹配）
+    const query = (visitorMonitorState.searchQuery || "").trim();
+
+    // 搜索模式：显示该IP的每次访问详细记录
     if (query) {
-      rows = rows.filter((row) => {
-        const ip = (row.ip_address || "").toLowerCase();
-        return ip.includes(query);
-      });
+      if (visitorMonitorState.searching) {
+        listEl.innerHTML = '<p class="empty-state">正在搜索…</p>';
+        return;
+      }
+      const logs = visitorMonitorState.searchResults || [];
+      if (!logs.length) {
+        listEl.innerHTML = `<p class="empty-state">没有找到匹配 "${escapeHtml(query)}" 的访问记录。</p>`;
+        if (noteEl) noteEl.textContent = "提示：需先在 Supabase 运行 visitor-logs-by-visit.sql 才会记录每次访问。";
+        return;
+      }
+      const html = logs.map((log) => {
+        const isLoggedIn = Boolean(log.user_name);
+        const nameBadge = isLoggedIn
+          ? `<span class="visitor-badge logged-in">${escapeHtml(log.user_name)}</span>`
+          : `<span class="visitor-badge guest">未登录</span>`;
+        const fullIp = log.ip_address || "";
+        let ipText = fullIp ? escapeHtml(fullIp) : "未知 IP";
+        if (fullIp && fullIp.includes(":") && fullIp.length > 20) {
+          const segs = fullIp.split(":");
+          ipText = escapeHtml(segs.slice(0, 3).join(":") + "…" + segs.slice(-1)[0]);
+        }
+        const ipEl = fullIp
+          ? `<button type="button" class="visitor-ip" data-copy-ip="${escapeHtml(fullIp)}" title="点击复制完整 IP 地址">${ipText}</button>`
+          : `<span class="visitor-ip">未知 IP</span>`;
+        const pageEl = log.page_path ? `<span class="visitor-page">${escapeHtml(log.page_path)}</span>` : "";
+        let locEl;
+        if (log.ip_location && log.ip_location !== "未知地址") {
+          locEl = `<span class="visitor-loc">${escapeHtml(log.ip_location)}</span>`;
+        } else {
+          locEl = `<span class="visitor-loc unknown">未知位置</span>`;
+        }
+        const timeText = formatVisitorTime(log.visited_at);
+        return `<article class="visitor-row">
+          <div class="visitor-row-main">
+            ${nameBadge}
+            ${ipEl}
+            ${pageEl}
+            ${locEl}
+          </div>
+          <time class="visitor-time">${timeText}</time>
+        </article>`;
+      }).join("");
+      listEl.innerHTML = html;
+      if (noteEl) noteEl.textContent = `IP "${escapeHtml(query)}" 的最近 ${logs.length} 次访问记录（每个访客仅保留最近10条）。`;
+      return;
     }
+
+    // 普通模式：访客列表
+    let rows = visitorMonitorState.allRows || [];
     const count = visitorMonitorState.displayCount || 20;
     const visible = rows.slice(0, count);
     if (!visible.length) {
@@ -3245,10 +3289,33 @@
     // IP 搜索框
     const searchInput = $("[data-visitor-search]");
     if (searchInput) {
+      let searchTimer = null;
       searchInput.addEventListener("input", () => {
-        visitorMonitorState.searchQuery = searchInput.value;
+        const q = searchInput.value.trim();
+        visitorMonitorState.searchQuery = q;
         visitorMonitorState.displayCount = 20;
+        if (!q) {
+          visitorMonitorState.searchResults = [];
+          visitorMonitorState.searching = false;
+          renderVisitorRows();
+          return;
+        }
+        // 防抖搜索
+        visitorMonitorState.searching = true;
         renderVisitorRows();
+        clearTimeout(searchTimer);
+        searchTimer = setTimeout(async () => {
+          try {
+            const logs = await window.XiaoLuoSupabase?.searchVisitorLogs?.(q) || [];
+            visitorMonitorState.searchResults = logs;
+          } catch (error) {
+            console.warn("Visitor log search failed:", error.message);
+            visitorMonitorState.searchResults = [];
+          } finally {
+            visitorMonitorState.searching = false;
+            renderVisitorRows();
+          }
+        }, 400);
       });
     }
     // 加载更多按钮（事件委托，因为按钮是动态生成的）

@@ -2327,8 +2327,8 @@ body.dark-mode .about-contact-link.instagram > i { color: #e4405f; }
   .game-intro img { width: 64px; height: 64px; border-radius: 18px; }
   .game-intro .mini-title, .game-intro p, .game-tips { grid-column: 1 / -1; }
   .game-scorebar > div { min-width: 0; flex: 1; }
-  .game-stage-wrap canvas { max-height: none; }
-  .game-leaderboard { max-height: 380px; padding: 14px; }
+  .game-stage-wrap canvas { max-height: 60vh; aspect-ratio: auto; height: auto; width: 100%; object-fit: contain; }
+  .game-leaderboard { max-height: 320px; padding: 14px; }
   .game-leaderboard-head { flex-wrap: wrap; }
   .game-leaderboard-actions { width: 100%; justify-content: space-between; margin-top: 8px; }
   .game-join-btn { padding: 9px 18px; font-size: 14px; }
