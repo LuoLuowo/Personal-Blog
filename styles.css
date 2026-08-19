@@ -1136,6 +1136,7 @@ body:not(.is-logged-in) .user-entry { display: none !important; }
 .whisper-reply .comment-avatar { width: 34px; height: 34px; border-radius: 8px; }
 .whisper-reply header { display: flex; flex-wrap: wrap; align-items: center; gap: 7px; }
 .whisper-reply header button { border: 0; padding: 0; color: var(--ink); background: transparent; cursor: pointer; font-weight: 900; }
+.whisper-reply-to { color: var(--blue); font-size: 12px; font-weight: 700; }
 .whisper-reply time { color: var(--muted); font-size: 10px; }
 .whisper-reply p { margin: 5px 0 0; color: var(--ink); line-height: 1.65; white-space: pre-wrap; overflow-wrap: anywhere; }
 .whisper-rich-text { white-space: pre-wrap; }

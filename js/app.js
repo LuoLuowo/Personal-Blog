@@ -1860,23 +1860,47 @@
           $("[data-whisper-show-all]").hidden = true;
         }
         const repliesByParent = new Map();
+        // 构建id到item的映射，用于查找根碎碎念和被回复者
+        const itemMap = new Map();
+        items.forEach((item) => itemMap.set(item.id, item));
+
+        // 找到每条回复的根碎碎念id（递归向上找）
+        const findRootId = (id) => {
+          const item = itemMap.get(id);
+          if (!item || !item.parent_id) return id;
+          return findRootId(item.parent_id);
+        };
+
+        // 按根碎碎念分组所有回复（包括回复的回复，全部平铺一层）
+        const repliesByRoot = new Map();
         items.filter((item) => item.parent_id).forEach((item) => {
-          if (!repliesByParent.has(item.parent_id)) repliesByParent.set(item.parent_id, []);
-          repliesByParent.get(item.parent_id).push(item);
+          const rootId = findRootId(item.id);
+          if (!repliesByRoot.has(rootId)) repliesByRoot.set(rootId, []);
+          repliesByRoot.get(rootId).push(item);
         });
+
         const renderReply = (item) => {
           const itemProfile = item.profile || {};
           const name = itemProfile.display_name || "普通用户";
           const avatar = itemProfile.avatar_url || "";
           const canDelete = state.isAdmin || item.user_id === state.userId;
-          return `<article class="whisper-reply"><button class="whisper-avatar comment-avatar${avatar ? " has-image" : ""}" type="button" data-profile-user-id="${item.user_id}"${avatar ? ` style="background-image:url('${escapeHtml(avatar)}')"` : ""}>${avatar ? "" : escapeHtml(name.slice(0, 1))}</button><div><header><button type="button" data-profile-user-id="${item.user_id}">${escapeHtml(name)}</button><time>${formatPostDate(item.created_at)}</time></header><p class="whisper-rich-text">${renderWhisperContent(item.content)}</p></div>${canDelete ? `<button class="whisper-delete" type="button" data-delete-whisper="${item.id}">删除</button>` : ""}</article>`;
+          // 查找被回复者名字
+          let replyToName = "";
+          if (item.parent_id) {
+            const parentItem = itemMap.get(item.parent_id);
+            if (parentItem) {
+              replyToName = parentItem.profile?.display_name || "普通用户";
+            }
+          }
+          const replyPrefix = replyToName ? `<span class="whisper-reply-to">回复 @${escapeHtml(replyToName)}</span>` : "";
+          return `<article class="whisper-reply"><button class="whisper-avatar comment-avatar${avatar ? " has-image" : ""}" type="button" data-profile-user-id="${item.user_id}"${avatar ? ` style="background-image:url('${escapeHtml(avatar)}')"` : ""}>${avatar ? "" : escapeHtml(name.slice(0, 1))}</button><div><header><button type="button" data-profile-user-id="${item.user_id}">${escapeHtml(name)}</button>${replyPrefix}<time>${formatPostDate(item.created_at)}</time></header><p class="whisper-rich-text">${renderWhisperContent(item.content)}</p><button class="comment-reply-button whisper-reply-btn" type="button" data-reply-whisper="${item.id}" data-reply-name="${escapeHtml(name)}">回复</button></div>${canDelete ? `<button class="whisper-delete" type="button" data-delete-whisper="${item.id}">删除</button>` : ""}</article>`;
         };
         feed.innerHTML = items.filter((item) => !item.parent_id).map((item) => {
           const itemProfile = item.profile || {};
           const name = itemProfile.display_name || "普通用户";
           const avatar = itemProfile.avatar_url || "";
           const canDelete = state.isAdmin || item.user_id === state.userId;
-          const replies = repliesByParent.get(item.id) || [];
+          const replies = (repliesByRoot.get(item.id) || []).sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
           return `<article class="whisper-card glass-card${item.user_id === state.userId ? " is-own" : ""}"><button class="whisper-avatar comment-avatar${avatar ? " has-image" : ""}" type="button" data-profile-user-id="${item.user_id}" aria-label="查看${escapeHtml(name)}的资料"${avatar ? ` style="background-image:url('${escapeHtml(avatar)}')"` : ""}>${avatar ? "" : escapeHtml(name.slice(0, 1))}</button><div class="whisper-card-body"><header><button type="button" data-profile-user-id="${item.user_id}">${escapeHtml(name)}</button>${itemProfile.is_admin ? '<span class="whisper-author-badge">作者</span>' : ""}${item.user_id === state.userId ? '<span class="whisper-own-badge">我的碎碎念</span>' : ""}<time>${formatPostDate(item.created_at)}</time></header><p class="whisper-rich-text">${renderWhisperContent(item.content)}</p><button class="comment-reply-button" type="button" data-reply-whisper="${item.id}" data-reply-name="${escapeHtml(name)}">回复</button>${replies.length ? `<div class="whisper-replies">${replies.map(renderReply).join("")}</div>` : ""}</div>${canDelete ? `<button class="whisper-delete" type="button" data-delete-whisper="${item.id}" aria-label="删除这条碎碎念">删除</button>` : ""}</article>`;
         }).join("") || '<p class="empty-state">这里还没有碎碎念，来写下第一条吧。</p>';
         $all("[data-reply-whisper]", feed).forEach((button) => { button.onclick = () => { replyTo = button.dataset.replyWhisper; replyBar.hidden = false; replyBar.querySelector("span").textContent = `正在回复 ${button.dataset.replyName}`; textarea.focus(); textarea.scrollIntoView({ behavior: "smooth", block: "center" }); }; });
