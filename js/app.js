@@ -3806,7 +3806,7 @@
       const dropdown = option.closest("[data-search-engine-dropdown]");
       if (!dropdown) return;
       currentEngine = option.dataset.engine;
-      const label = dropdown.querySelector("[data-search-engine-label]");
+      const label = dropdown.querySelector(".search-engine-label");
       if (label) label.textContent = engineNames[currentEngine] || currentEngine;
       dropdown.querySelectorAll(".search-engine-option").forEach((opt) => {
         opt.classList.toggle("active", opt.dataset.engine === currentEngine);
