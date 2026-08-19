@@ -3781,6 +3781,25 @@
     });
   }
 
+  function initWebSearch() {
+    if (document.body.dataset.webSearchBound) return;
+    document.body.dataset.webSearchBound = "true";
+    document.addEventListener("submit", (event) => {
+      const form = event.target.closest("[data-web-search]");
+      if (!form) return;
+      event.preventDefault();
+      const engine = form.querySelector("[data-search-engine]")?.value || "baidu";
+      const query = form.querySelector("input[name='q']")?.value?.trim();
+      if (!query) return;
+      const urls = {
+        baidu: `https://www.baidu.com/s?wd=${encodeURIComponent(query)}`,
+        google: `https://www.google.com/search?q=${encodeURIComponent(query)}`,
+        bing: `https://www.bing.com/search?q=${encodeURIComponent(query)}`
+      };
+      window.open(urls[engine] || urls.baidu, "_blank");
+    });
+  }
+
   initTheme();
   initMusic();
     initPlaceholders();
@@ -3788,6 +3807,7 @@
   initPjax();
   initPostContextMenu();
   initPostDeleteActions();
+  initWebSearch();
   watchAuthState();
   if (pageName() === "home" && !sessionStorage.getItem("xiaoluo-home-entry-seen")) {
     sessionStorage.setItem("xiaoluo-home-entry-seen", "true");

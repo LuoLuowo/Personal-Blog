@@ -471,6 +471,19 @@ h1, h2, h3 { color: var(--ink); }
 .hero-search:focus-within { transform: translateY(calc(-62% - 2px)); }
 .search-card input { width: 100%; min-width: 0; border: 0; outline: 0; background: transparent; color: var(--ink); font-size: 14px; }
 .search-icon { font-size: 18px; }
+.search-engine-select {
+  border: 0;
+  outline: 0;
+  background: rgba(79,124,255,.1);
+  color: var(--blue);
+  font-size: 13px;
+  font-weight: 700;
+  padding: 6px 10px;
+  border-radius: 999px;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+.search-engine-select option { color: #333; background: #fff; }
 
 .dashboard,
 .sub-page,

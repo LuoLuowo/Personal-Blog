@@ -49,9 +49,14 @@
           <p class="quote" data-hero-subtitle>记录生活、技术和成长。</p>
         </div>
       </div>
-      <form class="search-card hero-search" data-search-form action="./articles.html">
+      <form class="search-card hero-search" data-web-search>
+        <select class="search-engine-select" data-search-engine>
+          <option value="baidu">百度</option>
+          <option value="google">谷歌</option>
+          <option value="bing">必应</option>
+        </select>
         <span class="search-icon">⌕</span>
-        <input name="q" type="search" placeholder="搜索文章、分类或标签" />
+        <input name="q" type="search" placeholder="输入关键词搜索" />
         <button type="submit">搜索</button>
       </form>
     </section>
