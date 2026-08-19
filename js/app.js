@@ -1901,15 +1901,51 @@
           const avatar = itemProfile.avatar_url || "";
           const canDelete = state.isAdmin || item.user_id === state.userId;
           const replies = (repliesByRoot.get(item.id) || []).sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
-          return `<article class="whisper-card glass-card${item.user_id === state.userId ? " is-own" : ""}"><button class="whisper-avatar comment-avatar${avatar ? " has-image" : ""}" type="button" data-profile-user-id="${item.user_id}" aria-label="查看${escapeHtml(name)}的资料"${avatar ? ` style="background-image:url('${escapeHtml(avatar)}')"` : ""}>${avatar ? "" : escapeHtml(name.slice(0, 1))}</button><div class="whisper-card-body"><header><button type="button" data-profile-user-id="${item.user_id}">${escapeHtml(name)}</button>${itemProfile.is_admin ? '<span class="whisper-author-badge">作者</span>' : ""}${item.user_id === state.userId ? '<span class="whisper-own-badge">我的碎碎念</span>' : ""}<time>${formatPostDate(item.created_at)}</time></header><p class="whisper-rich-text">${renderWhisperContent(item.content)}</p><button class="comment-reply-button" type="button" data-reply-whisper="${item.id}" data-reply-name="${escapeHtml(name)}">回复</button>${replies.length ? `<div class="whisper-replies">${replies.map(renderReply).join("")}</div>` : ""}</div>${canDelete ? `<button class="whisper-delete" type="button" data-delete-whisper="${item.id}" aria-label="删除这条碎碎念">删除</button>` : ""}</article>`;
+          const PREVIEW_COUNT = 2;
+          const hasMore = replies.length > PREVIEW_COUNT;
+          const visibleReplies = hasMore ? replies.slice(0, PREVIEW_COUNT) : replies;
+          const repliesHtml = replies.length ? `
+            <div class="whisper-replies" data-whisper-replies="${item.id}">
+              ${visibleReplies.map(renderReply).join("")}
+              ${hasMore ? `<button class="whisper-expand-replies" type="button" data-expand-replies="${item.id}" data-total="${replies.length}">展开 ${replies.length - PREVIEW_COUNT} 条回复</button>` : ""}
+            </div>` : "";
+          return `<article class="whisper-card glass-card${item.user_id === state.userId ? " is-own" : ""}"><button class="whisper-avatar comment-avatar${avatar ? " has-image" : ""}" type="button" data-profile-user-id="${item.user_id}" aria-label="查看${escapeHtml(name)}的资料"${avatar ? ` style="background-image:url('${escapeHtml(avatar)}')"` : ""}>${avatar ? "" : escapeHtml(name.slice(0, 1))}</button><div class="whisper-card-body"><header><button type="button" data-profile-user-id="${item.user_id}">${escapeHtml(name)}</button>${itemProfile.is_admin ? '<span class="whisper-author-badge">作者</span>' : ""}${item.user_id === state.userId ? '<span class="whisper-own-badge">我的碎碎念</span>' : ""}<time>${formatPostDate(item.created_at)}</time></header><p class="whisper-rich-text">${renderWhisperContent(item.content)}</p><button class="comment-reply-button" type="button" data-reply-whisper="${item.id}" data-reply-name="${escapeHtml(name)}">回复</button>${repliesHtml}</div>${canDelete ? `<button class="whisper-delete" type="button" data-delete-whisper="${item.id}" aria-label="删除这条碎碎念">删除</button>` : ""}</article>`;
         }).join("") || '<p class="empty-state">这里还没有碎碎念，来写下第一条吧。</p>';
-        $all("[data-reply-whisper]", feed).forEach((button) => { button.onclick = () => { replyTo = button.dataset.replyWhisper; replyBar.hidden = false; replyBar.querySelector("span").textContent = `正在回复 ${button.dataset.replyName}`; textarea.focus(); textarea.scrollIntoView({ behavior: "smooth", block: "center" }); }; });
-        $all("[data-delete-whisper]", feed).forEach((button) => {
-          button.onclick = async () => {
-            if (!await confirmPublish("确认删除这条碎碎念？", "删除后无法恢复。", "确认删除")) return;
-            try { await window.XiaoLuoSupabase.deleteWhisper(button.dataset.deleteWhisper); await draw(); } catch (error) { showCloudError(error); }
-          };
+        // 展开/收起回复
+        const allRepliesMap = new Map();
+        items.filter((item) => item.parent_id).forEach((item) => {
+          const rootId = findRootId(item.id);
+          if (!allRepliesMap.has(rootId)) allRepliesMap.set(rootId, []);
+          allRepliesMap.get(rootId).push(item);
         });
+        function bindReplyEvents(container) {
+          $all("[data-reply-whisper]", container).forEach((button) => { button.onclick = () => { replyTo = button.dataset.replyWhisper; replyBar.hidden = false; replyBar.querySelector("span").textContent = `正在回复 ${button.dataset.replyName}`; textarea.focus(); textarea.scrollIntoView({ behavior: "smooth", block: "center" }); }; });
+          $all("[data-delete-whisper]", container).forEach((button) => {
+            button.onclick = async () => {
+              if (!await confirmPublish("确认删除这条碎碎念？", "删除后无法恢复。", "确认删除")) return;
+              try { await window.XiaoLuoSupabase.deleteWhisper(button.dataset.deleteWhisper); await draw(); } catch (error) { showCloudError(error); }
+            };
+          });
+        }
+        function bindExpandEvents(container) {
+          $all("[data-expand-replies]", container).forEach((btn) => {
+            btn.onclick = () => {
+              const rootId = btn.dataset.expandReplies;
+              const repliesContainer = btn.closest(".whisper-replies");
+              const allReplies = (allRepliesMap.get(rootId) || []).sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
+              if (btn.dataset.expanded === "true") {
+                const visibleReplies = allReplies.slice(0, PREVIEW_COUNT);
+                repliesContainer.innerHTML = visibleReplies.map(renderReply).join("") + `<button class="whisper-expand-replies" type="button" data-expand-replies="${rootId}" data-total="${allReplies.length}">展开 ${allReplies.length - PREVIEW_COUNT} 条回复</button>`;
+              } else {
+                repliesContainer.innerHTML = allReplies.map(renderReply).join("") + `<button class="whisper-expand-replies" type="button" data-expand-replies="${rootId}" data-total="${allReplies.length}" data-expanded="true">收起回复</button>`;
+              }
+              bindReplyEvents(repliesContainer);
+              bindExpandEvents(repliesContainer);
+            };
+          });
+        }
+        bindReplyEvents(feed);
+        bindExpandEvents(feed);
       } catch (error) {
         feed.innerHTML = `<p class="empty-state">${escapeHtml(error.message || "碎碎念暂时无法加载。")}</p>`;
       }
