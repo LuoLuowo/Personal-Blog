@@ -1,9 +1,10 @@
 -- ============================================================
--- 访问日志按次记录：每个访客只保留最近10条访问记录
+-- 访问日志按次记录：5分钟内多次访问仅算一次，每个访客只保留最近10条
 -- 在 Supabase SQL Editor 中运行一次即可。
 -- 1. 新建 site_visitor_logs 表，每次访问插入一条
--- 2. record_site_presence 中自动插入日志并清理超过10条的旧记录
+-- 2. record_site_presence 中5分钟去重、插入日志、清理超过10条
 -- 3. 新增按IP搜索日志的函数
+-- 4. 一次性清理：清除旧记录，每个访客只留最新一条，visit_count重置为1
 -- ============================================================
 
 -- 1. 访问日志表（按次记录）
@@ -25,7 +26,7 @@ create index if not exists site_visitor_logs_visited_at_idx on public.site_visit
 alter table public.site_visitor_logs enable row level security;
 revoke all on public.site_visitor_logs from anon, authenticated;
 
--- 2. 重写 record_site_presence，增加日志插入和自动清理
+-- 2. 重写 record_site_presence，增加5分钟去重、日志插入和自动清理
 drop function if exists public.record_site_presence(text, text, text, text, uuid, text, boolean);
 
 create or replace function public.record_site_presence(
@@ -42,22 +43,34 @@ language plpgsql
 security definer
 set search_path = public, pg_temp
 as $$
+declare
+  v_recent_count integer := 0;
+  v_should_count boolean := false;
 begin
   if p_visitor_id is null or length(trim(p_visitor_id)) < 8 or length(p_visitor_id) > 100 then
     raise exception 'invalid visitor id';
   end if;
 
+  -- 5分钟去重：检查该访客最近5分钟内是否有过访问记录
+  if p_increment_count then
+    select count(*) into v_recent_count
+    from public.site_visitor_logs
+    where visitor_id = p_visitor_id
+      and visited_at > now() - interval '5 minutes';
+    v_should_count := (v_recent_count = 0);
+  end if;
+
   insert into public.site_visitors
     (visitor_id, first_seen, last_seen, ip_address, ip_location, user_id, user_name, visit_count)
   values
-    (p_visitor_id, now(), now(), p_ip_address, p_ip_location, p_user_id, p_user_name, 1)
+    (p_visitor_id, now(), now(), p_ip_address, p_ip_location, p_user_id, p_user_name, case when v_should_count then 1 else 0 end)
   on conflict (visitor_id) do update set
     last_seen = excluded.last_seen,
     ip_address = coalesce(excluded.ip_address, public.site_visitors.ip_address),
     ip_location = coalesce(excluded.ip_location, public.site_visitors.ip_location),
     user_id = coalesce(excluded.user_id, public.site_visitors.user_id),
     user_name = coalesce(excluded.user_name, public.site_visitors.user_name),
-    visit_count = public.site_visitors.visit_count + case when p_increment_count then 1 else 0 end;
+    visit_count = public.site_visitors.visit_count + case when v_should_count then 1 else 0 end;
 
   insert into public.site_presence
     (visitor_id, page_path, last_seen, ip_address, ip_location, user_id, user_name)
@@ -71,8 +84,8 @@ begin
     user_id = excluded.user_id,
     user_name = excluded.user_name;
 
-  -- 只有真正访问页面时才记录日志（心跳不记录）
-  if p_increment_count then
+  -- 只有真正访问页面且5分钟内无重复时才记录日志
+  if v_should_count then
     insert into public.site_visitor_logs
       (visitor_id, ip_address, ip_location, page_path, user_id, user_name, visited_at)
     values
@@ -122,7 +135,18 @@ as $$
   limit 100;
 $$;
 
--- 4. 权限
+-- 4. 一次性清理：清除旧记录，每个访客只留最新一条，visit_count重置为1
+-- （只运行这一次，之后不再执行）
+delete from public.site_visitor_logs
+where id not in (
+  select distinct on (visitor_id) id
+  from public.site_visitor_logs
+  order by visitor_id, visited_at desc
+);
+
+update public.site_visitors set visit_count = 1;
+
+-- 5. 权限
 revoke all on function public.record_site_presence(text, text, text, text, uuid, text, boolean) from public;
 revoke all on function public.search_visitor_logs(text) from public;
 
