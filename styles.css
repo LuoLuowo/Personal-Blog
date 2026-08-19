@@ -303,7 +303,7 @@ button, input, textarea, select { font: inherit; }
 .icon-button:hover,
 .user-entry:hover { transform: translateY(-2px); }
 
-.home-hero { position: relative; padding-bottom: 42px; overflow: hidden; }
+.home-hero { position: relative; padding-bottom: 42px; overflow: visible; }
 
 .hero-cover {
   position: relative;
