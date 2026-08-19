@@ -1139,11 +1139,13 @@
           <h3>${escapeHtml(post.title)}</h3>
           <div class="article-excerpt">${formatExcerpt(post.content || [post.excerpt])}</div>
           <div class="article-meta"><span>${formatPostDate(post.publishedAt)}</span><span>${escapeHtml(post.author)}</span></div>
-          <span class="article-engagement" data-post-card-engagement data-post-card-id="${escapeHtml(post.id)}">阅读 0 · 点赞 0 · 评论 0</span>
           ${post.attachments?.length ? `<p class="article-attachment-hint">含 ${post.attachments.length} 个附件，进入详情可下载</p>` : ""}
-          <div class="tag-row">
-            <div class="tag-row-left">${post.tags.map((tag) => `<a href="./articles.html?tag=${encodeURIComponent(tag)}">#${escapeHtml(tag)}</a>`).join("")}</div>
-            <span class="article-word-count">${wordCount}字</span>
+          <div class="article-card-footer">
+            <span class="article-engagement" data-post-card-engagement data-post-card-id="${escapeHtml(post.id)}">阅读 0 · 点赞 0 · 评论 0</span>
+            <div class="tag-row">
+              <div class="tag-row-left">${post.tags.map((tag) => `<a href="./articles.html?tag=${encodeURIComponent(tag)}">#${escapeHtml(tag)}</a>`).join("")}</div>
+              <span class="article-word-count">${wordCount}字</span>
+            </div>
           </div>
         </div>
       </article>
