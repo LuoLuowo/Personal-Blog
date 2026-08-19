@@ -44,6 +44,50 @@
   canvas.dataset.gameReady = "true";
   canvas.dataset.gameBooting = "";
   const ctx = canvas.getContext("2d");
+
+  // ===== 音效系统（Web Audio API 生成，无需外部文件）=====
+  let audioCtx = null;
+  function ensureAudio() {
+    if (!audioCtx) {
+      try { audioCtx = new (window.AudioContext || window.webkitAudioContext)(); }
+      catch (e) { audioCtx = null; }
+    }
+    if (audioCtx && audioCtx.state === "suspended") audioCtx.resume();
+    return audioCtx;
+  }
+  function playJumpSound() {
+    const ac = ensureAudio();
+    if (!ac) return;
+    const osc = ac.createOscillator();
+    const gain = ac.createGain();
+    osc.type = "sine";
+    osc.frequency.setValueAtTime(320, ac.currentTime);
+    osc.frequency.exponentialRampToValueAtTime(780, ac.currentTime + 0.14);
+    gain.gain.setValueAtTime(0.18, ac.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.001, ac.currentTime + 0.16);
+    osc.connect(gain);
+    gain.connect(ac.destination);
+    osc.start(ac.currentTime);
+    osc.stop(ac.currentTime + 0.17);
+  }
+  function playLandSound() {
+    const ac = ensureAudio();
+    if (!ac) return;
+    // 落地：短促低频 + 噪声
+    const osc = ac.createOscillator();
+    const gain = ac.createGain();
+    osc.type = "triangle";
+    osc.frequency.setValueAtTime(180, ac.currentTime);
+    osc.frequency.exponentialRampToValueAtTime(80, ac.currentTime + 0.08);
+    gain.gain.setValueAtTime(0.22, ac.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.001, ac.currentTime + 0.1);
+    osc.connect(gain);
+    gain.connect(ac.destination);
+    osc.start(ac.currentTime);
+    osc.stop(ac.currentTime + 0.11);
+  }
+  // 首次交互时解锁音频
+  canvas.addEventListener("pointerdown", () => ensureAudio(), { once: true });
   const scoreEl = document.querySelector("[data-game-score]");
   const bestEl = document.querySelector("[data-game-best]");
   const hintEl = document.querySelector("[data-game-hint]");
@@ -155,6 +199,7 @@
     player.vy = -(8.2 + power * 11.8);
     player.jumping = true;
     hintEl.textContent = "飞向下一块";
+    playJumpSound();
   }
   function award(points) {
     score += points;
@@ -173,6 +218,7 @@
     player.squash = 1;
     targetCamera = Math.max(0, current.x - 190);
     hintEl.textContent = points === 3 ? "完美落点，继续！" : "继续蓄力";
+    playLandSound();
   }
   function fail() {
     gameOver = true;

@@ -2666,6 +2666,14 @@ body.dark-mode .about-contact-link.instagram > i { color: #e4405f; }
   .visitor-time { align-self: flex-end; }
 }
 
+/* IP搜索分组日志 */
+.visitor-log-group { flex-direction: column; align-items: stretch; gap: 10px; }
+.visitor-log-group .visitor-row-main { flex-wrap: wrap; }
+.visitor-log-list { list-style: none; margin: 0; padding: 8px 0 0; border-top: 1px solid var(--line, rgba(255,255,255,.1)); display: grid; gap: 6px; }
+.visitor-log-item { display: flex; justify-content: space-between; align-items: center; gap: 10px; padding: 4px 0; font-size: 13px; }
+.visitor-log-page { color: var(--text-primary, #e5e7eb); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 60%; }
+.visitor-log-time { color: var(--muted, #9aa7ba); font-variant-numeric: tabular-nums; white-space: nowrap; font-size: 12px; }
+
 /* ===== 跳一跳排行榜：参与排行榜按钮 + 昵称弹窗 + 移动端提示 ===== */
 .game-leaderboard-actions {
   display: flex;
