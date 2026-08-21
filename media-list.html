@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>书籍影单 | 小罗的Life</title>
+  <link rel="stylesheet" href="./styles.css" />
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="./js/supabase-config.js" defer></script>
+  <script src="./js/supabase-client.js" defer></script>
+  <script src="./js/data.js" defer></script>
+  <script src="./js/app.js" defer></script>
+</head>
+<body data-page="media-list">
+  <div class="page-glow"></div>
+  <header class="site-header">
+    <a class="brand" href="./index.html"><span class="brand-mark" data-site-logo>罗</span><span data-site-name>小罗Blog</span></a>
+    <button class="nav-toggle" type="button" data-nav-toggle aria-label="打开导航">☰</button>
+    <nav class="top-nav" data-nav aria-label="主导航">
+      <a href="./index.html">首页</a><a href="./articles.html">所有文章</a><a href="./life.html">生活圈</a><a href="./whispers.html">碎碎念</a><a href="./projects.html">个人项目</a><a href="./about.html">关于我</a><a href="./dashboard.html" data-admin-only hidden>后台</a>
+    </nav>
+    <div class="header-actions"><button class="icon-button" type="button" data-theme-toggle aria-label="切换日夜模式">◐</button><a class="ghost-button" href="./login.html" data-guest-only>登录</a><a class="primary-button small" href="./register.html" data-guest-only>注册</a><a class="user-entry" href="./dashboard.html" hidden><span class="user-avatar" data-profile-avatar>罗</span></a></div>
+  </header>
+  <main class="sub-page media-list-page" data-media-page>
+    <section class="media-list-head">
+      <div><p class="eyebrow">MY WATCHLIST</p><h1>书籍影单</h1><p>看过的电影、书籍、动漫、游戏与那些值得留住的故事。</p></div>
+      <div class="media-list-tools"><span data-media-count>0 条片单</span><label class="media-search"><span>⌕</span><input type="search" data-media-search placeholder="查找片名、作者或演员"></label><div class="media-sort" data-media-sort-menu><button type="button" data-media-sort-toggle aria-expanded="false"><span>排序：</span><strong data-media-sort-label>观看时间最新</strong><i aria-hidden="true">⌄</i></button><ul data-media-sort-options hidden><li><button type="button" data-media-sort-option="created-desc">最近添加</button></li><li><button type="button" data-media-sort-option="rating-desc">评分最高</button></li><li><button type="button" data-media-sort-option="watched-desc">观看时间最新</button></li><li><button type="button" data-media-sort-option="watched-asc">观看时间最早</button></li></ul></div><button class="primary-button small" type="button" data-add-media-item data-admin-only hidden>添加片单</button></div>
+    </section>
+    <section class="media-type-bar"><div class="media-type-filters" data-media-types></div><form class="media-type-add" data-media-type-form data-admin-only hidden><input name="name" maxlength="16" placeholder="新增片单类型"><button type="submit">添加类型</button></form></section>
+    <section class="media-tag-bar" data-media-tags hidden></section>
+    <section class="media-grid" data-media-list><div class="media-empty media-loading glass-card"><strong>正在加载片单</strong><p>正在读取书籍、电影和观看记录。</p></div></section>
+  </main>
+  <footer class="site-footer"><p>© 2026 小罗的Life</p></footer>
+</body>
+</html>

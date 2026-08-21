@@ -24,7 +24,7 @@
       <a href="./articles.html">所有文章</a>
       <a href="./life.html">生活圈</a>
       <a href="./whispers.html">碎碎念</a>
-      <a href="./progress.html">进步簿</a>
+      <a href="./projects.html">个人项目</a>
       <a href="./about.html">关于我</a>
       <a class="active" href="./dashboard.html">后台</a>
     </nav>
@@ -41,7 +41,7 @@
       <a href="./editor.html">新建文章</a>
       <a href="#tags">文章分类与标签</a>
       <a href="#life-settings">生活圈</a>
-      <a href="#progress-settings">进步簿</a>
+      <a href="#project-settings">个人项目</a>
       <a href="#about-settings">关于我设置</a>
       <a class="active" href="#dashboard">仪表盘</a>
       <a href="#visitor-monitor">登录日志</a>
@@ -59,7 +59,7 @@
       <section class="admin-cards">
         <article class="glass-card"><span data-stat-total-words>0</span>
           <h3>文章总字数</h3>
-          <p>包含文章、生活圈和进步簿文字。</p>
+          <p>包含文章、生活圈和个人项目文字。</p>
         </article>
         <article class="glass-card"><span data-stat-total-attachments>0</span>
           <h3>总附件</h3>
@@ -67,7 +67,7 @@
         </article>
         <article class="glass-card"><span data-stat-total-images>0</span>
           <h3>总图片</h3>
-          <p>生活圈和进步簿已上传图片。</p>
+          <p>生活圈和个人项目已上传图片。</p>
         </article>
         <article class="glass-card"><span data-stat-total-likes>0</span>
           <h3>总点赞量</h3>
@@ -181,23 +181,24 @@
         </form>
       </section>
 
-      <section class="admin-panel glass-card" id="progress-settings">
+      <section class="admin-panel glass-card" id="project-settings">
         <div class="section-heading compact">
           <div>
-            <p class="mini-title">PROGRESS</p>
-            <h2>进步簿</h2>
-            <p>发布新的成长记录。</p>
+            <p class="mini-title">PERSONAL PROJECTS</p>
+            <h2>个人项目</h2>
+            <p>仅管理员可发布、编辑和删除；访客可以查看项目详情。</p>
           </div>
-          <a class="text-link" href="./progress.html">进入进步簿管理</a>
+          <a class="text-link" href="./projects.html">查看前台项目页</a>
         </div>
-        <form class="content-entry-form standalone-entry-form" data-content-form="progress">
-          <input name="title" type="text" placeholder="进步标题" required>
-          <input name="date" type="date">
-          <textarea name="text" rows="4" placeholder="记录本次收获"></textarea>
-          <label class="upload-field"><span>添加图片</span><input name="images" type="file" accept="image/*" multiple
-              data-supabase-storage="progress-images"></label>
-          <button class="primary-button small" type="submit">发布到进步簿</button>
+        <form class="content-entry-form standalone-entry-form project-entry-form" data-project-form>
+          <input name="title" type="text" placeholder="项目名称" required>
+          <input name="projectUrl" type="url" placeholder="项目网址（可选，例如 https://example.com）">
+          <textarea name="description" rows="5" placeholder="项目简介：做了什么、使用了什么技术、现在进度如何"></textarea>
+          <label class="upload-field"><span>项目封面（自动压缩图片）</span><input name="cover" type="file" accept="image/*"></label>
+          <label class="upload-field"><span>项目附件（可多选）</span><input name="attachments" type="file" multiple></label>
+          <button class="primary-button small" type="submit">发布个人项目</button>
         </form>
+        <div class="project-manager" data-project-manager></div>
       </section>
 
       <section class="admin-panel glass-card" id="home-settings">

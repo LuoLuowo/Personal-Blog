@@ -48,5 +48,11 @@ window.NeverBlogData = {
   posts: [],
   moments: [],
   progress: [],
+  projects: [],
+  mediaItems: [],
+  mediaTypes: [],
+  mediaReviews: [],
+  notes: [],
+  commonSites: [],
   albums: []
 };

@@ -17,7 +17,9 @@
     activityTitle: "初入人",
     activityCheckedToday: false,
     activityNextScore: 50,
-    activityNextTitle: "漂泊者"
+    activityNextTitle: "漂泊者",
+    cloudMutationVersion: 0,
+    mediaDataLoaded: false
   };
 
   const $ = (selector, root = document) => root.querySelector(selector);
@@ -72,8 +74,8 @@
       const link = document.createElement("a");
       link.href = "./activity.html";
       link.textContent = "活跃榜";
-      const progressLink = $("a[href='./progress.html']", nav);
-      nav.insertBefore(link, progressLink || $("a[href='./about.html']", nav) || null);
+      const projectsLink = $("a[href='./projects.html']", nav);
+      nav.insertBefore(link, projectsLink || $("a[href='./about.html']", nav) || null);
     });
   }
 
@@ -856,8 +858,19 @@
     const links = $all('a[href^="#"]', sidebar);
     const sections = links.map((link) => $(link.getAttribute("href"))).filter(Boolean);
     if (!sections.length) return;
+    const headerOffset = () => ($(".site-header")?.getBoundingClientRect().height || 70) + 20;
+    links.forEach((link) => {
+      link.addEventListener("click", (event) => {
+        const section = $(link.getAttribute("href"));
+        if (!section) return;
+        event.preventDefault();
+        window.scrollTo({ top: Math.max(0, window.scrollY + section.getBoundingClientRect().top - headerOffset()), behavior: "smooth" });
+        history.replaceState(null, "", link.getAttribute("href"));
+        links.forEach((item) => item.classList.toggle("active", item === link));
+      });
+    });
     const update = () => {
-      const point = 140;
+      const point = headerOffset();
       let active = sections[0];
       sections.forEach((section) => {
         if (section.getBoundingClientRect().top <= point) active = section;
@@ -1003,20 +1016,28 @@
   async function loadCloudData() {
     const api = window.XiaoLuoSupabase;
     if (!api?.isConfigured) return;
+    const loadMutationVersion = state.cloudMutationVersion;
     try {
       const adminProfile = await api.getAdminProfile();
       if (!adminProfile) return;
       state.adminId = adminProfile.id;
       const ownerId = adminProfile.id;
-      const [categories, tags, moments, progress, posts, musicTracks, lockedMomentTeasers] = await Promise.all([
+      const [categories, tags, moments, progress, projects, mediaItems, mediaTypes, mediaReviews, notes, commonSites, posts, musicTracks, lockedMomentTeasers] = await Promise.all([
         api.listTaxonomy("categories", ownerId),
         api.listTaxonomy("tags", ownerId),
         api.listContent("moments", ownerId),
         api.listContent("progress_logs", ownerId),
+        api.listContent("projects", ownerId).catch(() => []),
+        api.listContent("media_items", ownerId).catch(() => []),
+        api.listContent("media_types", ownerId).catch(() => []),
+        state.isAdmin ? api.listContent("media_reviews", ownerId).catch(() => []) : Promise.resolve([]),
+        state.isAdmin ? api.listContent("notes", state.userId).catch(() => []) : Promise.resolve([]),
+        state.isLoggedIn ? api.listContent("common_sites", ownerId).catch(() => []) : Promise.resolve([]),
         state.isAdmin ? api.listPosts(ownerId) : api.listPublishedPosts(ownerId),
         api.listMusicTracks(ownerId),
         api.listMomentTeasers ? api.listMomentTeasers(ownerId).catch(() => []) : Promise.resolve([])
       ]);
+      if (loadMutationVersion !== state.cloudMutationVersion) return;
       data.site.profileName = adminProfile.display_name || data.site.profileName;
       data.site.avatarText = (adminProfile.display_name || data.site.profileName).slice(0, 1);
       data.site.avatarDataUrl = adminProfile.avatar_url || "";
@@ -1029,7 +1050,7 @@
       data.site.announcement = adminProfile.announcement || "";
       data.site.contacts = { ...data.site.contacts, ...(adminProfile.contacts || {}) };
       data.site.launchedAt = adminProfile.created_at || data.site.launchedAt;
-      const updateDates = [adminProfile.updated_at, ...posts.map((item) => item.updated_at || item.created_at), ...moments.map((item) => item.updated_at || item.created_at), ...progress.map((item) => item.updated_at || item.created_at), ...musicTracks.map((item) => item.updated_at || item.created_at)].filter(Boolean);
+      const updateDates = [adminProfile.updated_at, ...posts.map((item) => item.updated_at || item.created_at), ...moments.map((item) => item.updated_at || item.created_at), ...progress.map((item) => item.updated_at || item.created_at), ...projects.map((item) => item.updated_at || item.created_at), ...mediaItems.map((item) => item.updated_at || item.created_at), ...musicTracks.map((item) => item.updated_at || item.created_at)].filter(Boolean);
       data.site.lastUpdatedAt = updateDates.sort((a, b) => new Date(b) - new Date(a))[0] || "";
       data.categories = categories.map((item) => ({ id: item.id, name: item.name, description: "" }));
       data.tags = tags.map((item) => ({ id: item.id, name: item.name }));
@@ -1037,6 +1058,14 @@
       const lockedMoments = lockedMomentTeasers.filter((item) => !visibleMoments.some((moment) => moment.id === item.id)).map((item) => ({ id: item.id, title: "生活圈内容已锁定", date: item.entry_date, text: "登录后活跃值达到50可以解锁内容", images: [], isLocked: true, isPublic: false }));
       data.moments = sortTimelineByDate([...visibleMoments, ...lockedMoments]);
       data.progress = sortTimelineByDate(progress.map((item) => ({ id: item.id, title: item.title, date: item.entry_date, text: item.body || "", images: item.image_urls || [] })));
+      data.projects = projects.map((item) => ({ id: item.id, title: item.title, description: item.description || "", coverUrl: item.cover_url || "", projectUrl: item.project_url || "", attachments: item.attachments || [], createdAt: item.created_at || "" }));
+      data.mediaReviews = mediaReviews.map((item) => ({ id: item.id, mediaItemId: item.media_item_id, title: item.review_title || "观后感", review: item.review || "" }));
+      const reviewsByItem = new Map(data.mediaReviews.map((item) => [item.mediaItemId, item]));
+      data.mediaItems = mediaItems.map((item) => { const review = reviewsByItem.get(item.id); return { id: item.id, title: item.title, reviewTitle: review?.title || "观后感", review: review?.review || "", noteUrl: item.note_url || "", coverUrl: item.cover_url || "", rating: Number(item.rating) || 0, mediaType: item.media_type || "未分类", tags: Array.isArray(item.tags) ? item.tags : [], people: item.people || "", watchedYear: Number(item.watched_year) || 0, watchedMonth: Number(item.watched_month) || 0, watchedDay: Number(item.watched_day) || 0, createdAt: item.created_at || "" }; });
+      state.mediaDataLoaded = true;
+      data.mediaTypes = mediaTypes.map((item) => ({ id: item.id, name: item.name, isHidden: Boolean(item.is_hidden) }));
+      data.notes = notes.map((item) => ({ id: item.id, title: item.title, body: item.body || "", attachments: Array.isArray(item.attachments) ? item.attachments : [], isDone: Boolean(item.is_done), createdAt: item.created_at || "" }));
+      data.commonSites = commonSites.map((item) => ({ id: item.id, title: item.title, url: item.url, description: item.description || "", iconUrl: item.icon_url || "", createdAt: item.created_at || "" }));
       data.posts = posts.map((item) => ({ id: item.id, title: item.title, author: data.site.profileName, category: item.category || "未分类", tags: item.tags || [], attachments: item.attachments || [], publishedAt: formatPostDate(item.created_at), coverUrl: item.cover_url || "", coverClass: "gradient-a", excerpt: (item.content || "").replace(/<[^>]+>/g, "").slice(0, 110), content: [item.content || ""], featured: false }));
       if (musicTracks.length) data.music = musicTracks.map((track) => ({ id: track.id, title: track.title, artist: track.artist || "小罗Blog", category: track.category || "", src: track.file_url }));
       state.cloudOwnerId = ownerId;
@@ -1051,12 +1080,16 @@
       if (pageName() === "articles") renderArticles();
       if (pageName() === "categories") renderCategories();
       if (pageName() === "article-detail") renderDetail();
-      if (pageName() === "life") renderTimeline("[data-life-timeline]", data.moments);
+      if (pageName() === "life") renderLifeTimeline();
       if (pageName() === "progress") renderTimeline("[data-progress-timeline]", data.progress);
+      if (pageName() === "projects") renderProjects();
+      if (pageName() === "media-list") renderMediaList();
       if (pageName() === "about") renderAbout();
       if (pageName() === "photos") renderGallery();
       if (pageName() === "editor") prepareEditorForEdit();
     } catch (error) {
+      state.mediaDataLoaded = true;
+      if (pageName() === "media-list") renderMediaList();
       console.warn("Supabase content load failed:", error.message);
     }
   }
@@ -1073,6 +1106,28 @@
   function initTheme() {
     const saved = localStorage.getItem("neverblog-theme");
     if (saved === "dark") document.body.classList.add("dark-mode");
+    syncThemeAppearance();
+  }
+
+  function ensureFunctionNav() {
+    $all(".top-nav").forEach((nav) => {
+      const projectLink = $("a[href='./projects.html']", nav);
+      if (!projectLink || projectLink.closest(".nav-menu-group")) return;
+      const group = document.createElement("div");
+      group.className = "nav-menu-group";
+      group.dataset.functionMenu = "";
+      group.innerHTML = '<button class="nav-menu-trigger" type="button" data-function-menu-toggle aria-expanded="false"><span>功能块</span><i class="nav-menu-chevron" aria-hidden="true"></i></button><div class="nav-submenu"><a href="./projects.html">个人项目</a><a href="./media-list.html">书籍影单</a></div>';
+      projectLink.replaceWith(group);
+    });
+  }
+
+  function syncThemeAppearance() {
+    const isDark = document.body.classList.contains("dark-mode");
+    document.querySelector('meta[name="theme-color"]')?.setAttribute("content", isDark ? "#101a2c" : "#edf4ff");
+    $all("[data-theme-toggle]").forEach((button) => {
+      button.setAttribute("aria-label", isDark ? "切换为日间模式" : "切换为夜间模式");
+      button.setAttribute("title", isDark ? "切换为日间模式" : "切换为夜间模式");
+    });
   }
 
   function bindThemeButtons() {
@@ -1082,6 +1137,7 @@
       button.addEventListener("click", () => {
         document.body.classList.toggle("dark-mode");
         localStorage.setItem("neverblog-theme", document.body.classList.contains("dark-mode") ? "dark" : "light");
+        syncThemeAppearance();
       });
     });
   }
@@ -1118,11 +1174,40 @@
     toggle.addEventListener("click", () => nav.classList.toggle("open"));
   }
 
+  function bindFunctionMenus() {
+    if (document.body.dataset.functionMenusBound) return;
+    document.body.dataset.functionMenusBound = "true";
+    document.addEventListener("click", (event) => {
+      const trigger = event.target.closest("[data-function-menu-toggle]");
+      if (trigger) {
+        event.preventDefault();
+        const group = trigger.closest("[data-function-menu]");
+        const willOpen = !group.classList.contains("is-open");
+        $all("[data-function-menu].is-open").forEach((item) => item.classList.remove("is-open"));
+        group.classList.toggle("is-open", willOpen);
+        trigger.setAttribute("aria-expanded", String(willOpen));
+        return;
+      }
+      if (!event.target.closest("[data-function-menu]")) {
+        $all("[data-function-menu].is-open").forEach((group) => {
+          group.classList.remove("is-open");
+          $("[data-function-menu-toggle]", group)?.setAttribute("aria-expanded", "false");
+        });
+      }
+      if (event.target.closest(".top-nav a")) $("[data-nav]")?.classList.remove("open");
+    });
+  }
+
   function setActiveNav() {
     const current = location.pathname.split("/").pop() || "index.html";
     $all(".top-nav a").forEach((link) => {
       const target = new URL(link.href, location.href).pathname.split("/").pop() || "index.html";
       link.classList.toggle("active", target === current);
+    });
+    $all("[data-function-menu]").forEach((group) => {
+      const active = Boolean($(".nav-submenu a.active", group));
+      group.classList.toggle("has-active", active);
+      $("[data-function-menu-toggle]", group)?.classList.toggle("active", active);
     });
   }
 
@@ -1570,7 +1655,7 @@
           try {
             await window.XiaoLuoSupabase.updateContent("moments", item.id, state.userId, { is_public: nextPublic });
             item.isPublic = nextPublic;
-            renderTimeline("[data-life-timeline]", data.moments);
+            renderLifeTimeline();
           } catch (error) { showCloudError(error); }
         });
         return;
@@ -1593,6 +1678,7 @@
       modal.innerHTML = `<div class="modal-backdrop" data-timeline-detail-close></div><section class="modal-card glass-card" role="dialog" aria-modal="true" aria-label="内容详情"><button class="modal-close" type="button" data-timeline-detail-close>×</button><div class="detail-split-layout"><article class="timeline-detail-main"><p class="mini-title" data-timeline-detail-date></p><h2 data-timeline-detail-title></h2><div class="timeline-rich-text" data-timeline-detail-text></div><div class="timeline-detail-images" data-timeline-detail-images></div><div class="post-actions"><button type="button" data-timeline-like>点赞 0</button><span class="post-engagement" data-timeline-engagement>阅读 0 · 评论 0</span></div></article><aside class="timeline-comments"><h3>评论</h3><p data-timeline-comment-note>登录后可以评论。</p><form data-timeline-comment-form><textarea name="content" maxlength="1000" placeholder="写下你的评论"></textarea><button class="primary-button small" type="submit">发表评论</button></form><div class="comment-list" data-timeline-comment-list></div></aside></div></section>`;
       document.body.appendChild(modal);
     }
+    modal.classList.remove("open");
     $("[data-timeline-detail-date]", modal).textContent = item.date;
     $("[data-timeline-detail-title]", modal).textContent = item.title;
     $("[data-timeline-detail-text]", modal).innerHTML = formatRichText(item.text).replace(/\n/g, "<br>");
@@ -1667,22 +1753,32 @@
     const grid = $("[data-activity-heatmap]");
     if (!grid) return;
     const targetUserId = null;
-    $("[data-activity-heatmap-title]").textContent = "全站 365 天活跃热力图";
     try {
       const rows = await window.XiaoLuoSupabase.getActivityHeatmap(targetUserId);
       const counts = new Map(rows.map((row) => [row.date, row.count]));
-      const today = new Date();
-      const start = new Date(today.getFullYear(), today.getMonth(), today.getDate() - 364);
+      const chinaParts = new Intl.DateTimeFormat("en-US", { timeZone: "Asia/Shanghai", year: "numeric", month: "2-digit", day: "2-digit" }).formatToParts(new Date()).reduce((result, part) => ({ ...result, [part.type]: part.value }), {});
+      const today = new Date(Number(chinaParts.year), Number(chinaParts.month) - 1, Number(chinaParts.day));
+      const currentYear = today.getFullYear();
+      const start = new Date(currentYear, 0, 1);
+      const end = new Date(currentYear, 11, 31);
+      const totalDays = Math.round((end - start) / 86400000) + 1;
+      const range = $("[data-activity-heatmap-range]");
+      const title = $("[data-activity-heatmap-title]");
+      if (title) title.textContent = `全站 ${currentYear} 年活跃热力图`;
+      if (range) range.textContent = `${currentYear}年01月 - 12月`;
       const mondayOffset = (start.getDay() + 6) % 7;
       const cells = Array.from({ length: mondayOffset }, () => '<i class="is-empty" aria-hidden="true"></i>');
-      for (let index = 0; index < 365; index += 1) {
+      for (let index = 0; index < totalDays; index += 1) {
         const date = new Date(start.getFullYear(), start.getMonth(), start.getDate() + index);
         const key = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
-        const count = counts.get(key) || 0;
+        const isFuture = date > today;
+        const count = isFuture ? 0 : (counts.get(key) || 0);
         const level = count === 0 ? 0 : count < 2 ? 1 : count < 4 ? 2 : count < 7 ? 3 : count < 11 ? 4 : 5;
-        cells.push(`<i class="level-${level}" title="${key} · ${count} 次活跃" aria-label="${key}，${count}次活跃"></i>`);
+        cells.push(`<i class="level-${level}${isFuture ? " is-future" : ""}" title="${key} · ${isFuture ? "未来日期" : `${count} 次活跃`}" aria-label="${key}，${isFuture ? "未来日期" : `${count}次活跃`}"></i>`);
       }
       grid.innerHTML = cells.join("");
+      const months = $("[data-activity-heatmap-months]");
+      if (months) months.innerHTML = Array.from({ length: 12 }, (_, month) => `<span>${month + 1}月</span>`).join("");
     } catch (error) {
       grid.innerHTML = '<p class="empty-state">热力图尚未初始化。</p>';
     }
@@ -1895,7 +1991,7 @@
           const replyPrefix = replyToName ? `<span class="whisper-reply-to">回复 @${escapeHtml(replyToName)}</span>` : "";
           return `<article class="whisper-reply"><button class="whisper-avatar comment-avatar${avatar ? " has-image" : ""}" type="button" data-profile-user-id="${item.user_id}"${avatar ? ` style="background-image:url('${escapeHtml(avatar)}')"` : ""}>${avatar ? "" : escapeHtml(name.slice(0, 1))}</button><div><header><button type="button" data-profile-user-id="${item.user_id}">${escapeHtml(name)}</button>${replyPrefix}<time>${formatPostDate(item.created_at)}</time></header><p class="whisper-rich-text">${renderWhisperContent(item.content)}</p><button class="comment-reply-button whisper-reply-btn" type="button" data-reply-whisper="${item.id}" data-reply-name="${escapeHtml(name)}">回复</button></div>${canDelete ? `<button class="whisper-delete" type="button" data-delete-whisper="${item.id}">删除</button>` : ""}</article>`;
         };
-        const PREVIEW_COUNT = 2;
+        const PREVIEW_COUNT = 0;
         feed.innerHTML = items.filter((item) => !item.parent_id).map((item) => {
           const itemProfile = item.profile || {};
           const name = itemProfile.display_name || "普通用户";
@@ -2415,6 +2511,32 @@
     });
   }
 
+  function renderLifeTimeline() {
+    const filter = $("[data-life-visibility-filter]");
+    const publicOnly = $("[data-life-public-only]");
+    const showAll = $("[data-life-show-all]");
+    const restricted = !hasActivityAccess(50);
+    if (filter) filter.hidden = !restricted;
+    if (restricted && publicOnly && showAll) {
+      if (!filter.dataset.bound) {
+        publicOnly.checked = true;
+        showAll.checked = false;
+        const update = (source) => {
+          if (source === publicOnly && publicOnly.checked) showAll.checked = false;
+          if (source === showAll && showAll.checked) publicOnly.checked = false;
+          if (!publicOnly.checked && !showAll.checked) publicOnly.checked = true;
+          renderTimeline("[data-life-timeline]", publicOnly.checked ? data.moments.filter((item) => item.isPublic) : data.moments);
+        };
+        publicOnly.onchange = () => update(publicOnly);
+        showAll.onchange = () => update(showAll);
+        filter.dataset.bound = "true";
+      }
+      renderTimeline("[data-life-timeline]", publicOnly.checked ? data.moments.filter((item) => item.isPublic) : data.moments);
+      return;
+    }
+    renderTimeline("[data-life-timeline]", data.moments);
+  }
+
   function renderTimeline(selector, items) {
     const wrap = $(selector);
     if (!wrap) return;
@@ -2431,6 +2553,656 @@
     }).join("") || '<article class="timeline-item glass-card empty-state">暂时还没有内容。</article>';
     highlightCodeBlocks(wrap);
     items.filter((item) => !item.isLocked).forEach((item) => loadTimelineCardEngagement(type, item.id, wrap));
+  }
+
+  function projectCoverHtml(project) {
+    return project.coverUrl
+      ? `<img src="${escapeHtml(project.coverUrl)}" alt="${escapeHtml(project.title)} 项目封面">`
+      : '<span class="project-cover-placeholder" aria-hidden="true">✦</span>';
+  }
+
+  function renderProjects() {
+    $all("[data-project-list]").forEach((wrap) => {
+      wrap.innerHTML = data.projects.map((project) => `<button class="project-row glass-card" type="button" data-open-project="${escapeHtml(project.id)}"><span class="project-cover">${projectCoverHtml(project)}</span><span class="project-row-content"><span class="mini-title">PERSONAL PROJECT</span><strong>${escapeHtml(project.title)}</strong><span class="project-description">${escapeHtml(project.description || "暂时没有项目简介。")}</span><span class="project-row-meta">${project.projectUrl ? "含项目网址" : "项目详情"}${project.attachments?.length ? ` · ${project.attachments.length} 个附件` : ""}</span></span><span class="project-row-arrow" aria-hidden="true">›</span></button>`).join("") || '<article class="glass-card project-empty">个人项目正在整理中。</article>';
+    });
+    if (document.body.dataset.projectListBound) return;
+    document.body.dataset.projectListBound = "true";
+    document.addEventListener("click", (event) => {
+      const button = event.target.closest("[data-open-project]");
+      if (!button) return;
+      const project = data.projects.find((item) => item.id === button.dataset.openProject);
+      if (project) openProjectDetail(project);
+    });
+  }
+
+  const DEFAULT_MEDIA_TYPES = ["电影", "动漫", "游戏", "小说", "漫画", "书籍"];
+
+  function mediaTypes() {
+    const hiddenTypes = new Set(data.mediaTypes.filter((item) => item.isHidden).map((item) => item.name));
+    const customTypes = data.mediaTypes.filter((item) => !item.isHidden && !DEFAULT_MEDIA_TYPES.includes(item.name)).map((item) => item.name);
+    return [...new Set([...DEFAULT_MEDIA_TYPES.filter((name) => !hiddenTypes.has(name)), ...customTypes, ...data.mediaItems.map((item) => item.mediaType)].filter(Boolean))];
+  }
+
+  function mediaTypeClass(type) {
+    const map = { 电影: "film", 电视剧: "series", 动漫: "anime", 游戏: "game", 小说: "novel", 漫画: "comic", 书籍: "book", 未分类: "other" };
+    if (map[type]) return `media-type-${map[type]}`;
+    const hueIndex = [...String(type || "")].reduce((sum, char) => sum + char.charCodeAt(0), 0) % 5;
+    return `media-type-custom-${hueIndex}`;
+  }
+
+  function mediaCoverHtml(item) {
+    return item.coverUrl
+      ? `<img src="${escapeHtml(item.coverUrl)}" alt="${escapeHtml(item.title)} 封面">`
+      : '<span class="media-cover-placeholder" aria-hidden="true">◌</span>';
+  }
+
+  function mediaTagsHtml(item) {
+    const tags = Array.isArray(item?.tags) ? item.tags.filter(Boolean).slice(0, 12) : [];
+    return tags.length ? `<div class="media-card-tags">${tags.map((tag) => `<span>${escapeHtml(tag)}</span>`).join("")}</div>` : "";
+  }
+
+  function formatWatchedDate(item) {
+    if (!item?.watchedYear) return "未记录日期";
+    const month = item.watchedMonth ? `${item.watchedMonth}月` : "";
+    const day = item.watchedDay ? `${item.watchedDay}日` : "";
+    return `${item.watchedYear}年${month}${day}`;
+  }
+
+  function renderMediaList() {
+    const page = $("[data-media-page]");
+    const list = $("[data-media-list]");
+    if (!page || !list) return;
+    let activeType = page.dataset.mediaType || "";
+    let activeTag = page.dataset.mediaTag || "";
+    const query = (page.dataset.mediaQuery || "").trim().toLowerCase();
+    const sort = page.dataset.mediaSort || "watched-desc";
+    const sortLabels = { "created-desc": "最近添加", "rating-desc": "评分最高", "watched-desc": "观看时间最新", "watched-asc": "观看时间最早" };
+    $("[data-media-sort-label]", page).textContent = sortLabels[sort] || sortLabels["watched-desc"];
+    const types = mediaTypes();
+    if (activeType && !types.includes(activeType)) {
+      activeType = "";
+      page.dataset.mediaType = "";
+    }
+    const allTags = [...new Set(data.mediaItems.flatMap((item) => Array.isArray(item.tags) ? item.tags : []))].sort((a, b) => a.localeCompare(b, "zh-CN"));
+    if (activeTag && !allTags.includes(activeTag)) { activeTag = ""; page.dataset.mediaTag = ""; }
+    const visible = data.mediaItems.filter((item) => (!activeType || item.mediaType === activeType) && (!activeTag || (item.tags || []).includes(activeTag)) && (!query || `${item.title} ${item.people} ${item.mediaType} ${(item.tags || []).join(" ")}`.toLowerCase().includes(query)));
+    const watchedKey = (item) => Number(`${item.watchedYear || 0}${String(item.watchedMonth || 0).padStart(2, "0")}${String(item.watchedDay || 0).padStart(2, "0")}`);
+    visible.sort((a, b) => {
+      if (sort === "rating-desc") return (Number(b.rating) || 0) - (Number(a.rating) || 0) || String(b.createdAt || "").localeCompare(String(a.createdAt || ""));
+      if (sort === "watched-desc") return watchedKey(b) - watchedKey(a) || String(b.createdAt || "").localeCompare(String(a.createdAt || ""));
+      if (sort === "watched-asc") return watchedKey(a) - watchedKey(b) || String(a.createdAt || "").localeCompare(String(b.createdAt || ""));
+      return String(b.createdAt || "").localeCompare(String(a.createdAt || ""));
+    });
+    $("[data-media-count]", page).textContent = `${data.mediaItems.length} 条片单`;
+    $("[data-media-types]", page).innerHTML = `<button class="media-filter${!activeType ? " active" : ""}" type="button" data-media-filter="">全部 <small>${data.mediaItems.length}</small></button>${types.map((type) => { const record = data.mediaTypes.find((item) => item.name === type); return `<button class="media-filter${activeType === type ? " active" : ""}" type="button" data-media-filter="${escapeHtml(type)}" data-media-type-name="${escapeHtml(type)}"${record ? ` data-media-type-id="${escapeHtml(record.id)}"` : ""}${state.isAdmin ? ' title="右键删除此类型"' : ""}>${escapeHtml(type)} <small>${data.mediaItems.filter((item) => item.mediaType === type).length}</small></button>`; }).join("")}`;
+    const tagBar = $("[data-media-tags]", page);
+    tagBar.hidden = !allTags.length;
+    tagBar.innerHTML = allTags.map((tag) => `<button class="media-tag-filter${activeTag === tag ? " active" : ""}" type="button" data-media-tag-filter="${escapeHtml(tag)}">#${escapeHtml(tag)} <small>${data.mediaItems.filter((item) => (item.tags || []).includes(tag)).length}</small></button>`).join("");
+    const waitingForCloud = Boolean(window.XiaoLuoSupabase?.isConfigured && !state.mediaDataLoaded);
+    list.innerHTML = waitingForCloud ? '<div class="media-empty media-loading glass-card"><strong>正在加载片单…</strong><p>正在读取书籍、电影和观看记录。</p></div>' : visible.map((item) => `<article class="media-card" data-open-media-item="${escapeHtml(item.id)}"><button class="media-cover" type="button" aria-label="查看 ${escapeHtml(item.title)}">${mediaCoverHtml(item)}<span class="media-rating">★ ${item.rating ? item.rating.toFixed(1) : "未评分"}</span></button><div class="media-card-copy"><h2>${escapeHtml(item.title)}</h2><div class="media-card-meta"><p>${escapeHtml(item.mediaType)}</p>${item.people ? `<span>${escapeHtml(item.people)}</span>` : ""}<time>${escapeHtml(formatWatchedDate(item))}</time></div></div>${state.isAdmin ? `<button class="media-manage-button" type="button" data-edit-media-item="${escapeHtml(item.id)}" aria-label="编辑 ${escapeHtml(item.title)}">⋯</button>` : ""}</article>`).join("") || '<div class="media-empty glass-card"><strong>片单还在慢慢收藏</strong><p>管理员可以从右上角添加自己看过的电影、书籍、动漫或游戏。</p></div>';
+    $all("[data-media-type-name]", page).forEach((button) => button.classList.add(mediaTypeClass(button.dataset.mediaTypeName)));
+    $all(".media-card", list).forEach((card) => {
+      const media = data.mediaItems.find((entry) => entry.id === card.dataset.openMediaItem);
+      const badge = $(".media-card-meta p", card);
+      if (media && badge) badge.classList.add(mediaTypeClass(media.mediaType));
+      if (media) $(".media-card-copy", card)?.insertAdjacentHTML("beforeend", mediaTagsHtml(media));
+    });
+    if (state.isAdmin && state.mediaDataLoaded && params().get("add") === "1" && !page.dataset.autoEditorOpened) {
+      page.dataset.autoEditorOpened = "true";
+      window.setTimeout(() => openMediaEditor(), 0);
+    }
+  }
+
+  function initMediaList() {
+    if (document.body.dataset.mediaListBound) return;
+    document.body.dataset.mediaListBound = "true";
+    document.addEventListener("input", (event) => {
+      const input = event.target.closest("[data-media-search]");
+      if (!input) return;
+      const page = $("[data-media-page]");
+      page.dataset.mediaQuery = input.value;
+      renderMediaList();
+    });
+    document.addEventListener("submit", async (event) => {
+      const form = event.target.closest("[data-media-type-form]");
+      if (!form) return;
+      event.preventDefault();
+      if (!state.isAdmin) return showAdminOnlyNotice();
+      const name = form.name.value.trim();
+      if (!name || mediaTypes().includes(name)) return;
+      try {
+        const row = await window.XiaoLuoSupabase.addContent("media_types", { user_id: state.userId, name });
+        data.mediaTypes.push({ id: row.id, name: row.name, isHidden: false });
+        form.reset();
+        renderMediaList();
+      } catch (error) { showCloudError(error); }
+    });
+    document.addEventListener("click", (event) => {
+      const sortToggle = event.target.closest("[data-media-sort-toggle]");
+      if (sortToggle) {
+        const menu = sortToggle.closest("[data-media-sort-menu]");
+        const options = $("[data-media-sort-options]", menu);
+        const opening = options.hidden;
+        options.hidden = !opening;
+        sortToggle.setAttribute("aria-expanded", String(opening));
+        return;
+      }
+      const sortOption = event.target.closest("[data-media-sort-option]");
+      if (sortOption) {
+        const page = $("[data-media-page]");
+        page.dataset.mediaSort = sortOption.dataset.mediaSortOption;
+        renderMediaList();
+        return;
+      }
+      if (!event.target.closest("[data-media-sort-menu]")) {
+        $all("[data-media-sort-options]").forEach((options) => { options.hidden = true; });
+        $all("[data-media-sort-toggle]").forEach((button) => button.setAttribute("aria-expanded", "false"));
+      }
+      const filter = event.target.closest("[data-media-filter]");
+      if (filter) {
+        const page = $("[data-media-page]");
+        page.dataset.mediaType = filter.dataset.mediaFilter || "";
+        renderMediaList();
+        return;
+      }
+      const tagFilter = event.target.closest("[data-media-tag-filter]");
+      if (tagFilter) {
+        const page = $("[data-media-page]");
+        page.dataset.mediaTag = page.dataset.mediaTag === tagFilter.dataset.mediaTagFilter ? "" : tagFilter.dataset.mediaTagFilter;
+        renderMediaList();
+        return;
+      }
+      const add = event.target.closest("[data-add-media-item]");
+      if (add) { if (state.isAdmin) openMediaEditor(); else showAdminOnlyNotice(); return; }
+      const edit = event.target.closest("[data-edit-media-item]");
+      if (edit) { event.stopPropagation(); openMediaEditor(data.mediaItems.find((item) => item.id === edit.dataset.editMediaItem)); return; }
+      const card = event.target.closest("[data-open-media-item]");
+      if (card && !event.target.closest("[data-edit-media-item]")) openMediaDetail(data.mediaItems.find((item) => item.id === card.dataset.openMediaItem));
+    });
+    document.addEventListener("contextmenu", async (event) => {
+      const card = event.target.closest("[data-open-media-item]");
+      const typeButton = event.target.closest("[data-media-type-name]");
+      if (!card && !typeButton) return;
+      if (!state.isAdmin) return;
+      event.preventDefault();
+      try {
+        if (card) await removeMediaItem(data.mediaItems.find((item) => item.id === card.dataset.openMediaItem));
+        if (typeButton) await removeMediaType(typeButton.dataset.mediaTypeId, typeButton.dataset.mediaTypeName);
+      } catch (error) { showCloudError(error); }
+    });
+  }
+
+  async function removeMediaItem(item) {
+    if (!item || !await confirmPublish("确认删除这条片单？", "封面图片也会一并删除，且无法恢复。", "确认删除")) return;
+    await runWithLoading("正在删除片单…", async () => {
+      if (item.coverUrl) await window.XiaoLuoSupabase.deleteFilesByPublicUrls([item.coverUrl]);
+      await window.XiaoLuoSupabase.deleteContent("media_items", item.id, state.userId);
+      data.mediaItems = data.mediaItems.filter((entry) => entry.id !== item.id);
+      renderMediaList();
+    });
+  }
+
+  async function removeMediaType(typeId, typeName) {
+    const type = data.mediaTypes.find((item) => item.id === typeId);
+    const name = type?.name || typeName;
+    if (!name || !await confirmPublish(`删除“${name}”类型？`, "该类型下的片单会转为未分类，删除后无法恢复。", "确认删除")) return;
+    await runWithLoading("正在删除片单类型…", async () => {
+      const affected = data.mediaItems.filter((item) => item.mediaType === name);
+      if (DEFAULT_MEDIA_TYPES.includes(name)) {
+        if (type) await window.XiaoLuoSupabase.updateContent("media_types", type.id, state.userId, { is_hidden: true });
+        else {
+          const row = await window.XiaoLuoSupabase.addContent("media_types", { user_id: state.userId, name, is_hidden: true });
+          data.mediaTypes.push({ id: row.id, name: row.name, isHidden: true });
+        }
+        if (type) type.isHidden = true;
+      }
+      await Promise.all(affected.map((item) => window.XiaoLuoSupabase.updateContent("media_items", item.id, state.userId, { media_type: "未分类" })));
+      if (!DEFAULT_MEDIA_TYPES.includes(name) && type) {
+        await window.XiaoLuoSupabase.deleteContent("media_types", type.id, state.userId);
+        data.mediaTypes = data.mediaTypes.filter((item) => item.id !== type.id);
+      }
+      affected.forEach((item) => { item.mediaType = "未分类"; });
+      const page = $("[data-media-page]");
+      if (page?.dataset.mediaType === name) page.dataset.mediaType = "";
+      renderMediaList();
+    });
+  }
+
+  function openMediaDetail(item) {
+    if (!item) return;
+    let modal = $("[data-media-detail-modal]");
+    if (!modal) {
+      modal = document.createElement("div");
+      modal.className = "modal media-detail-modal";
+      modal.dataset.mediaDetailModal = "";
+      modal.innerHTML = '<button class="modal-backdrop" type="button" data-media-detail-close aria-label="关闭"></button><section class="modal-card glass-card media-detail-card" role="dialog" aria-modal="true"><button class="modal-close" type="button" data-media-detail-close aria-label="关闭">×</button><div data-media-detail-content></div></section>';
+      document.body.appendChild(modal);
+    }
+    const reviewText = item.review || "暂时还没有写观后感。";
+    $("[data-media-detail-content]", modal).innerHTML = `<aside class="media-detail-aside"><div class="media-detail-cover">${mediaCoverHtml(item)}</div>${item.noteUrl ? (state.isAdmin ? `<a class="media-note-link" href="${escapeHtml(item.noteUrl)}" target="_blank" rel="noopener noreferrer">打开相关笔记 ↗</a>` : '<button class="media-note-link media-note-locked" type="button" data-media-note-locked>相关笔记</button>') : ""}</aside><div class="media-detail-copy"><header class="media-detail-heading"><p class="mini-title">${escapeHtml(item.mediaType)}</p><h2>${escapeHtml(item.title)}</h2><div class="media-detail-meta"><strong>★ ${item.rating ? item.rating.toFixed(1) : "未评分"}</strong><time class="media-detail-date">${escapeHtml(formatWatchedDate(item))}</time>${item.people ? `<span>作者 / 演员：${escapeHtml(item.people)}</span>` : ""}</div></header>${state.isAdmin ? `<section class="media-review" tabindex="0"><p class="mini-title">PRIVATE NOTE</p><h3>${escapeHtml(item.reviewTitle || "观后感")}</h3><p class="media-review-summary">${escapeHtml(reviewText)}</p><div class="media-review-popover" role="tooltip"><strong>${escapeHtml(item.reviewTitle || "观后感")}</strong><p>${escapeHtml(reviewText)}</p></div></section>` : '<p class="media-private-note">观后感仅管理员可见</p>'}${state.isAdmin ? `<button class="primary-button small media-detail-edit" type="button" data-edit-media-from-detail="${escapeHtml(item.id)}">编辑片单</button>` : ""}</div>`;
+    $all("[data-media-detail-close]", modal).forEach((button) => { button.onclick = () => modal.classList.remove("open"); });
+    $("[data-media-note-locked]", modal)?.addEventListener("click", () => showActivityNotice("私人笔记", "私人笔记，暂时无法查看。"));
+    $("[data-edit-media-from-detail]", modal)?.addEventListener("click", () => { modal.classList.remove("open"); openMediaEditor(item); });
+    modal.classList.add("open");
+  }
+
+  function mediaDateOptions(start, end, label, selected = 0) {
+    const values = [];
+    for (let value = start; value <= end; value += 1) values.push(`<option value="${value}"${Number(selected) === value ? " selected" : ""}>${value}${label}</option>`);
+    return `<option value="">${label === "年" ? "年份" : `不选${label}`}</option>${values.join("")}`;
+  }
+
+  function daysInMediaMonth(year, month) {
+    return year && month ? new Date(year, month, 0).getDate() : 0;
+  }
+
+  async function persistMediaReview(mediaItemId, title, review) {
+    const existing = data.mediaReviews.find((item) => item.mediaItemId === mediaItemId);
+    if (existing) {
+      await window.XiaoLuoSupabase.updateContent("media_reviews", existing.id, state.userId, { review_title: title, review });
+      existing.title = title;
+      existing.review = review;
+      return;
+    }
+    const row = await window.XiaoLuoSupabase.upsertMediaReview(state.userId, mediaItemId, title, review);
+    const cached = data.mediaReviews.find((item) => item.mediaItemId === mediaItemId);
+    if (cached) {
+      Object.assign(cached, { id: row.id, title: row.review_title || title, review: row.review || "" });
+    } else {
+      data.mediaReviews.push({ id: row.id, mediaItemId: row.media_item_id, title: row.review_title || title, review: row.review || "" });
+    }
+  }
+
+  function openMediaEditor(item = null) {
+    if (!state.isAdmin) return showAdminOnlyNotice();
+    let modal = $("[data-media-editor-modal]");
+    if (!modal) {
+      modal = document.createElement("div");
+      modal.className = "modal media-editor-modal";
+      modal.dataset.mediaEditorModal = "";
+      modal.innerHTML = '<button class="modal-backdrop" type="button" data-media-editor-close aria-label="关闭"></button><section class="modal-card glass-card media-editor-card" role="dialog" aria-modal="true"><button class="modal-close" type="button" data-media-editor-close aria-label="关闭">×</button><p class="mini-title">MY MEDIA LIST</p><h2 data-media-editor-title>添加片单</h2><form data-media-editor-form><label>名称<input name="title" required placeholder="例如：一部电影或一本书"></label><div class="form-grid"><label>片单类型<select name="mediaType" data-media-editor-type></select></label><label>评分<input name="rating" type="number" min="0" max="10" step="0.1" placeholder="0.0 - 10.0"></label></div><label>作者 / 演员<input name="people" placeholder="例如：作者、导演或主要演员"></label><label>标签 <small>多个标签用逗号分隔</small><input name="tags" placeholder="例如：治愈、经典、科幻"></label><fieldset class="media-watch-field"><legend>观看时间</legend><div><select name="watchedYear" data-media-watch-year></select><select name="watchedMonth" data-media-watch-month></select><select name="watchedDay" data-media-watch-day></select></div></fieldset><label>笔记链接 <small>可填写本站或其他网站的相关笔记</small><input name="noteUrl" type="url" placeholder="https://example.com/my-note"></label><label>观后感标题 <small>仅管理员可见</small><input name="reviewTitle" maxlength="80" placeholder="例如：写给这部作品的一点感受"></label><label>观后感内容 <small>仅管理员可见</small><textarea name="review" rows="8" placeholder="记录自己的完整感受"></textarea></label><label class="upload-field"><span>上传封面图片</span><input name="cover" type="file" accept="image/*"></label><label>或使用封面 URL<input name="coverUrl" type="url" placeholder="https://example.com/cover.webp"></label><div class="media-editor-existing" data-media-editor-existing></div><div class="modal-form-actions"><button class="danger-button" type="button" data-delete-media-item hidden>删除</button><button class="primary-button" type="submit">保存片单</button></div></form></section>';
+      document.body.appendChild(modal);
+    }
+    const form = $("[data-media-editor-form]", modal);
+    $("[data-media-editor-title]", modal).textContent = item ? "编辑片单" : "添加片单";
+    $("[data-media-editor-type]", form).innerHTML = mediaTypes().map((type) => `<option value="${escapeHtml(type)}">${escapeHtml(type)}</option>`).join("");
+    form.title.value = item?.title || "";
+    form.mediaType.value = item?.mediaType || mediaTypes()[0];
+    form.rating.value = item?.rating || "";
+    form.people.value = item?.people || "";
+    form.tags.value = (item?.tags || []).join(", ");
+    form.noteUrl.value = item?.noteUrl || "";
+    form.reviewTitle.value = item?.reviewTitle || "观后感";
+    form.review.value = item?.review || "";
+    const currentYear = new Date().getFullYear();
+    form.watchedYear.innerHTML = mediaDateOptions(currentYear - 80, currentYear + 1, "年", item?.watchedYear);
+    form.watchedMonth.innerHTML = mediaDateOptions(1, 12, "月", item?.watchedMonth);
+    const refreshWatchDay = () => {
+      const previous = Number(form.watchedDay.value) || item?.watchedDay || 0;
+      const total = daysInMediaMonth(Number(form.watchedYear.value), Number(form.watchedMonth.value));
+      form.watchedDay.innerHTML = mediaDateOptions(1, total, "日", previous);
+      form.watchedDay.disabled = !total;
+      form.watchedMonth.disabled = !form.watchedYear.value;
+      if (!form.watchedYear.value) form.watchedMonth.value = "";
+    };
+    form.watchedYear.onchange = refreshWatchDay;
+    form.watchedMonth.onchange = refreshWatchDay;
+    refreshWatchDay();
+    let removeCover = false;
+    const existing = $("[data-media-editor-existing]", form);
+    const drawCover = () => { existing.innerHTML = item?.coverUrl && !removeCover ? '<span>当前已有封面 <button type="button" data-remove-media-cover>删除封面</button></span>' : "<span>尚未设置封面</span>"; $("[data-remove-media-cover]", existing)?.addEventListener("click", () => { removeCover = true; drawCover(); }); };
+    drawCover();
+    const deleteButton = $("[data-delete-media-item]", form);
+    deleteButton.hidden = !item;
+    deleteButton.onclick = async () => {
+      if (!item) return;
+      try {
+        await removeMediaItem(item);
+        modal.classList.remove("open");
+      } catch (error) { showCloudError(error); }
+    };
+    form.onsubmit = async (event) => {
+      event.preventDefault();
+      try {
+        await runWithLoading("正在保存片单…", async () => {
+          let coverUrl = removeCover ? "" : (item?.coverUrl || "");
+          const manualCoverUrl = form.coverUrl.value.trim();
+          if (manualCoverUrl && !/^https:\/\//i.test(manualCoverUrl)) throw new Error("封面 URL 必须以 https:// 开头。");
+          if (manualCoverUrl) coverUrl = manualCoverUrl;
+          else if (form.cover.files?.[0]) coverUrl = await uploadOptimizedImage(state.userId, "media-covers", form.cover.files[0]);
+          const noteUrl = form.noteUrl.value.trim();
+          if (noteUrl && !/^https:\/\//i.test(noteUrl)) throw new Error("笔记链接必须以 https:// 开头。");
+          const reviewTitle = form.reviewTitle.value.trim() || "观后感";
+          const tags = form.tags.value.split(",").map((tag) => tag.trim()).filter(Boolean).slice(0, 12);
+          const payload = { title: form.title.value.trim(), media_type: form.mediaType.value, rating: Number(form.rating.value) || 0, tags, people: form.people.value.trim(), note_url: noteUrl || null, description: "", watched_year: Number(form.watchedYear.value) || null, watched_month: Number(form.watchedMonth.value) || null, watched_day: Number(form.watchedDay.value) || null, cover_url: coverUrl || null };
+          if (item) {
+            state.cloudMutationVersion += 1;
+            await window.XiaoLuoSupabase.updateContent("media_items", item.id, state.userId, payload);
+            await persistMediaReview(item.id, reviewTitle, form.review.value.trim());
+            if (item.coverUrl && item.coverUrl !== coverUrl) await window.XiaoLuoSupabase.deleteFilesByPublicUrls([item.coverUrl]);
+            Object.assign(item, { title: payload.title, mediaType: payload.media_type, rating: payload.rating, tags, people: payload.people, noteUrl: payload.note_url || "", reviewTitle, review: form.review.value.trim(), watchedYear: payload.watched_year || 0, watchedMonth: payload.watched_month || 0, watchedDay: payload.watched_day || 0, coverUrl: payload.cover_url || "" });
+          } else {
+            state.cloudMutationVersion += 1;
+            const row = await window.XiaoLuoSupabase.addContent("media_items", { user_id: state.userId, ...payload });
+            await persistMediaReview(row.id, reviewTitle, form.review.value.trim());
+            data.mediaItems.unshift({ id: row.id, title: row.title, mediaType: row.media_type, rating: Number(row.rating) || 0, tags: Array.isArray(row.tags) ? row.tags : tags, people: row.people || "", noteUrl: row.note_url || "", reviewTitle, review: form.review.value.trim(), watchedYear: Number(row.watched_year) || 0, watchedMonth: Number(row.watched_month) || 0, watchedDay: Number(row.watched_day) || 0, coverUrl: row.cover_url || "", createdAt: row.created_at || "" });
+          }
+          modal.classList.remove("open"); renderMediaList();
+        });
+      } catch (error) { showCloudError(error); }
+    };
+    $all("[data-media-editor-close]", modal).forEach((button) => { button.onclick = () => modal.classList.remove("open"); });
+    modal.classList.add("open");
+  }
+
+  function initQuickNotes() {
+    if (document.body.dataset.quickNotesBound) return;
+    document.body.dataset.quickNotesBound = "true";
+    document.addEventListener("click", (event) => {
+      if (!event.target.closest("[data-open-notes]")) return;
+      if (state.isAdmin) openNotesDesk();
+    });
+  }
+
+  async function openNotesDesk() {
+    let modal = $("[data-notes-desk-modal]");
+    if (!modal) {
+      modal = document.createElement("div");
+      modal.className = "modal notes-desk-modal";
+      modal.dataset.notesDeskModal = "";
+      modal.innerHTML = '<button class="modal-backdrop" type="button" data-notes-desk-close aria-label="关闭笔记"></button><section class="notes-desk glass-card" role="dialog" aria-modal="true" aria-label="笔记"><aside class="notes-sidebar"><div class="notes-sidebar-head"><strong>笔记</strong><button type="button" data-notes-new aria-label="新建笔记">+</button><button type="button" data-notes-desk-close aria-label="关闭笔记">×</button></div><label class="notes-search"><span>⌕</span><input type="search" data-notes-search placeholder="搜索笔记"></label><div class="notes-list" data-notes-desk-list></div></aside><section class="notes-editor" data-notes-editor></section></section>';
+      document.body.appendChild(modal);
+      bindNotesDesk(modal);
+    }
+    if (!data.notes.length) {
+      try {
+        const rows = await window.XiaoLuoSupabase.listContent("notes", state.userId);
+        data.notes = rows.map((item) => ({ id: item.id, title: item.title, body: item.body || "", attachments: Array.isArray(item.attachments) ? item.attachments : [], isDone: Boolean(item.is_done), createdAt: item.created_at || "" }));
+      } catch (_) { /* 表还未创建时显示空状态，避免影响首页。 */ }
+    }
+    if (!modal.dataset.activeNoteId && data.notes[0]) modal.dataset.activeNoteId = data.notes[0].id;
+    renderNotesDesk(modal);
+    modal.classList.add("open");
+  }
+
+  function renderNotesDesk(modal) {
+    const search = $("[data-notes-search]", modal)?.value.trim().toLowerCase() || "";
+    const notes = data.notes.filter((note) => `${note.title} ${note.body}`.toLowerCase().includes(search));
+    const active = data.notes.find((note) => note.id === modal.dataset.activeNoteId) || null;
+    $("[data-notes-desk-list]", modal).innerHTML = notes.map((note) => `<button class="notes-list-item${note.id === active?.id ? " active" : ""}" type="button" data-notes-open="${escapeHtml(note.id)}"><strong>${escapeHtml(note.title || "未命名笔记")}</strong><span>${escapeHtml(note.body || "空白笔记")}</span><time>${new Date(note.createdAt || Date.now()).toLocaleDateString("zh-CN", { month: "numeric", day: "numeric" })}</time></button>`).join("") || '<p class="note-empty">没有找到笔记。</p>';
+    const attachments = active?.attachments || [];
+    const attachmentHtml = attachments.length ? `<div class="notes-attachments"><strong>附件</strong>${attachments.map((file) => `<a href="${escapeHtml(file.url)}" download="${escapeHtml(file.name)}" target="_blank" rel="noopener">${escapeHtml(file.name)}</a>`).join("")}</div>` : "";
+    $("[data-notes-editor]", modal).innerHTML = active ? `<div class="notes-editor-head"><input data-notes-title value="${escapeHtml(active.title)}" placeholder="笔记标题"><span>Ctrl+S 保存</span></div><textarea data-notes-body placeholder="写下一件临时要记住的事…">${escapeHtml(active.body)}</textarea>${attachmentHtml}<footer><label class="notes-attach-button">添加附件<input type="file" multiple data-notes-files></label><button class="danger-button" type="button" data-notes-delete>删除</button><button class="primary-button small" type="button" data-notes-save>保存</button></footer>` : '<div class="notes-empty-editor"><strong>选择一条笔记</strong><p>或点击左上角加号，新建一条备忘录。</p></div>';
+  }
+
+  function bindNotesDesk(modal) {
+    $all("[data-notes-desk-close]", modal).forEach((button) => { button.onclick = () => modal.classList.remove("open"); });
+    $("[data-notes-search]", modal).addEventListener("input", () => renderNotesDesk(modal));
+    modal.addEventListener("keydown", (event) => {
+      if (!(event.ctrlKey || event.metaKey) || event.key.toLowerCase() !== "s") return;
+      if (!event.target.closest("[data-notes-editor]")) return;
+      event.preventDefault();
+      $("[data-notes-save]", modal)?.click();
+    });
+    modal.addEventListener("click", async (event) => {
+      const open = event.target.closest("[data-notes-open]");
+      if (open) { modal.dataset.activeNoteId = open.dataset.notesOpen; renderNotesDesk(modal); return; }
+      try {
+        if (event.target.closest("[data-notes-new]")) {
+          await runWithLoading("正在新建笔记…", async () => {
+            const row = await window.XiaoLuoSupabase.addContent("notes", { user_id: state.userId, title: "未命名笔记", body: "", is_done: false });
+            const note = { id: row.id, title: row.title, body: row.body || "", attachments: Array.isArray(row.attachments) ? row.attachments : [], isDone: false, createdAt: row.created_at || "" };
+            data.notes.unshift(note); modal.dataset.activeNoteId = note.id; renderNotesDesk(modal);
+          });
+          return;
+        }
+        const active = data.notes.find((note) => note.id === modal.dataset.activeNoteId);
+        if (!active) return;
+        if (event.target.closest("[data-notes-save]")) {
+          const title = $("[data-notes-title]", modal).value.trim() || "未命名笔记";
+          const body = $("[data-notes-body]", modal).value.trim();
+          const files = [...($("[data-notes-files]", modal)?.files || [])];
+          await runWithLoading("正在保存笔记…", async () => {
+            const uploaded = await Promise.all(files.map(async (file) => ({ name: file.name, url: await window.XiaoLuoSupabase.uploadFile(state.userId, "note-attachments", file) })));
+            const noteAttachments = [...(active.attachments || []), ...uploaded];
+            await window.XiaoLuoSupabase.updateContent("notes", active.id, state.userId, { title, body, attachments: noteAttachments });
+            active.title = title; active.body = body; active.attachments = noteAttachments; renderNotesDesk(modal);
+          });
+        }
+        if (event.target.closest("[data-notes-delete]")) {
+          if (!await confirmPublish("确认删除这条笔记？", "删除后无法恢复。", "确认删除")) return;
+          await window.XiaoLuoSupabase.deleteContent("notes", active.id, state.userId);
+          data.notes = data.notes.filter((note) => note.id !== active.id);
+          modal.dataset.activeNoteId = data.notes[0]?.id || "";
+          renderNotesDesk(modal);
+        }
+      } catch (error) { showCloudError(error); }
+    });
+  }
+
+  function initQuickSites() {
+    if (document.body.dataset.quickSitesBound) return;
+    document.body.dataset.quickSitesBound = "true";
+    document.addEventListener("click", (event) => {
+      if (!event.target.closest("[data-open-common-sites]")) return;
+      if (!state.isLoggedIn) { requireLogin("请先登录后再查看常用网站。"); return; }
+      openCommonSitesDesk();
+    });
+  }
+
+  async function openCommonSitesDesk() {
+    let modal = $("[data-common-sites-modal]");
+    if (!modal) {
+      modal = document.createElement("div");
+      modal.className = "modal common-sites-modal";
+      modal.dataset.commonSitesModal = "";
+      modal.innerHTML = '<button class="modal-backdrop" type="button" data-common-sites-close aria-label="关闭常用网站"></button><section class="common-sites-desk glass-card" role="dialog" aria-modal="true" aria-label="常用网站"><header><div><p class="mini-title">COMMON SITES</p><h2>常用网站</h2></div><button type="button" data-common-sites-close aria-label="关闭常用网站">×</button></header><div class="common-sites-layout"><form class="common-site-form" data-common-site-form><input name="title" placeholder="网站名称" required><label class="common-site-url-input"><span aria-hidden="true">↗</span><input name="url" type="url" placeholder="网址，例如 https://example.com" required></label><textarea name="description" rows="4" placeholder="一句简介（可选）"></textarea><input name="iconUrl" type="url" placeholder="图标图片 URL（可选）"><label class="upload-field"><span>或上传网站图标（可选，上传后优先使用）</span><input name="icon" type="file" accept="image/*"></label><div><button class="ghost-button" type="button" data-common-site-reset>新建</button><button class="primary-button small" type="submit">保存网站</button></div></form><div class="common-sites-list" data-common-sites-list></div></div></section>';
+      document.body.appendChild(modal);
+      bindCommonSitesDesk(modal);
+    }
+    if (!data.commonSites.length) {
+      try {
+        const rows = await window.XiaoLuoSupabase.listContent("common_sites", state.cloudOwnerId || state.adminId);
+        data.commonSites = rows.map((item) => ({ id: item.id, title: item.title, url: item.url, description: item.description || "", iconUrl: item.icon_url || "", createdAt: item.created_at || "" }));
+      } catch (_) { /* SQL 尚未执行时显示空状态。 */ }
+    }
+    modal.resetCommonSiteForm?.();
+    $("[data-common-site-form]", modal).hidden = !state.isAdmin;
+    $(".common-sites-layout", modal).classList.toggle("viewer-mode", !state.isAdmin);
+    renderCommonSitesDesk(modal);
+    modal.classList.add("open");
+  }
+
+  function renderCommonSitesDesk(modal) {
+    const list = $("[data-common-sites-list]", modal);
+    list.innerHTML = data.commonSites.map((site) => `<article class="common-site-row"><button class="common-site-open" type="button" data-common-site-open="${escapeHtml(site.id)}">${site.iconUrl ? `<img src="${escapeHtml(site.iconUrl)}" alt="">` : '<span>⌘</span>'}<div><strong>${escapeHtml(site.title)}</strong><p>${escapeHtml(site.description || site.url)}</p></div></button><div><button class="common-site-link-button" type="button" data-common-site-open="${escapeHtml(site.id)}" title="打开网址" aria-label="打开 ${escapeHtml(site.title)}">↗</button>${state.isAdmin ? `<button type="button" data-common-site-edit="${escapeHtml(site.id)}">编辑</button><button type="button" data-common-site-delete="${escapeHtml(site.id)}">×</button>` : ""}</div></article>`).join("") || '<p class="note-empty">还没有添加常用网站。</p>';
+  }
+
+  function bindCommonSitesDesk(modal) {
+    const form = $("[data-common-site-form]", modal);
+    const submitButton = $("button[type='submit']", form);
+    const reset = () => {
+      form.reset();
+      form.removeAttribute("data-site-id");
+      delete form.dataset.siteId;
+      if (submitButton) submitButton.textContent = "添加网站";
+    };
+    modal.resetCommonSiteForm = reset;
+    $all("[data-common-sites-close]", modal).forEach((button) => { button.onclick = () => modal.classList.remove("open"); });
+    $("[data-common-site-reset]", modal).onclick = reset;
+    form.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      const title = form.title.value.trim();
+      const url = form.url.value.trim();
+      if (!title || !url) return;
+      const siteId = form.getAttribute("data-site-id") || null;
+      const old = data.commonSites.find((site) => site.id === siteId);
+      try {
+        await runWithLoading("正在保存常用网站…", async () => {
+          let iconUrl = form.iconUrl.value.trim() || old?.iconUrl || "";
+          if (form.icon.files?.[0]) iconUrl = await uploadOptimizedImage(state.userId, "common-site-icons", form.icon.files[0], { maxDimension: 512, quality: .8 });
+          const payload = { title, url, description: form.description.value.trim(), icon_url: iconUrl || null };
+          if (old) {
+            state.cloudMutationVersion += 1;
+            await window.XiaoLuoSupabase.updateContent("common_sites", old.id, state.userId, payload);
+            if (old.iconUrl && old.iconUrl !== iconUrl) await window.XiaoLuoSupabase.deleteFilesByPublicUrls([old.iconUrl]);
+            Object.assign(old, { title, url, description: payload.description, iconUrl });
+          } else {
+            state.cloudMutationVersion += 1;
+            const row = await window.XiaoLuoSupabase.addContent("common_sites", { user_id: state.userId, ...payload });
+            data.commonSites.unshift({ id: row.id, title: row.title, url: row.url, description: row.description || "", iconUrl: row.icon_url || "", createdAt: row.created_at || "" });
+          }
+          reset(); renderCommonSitesDesk(modal);
+        });
+      } catch (error) { showCloudError(error); }
+    });
+    modal.addEventListener("click", async (event) => {
+      const open = event.target.closest("[data-common-site-open]");
+      const edit = event.target.closest("[data-common-site-edit]");
+      const remove = event.target.closest("[data-common-site-delete]");
+      const id = open?.dataset.commonSiteOpen || edit?.dataset.commonSiteEdit || remove?.dataset.commonSiteDelete;
+      const site = data.commonSites.find((item) => item.id === id);
+      if (!site) return;
+      if (open) { window.open(site.url, "_blank", "noopener"); return; }
+      if (edit) {
+        form.dataset.siteId = site.id;
+        form.title.value = site.title;
+        form.url.value = site.url;
+        form.description.value = site.description || "";
+        form.iconUrl.value = site.iconUrl || "";
+        if (submitButton) submitButton.textContent = "保存修改";
+        return;
+      }
+      if (remove) {
+        if (!await confirmPublish("确认删除这个常用网站？", "删除后无法恢复。", "确认删除")) return;
+        try {
+          await window.XiaoLuoSupabase.deleteContent("common_sites", site.id, state.userId);
+          if (site.iconUrl) await window.XiaoLuoSupabase.deleteFilesByPublicUrls([site.iconUrl]);
+          data.commonSites = data.commonSites.filter((item) => item.id !== site.id);
+          if (form.dataset.siteId === site.id) reset();
+          renderCommonSitesDesk(modal);
+        } catch (error) { showCloudError(error); }
+      }
+    });
+  }
+
+  function openProjectDetail(project) {
+    let modal = $("[data-project-detail-modal]");
+    if (!modal) {
+      modal = document.createElement("div");
+      modal.className = "modal project-detail-modal";
+      modal.dataset.projectDetailModal = "";
+      modal.innerHTML = '<button class="modal-backdrop" type="button" data-project-detail-close aria-label="关闭"></button><section class="modal-card glass-card project-detail-card" role="dialog" aria-modal="true"><button class="modal-close" type="button" data-project-detail-close aria-label="关闭">×</button><div data-project-detail-content></div></section>';
+      document.body.appendChild(modal);
+    }
+    const attachments = (project.attachments || []).map((file) => `<a href="${escapeHtml(file.url)}" data-protected-download download="${escapeHtml(file.name || "项目附件")}" class="project-attachment">下载：${escapeHtml(file.name || "项目附件")}</a>`).join("") || '<p class="comment-empty">这个项目暂时没有附件。</p>';
+    const url = /^https?:\/\//i.test(project.projectUrl || "") ? `<a class="primary-button small" href="${escapeHtml(project.projectUrl)}" target="_blank" rel="noopener">访问项目网址</a>` : "";
+    $("[data-project-detail-content]", modal).innerHTML = `<div class="project-detail-cover">${projectCoverHtml(project)}</div><p class="mini-title">PERSONAL PROJECT</p><h2>${escapeHtml(project.title)}</h2><p class="project-detail-description">${escapeHtml(project.description || "暂时没有项目简介。")}</p><div class="project-detail-actions">${url}</div><section class="project-attachments"><h3>项目附件</h3>${attachments}</section>`;
+    $all("[data-project-detail-close]", modal).forEach((button) => { button.onclick = () => modal.classList.remove("open"); });
+    modal.classList.add("open");
+  }
+
+  function initProjectManagement() {
+    const form = $("[data-project-form]");
+    if (form && !form.dataset.bound) {
+      form.dataset.bound = "true";
+      form.addEventListener("submit", async (event) => {
+        event.preventDefault();
+        if (!state.isAdmin) return showAdminOnlyNotice();
+        const title = form.title.value.trim();
+        if (!title) return;
+        if (!await confirmPublish("确认发布个人项目？", "项目详情、封面和附件会立即保存并对访客可见。")) return;
+        try {
+          await runWithLoading("正在上传项目资料，请稍候…", async (cancelled) => {
+            const coverFile = form.cover?.files?.[0];
+            const coverUrl = coverFile ? await uploadOptimizedImage(state.userId, "project-covers", coverFile) : "";
+            if (cancelled()) return;
+            const files = Array.from(form.attachments?.files || []);
+            const attachments = await Promise.all(files.map(async (file) => ({ name: file.name, url: await window.XiaoLuoSupabase.uploadFile(state.userId, "project-attachments", file) })));
+            if (cancelled()) return;
+            const row = await window.XiaoLuoSupabase.addContent("projects", { user_id: state.userId, title, description: form.description.value.trim(), cover_url: coverUrl || null, project_url: form.projectUrl.value.trim() || null, attachments });
+            data.projects.unshift({ id: row.id, title: row.title, description: row.description || "", coverUrl: row.cover_url || "", projectUrl: row.project_url || "", attachments: row.attachments || [], createdAt: row.created_at || "" });
+            form.reset();
+            renderProjects();
+            renderContentManagers();
+            alert("已保存。");
+          });
+        } catch (error) { showCloudError(error); }
+      });
+    }
+    if (document.body.dataset.projectManagementBound) return;
+    document.body.dataset.projectManagementBound = "true";
+    document.addEventListener("click", async (event) => {
+      const remove = event.target.closest("[data-remove-project]");
+      const edit = event.target.closest("[data-edit-project]");
+      if (!remove && !edit) return;
+      const id = (remove || edit).dataset.removeProject || (remove || edit).dataset.editProject;
+      const project = data.projects.find((item) => item.id === id);
+      if (!project || !state.isAdmin) return;
+      try {
+        if (remove) {
+          if (!await confirmPublish("确认删除个人项目？", "封面和附件也会一并删除，且无法恢复。", "确认删除")) return;
+          const urls = [project.coverUrl, ...(project.attachments || []).map((item) => item.url)].filter(Boolean);
+          if (urls.length) await window.XiaoLuoSupabase.deleteFilesByPublicUrls(urls);
+          await window.XiaoLuoSupabase.deleteContent("projects", id, state.userId);
+          data.projects = data.projects.filter((item) => item.id !== id);
+          renderProjects();
+          renderContentManagers();
+          return;
+        }
+        openProjectEditor(project);
+      } catch (error) { showCloudError(error); }
+    });
+  }
+
+  function openProjectEditor(project) {
+    let modal = $("[data-project-editor-modal]");
+    if (!modal) {
+      modal = document.createElement("div");
+      modal.className = "modal project-editor-modal";
+      modal.dataset.projectEditorModal = "";
+      modal.innerHTML = '<button class="modal-backdrop" type="button" data-project-editor-close aria-label="关闭"></button><section class="modal-card glass-card project-editor-card" role="dialog" aria-modal="true"><button class="modal-close" type="button" data-project-editor-close aria-label="关闭">×</button><p class="mini-title">EDIT PROJECT</p><h2>编辑个人项目</h2><form data-project-editor-form><input name="title" required><input name="projectUrl" type="url" placeholder="项目网址"><textarea name="description" rows="5" placeholder="项目简介"></textarea><label class="upload-field"><span>替换项目封面（可选）</span><input name="cover" type="file" accept="image/*"></label><label class="upload-field"><span>追加附件（可多选）</span><input name="attachments" type="file" multiple></label><div class="project-editor-existing" data-project-editor-existing></div><button class="primary-button" type="submit">保存修改</button></form></section>';
+      document.body.appendChild(modal);
+    }
+    const form = $("[data-project-editor-form]", modal);
+    form.title.value = project.title || "";
+    form.projectUrl.value = project.projectUrl || "";
+    form.description.value = project.description || "";
+    let editableAttachments = [...(project.attachments || [])];
+    let removeCover = false;
+    const drawExisting = () => {
+      const attachmentRows = editableAttachments.map((file, index) => `<span>${escapeHtml(file.name || "项目附件")}<button type="button" data-remove-project-attachment="${index}">删除</button></span>`).join("");
+      const coverRow = project.coverUrl && !removeCover ? '<p>当前已有封面 <button type="button" data-remove-project-cover>删除封面</button></p>' : "<p>暂未设置封面</p>";
+      $("[data-project-editor-existing]", form).innerHTML = `${coverRow}${attachmentRows || "<p>暂时没有附件。</p>"}`;
+      $("[data-remove-project-cover]", form)?.addEventListener("click", () => { removeCover = true; drawExisting(); });
+      $all("[data-remove-project-attachment]", form).forEach((button) => { button.onclick = () => { editableAttachments.splice(Number(button.dataset.removeProjectAttachment), 1); drawExisting(); }; });
+    };
+    drawExisting();
+    form.onsubmit = async (event) => {
+      event.preventDefault();
+      try {
+        await runWithLoading("正在保存项目修改…", async () => {
+          const oldCoverUrl = project.coverUrl || "";
+          let coverUrl = removeCover ? "" : oldCoverUrl;
+          if (form.cover.files?.[0]) {
+            coverUrl = await uploadOptimizedImage(state.userId, "project-covers", form.cover.files[0]);
+          }
+          const added = await Promise.all(Array.from(form.attachments.files || []).map(async (file) => ({ name: file.name, url: await window.XiaoLuoSupabase.uploadFile(state.userId, "project-attachments", file) })));
+          const removedAttachments = (project.attachments || []).filter((file) => !editableAttachments.some((item) => item.url === file.url));
+          const payload = { title: form.title.value.trim(), description: form.description.value.trim(), project_url: form.projectUrl.value.trim() || null, cover_url: coverUrl || null, attachments: [...editableAttachments, ...added] };
+          await window.XiaoLuoSupabase.updateContent("projects", project.id, state.userId, payload);
+          const staleUrls = [...removedAttachments.map((file) => file.url), ...(oldCoverUrl && oldCoverUrl !== coverUrl ? [oldCoverUrl] : [])];
+          if (staleUrls.length) await window.XiaoLuoSupabase.deleteFilesByPublicUrls(staleUrls);
+          Object.assign(project, { title: payload.title, description: payload.description, projectUrl: payload.project_url || "", coverUrl: payload.cover_url || "", attachments: payload.attachments });
+          renderProjects();
+          renderContentManagers();
+          modal.classList.remove("open");
+          alert("已保存。");
+        });
+      } catch (error) { showCloudError(error); }
+    };
+    $all("[data-project-editor-close]", modal).forEach((button) => { button.onclick = () => modal.classList.remove("open"); });
+    modal.classList.add("open");
   }
 
   async function loadTimelineCardEngagement(type, id, wrap) {
@@ -2451,6 +3223,10 @@
       let images = [];
       try { images = JSON.parse(thumb.dataset.timelineImages || "[]"); } catch (_) { return; }
       if (!images.length) return;
+      const card = thumb.closest("[data-open-timeline-post]");
+      if (card?.dataset.type && card?.dataset.id) {
+        window.XiaoLuoSupabase?.recordContentView(card.dataset.type, card.dataset.id, state.userId).catch(() => {});
+      }
       openTimelineImageViewer(images, Number(thumb.dataset.timelineIndex) || 0);
     });
   }
@@ -3063,10 +3839,11 @@
     const totalWords = [
       ...data.posts.map((post) => `${post.title || ""}${(post.content || []).join("")}`),
       ...data.moments.map((item) => `${item.title || ""}${item.text || ""}`),
-      ...data.progress.map((item) => `${item.title || ""}${item.text || ""}`)
+      ...data.progress.map((item) => `${item.title || ""}${item.text || ""}`),
+      ...data.projects.map((item) => `${item.title || ""}${item.description || ""}`)
     ].reduce((count, value) => count + value.replace(/\s/g, "").length, 0);
-    const totalAttachments = data.posts.reduce((count, post) => count + (post.attachments?.length || 0), 0);
-    const totalImages = [...data.moments, ...data.progress].reduce((count, item) => count + (item.images?.length || 0), 0);
+    const totalAttachments = data.posts.reduce((count, post) => count + (post.attachments?.length || 0), 0) + data.projects.reduce((count, project) => count + (project.attachments?.length || 0), 0);
+    const totalImages = [...data.moments, ...data.progress].reduce((count, item) => count + (item.images?.length || 0), 0) + data.projects.filter((project) => project.coverUrl).length;
     const stats = {
       "[data-stat-total-words]": totalWords,
       "[data-stat-total-attachments]": totalAttachments,
@@ -3147,12 +3924,10 @@
       const tab = visitorMonitorState.tab;
       let rows = [];
       if (tab === "online") rows = await api.getOnlineVisitorsDetail?.() || [];
-      else if (tab === "today") rows = await api.getTodayVisitorsDetail?.() || [];
-      else if (tab === "repeat") rows = await api.getRepeatVisitorsDetail?.() || [];
-      else rows = await api.getAllVisitorsDetail?.() || [];
+      else rows = await api.getVisitorVisitLogs?.(tab) || [];
 
       // 按日期从最新往下排
-      rows.sort((a, b) => new Date(b.last_seen || 0) - new Date(a.last_seen || 0));
+      rows.sort((a, b) => new Date(b.visited_at || b.last_seen || 0) - new Date(a.visited_at || a.last_seen || 0));
 
       visitorMonitorState.allRows = rows;
       visitorMonitorState.displayCount = 20;
@@ -3206,6 +3981,8 @@
           ? `<button type="button" class="visitor-ip" data-copy-ip="${escapeHtml(fullIp)}" title="点击复制完整 IP 地址">${ipText}</button>`
           : `<span class="visitor-ip">未知 IP</span>`;
         const pageEl = log.page_path ? `<span class="visitor-page">${escapeHtml(log.page_path)}</span>` : "";
+        const visitNo = Number(log.visit_number || log.visit_count) || 1;
+        const countBadge = `<span class="visitor-count" title="该访客的本次访问序号">第${visitNo}次</span>`;
         const locEl = (log.ip_location && log.ip_location !== "未知地址")
           ? `<span class="visitor-loc">${escapeHtml(log.ip_location)}</span>`
           : `<span class="visitor-loc unknown">未知位置</span>`;
@@ -3214,6 +3991,7 @@
           <div class="visitor-row-main">
             ${nameBadge}
             ${ipEl}
+            ${countBadge}
             ${pageEl}
             ${locEl}
           </div>
@@ -3221,7 +3999,7 @@
         </article>`;
       }).join("");
       listEl.innerHTML = html;
-      if (noteEl) noteEl.textContent = `匹配到 ${logs.length} 条访问记录（每个访客仅保留最近10条）。`;
+      if (noteEl) noteEl.textContent = `匹配到 ${logs.length} 条访问记录，已按每位访客从首次访问开始编号。`;
       return;
     }
 
@@ -3249,9 +4027,9 @@
       const ipEl = fullIp
         ? `<button type="button" class="visitor-ip" data-copy-ip="${escapeHtml(fullIp)}" title="点击复制完整 IP 地址">${ipText}</button>`
         : `<span class="visitor-ip">未知 IP</span>`;
-      // 访问次数徽章
-      const visitCount = Number(row.visit_count) || 1;
-      const countBadge = `<span class="visitor-count" title="累计访问次数">第${visitCount}次</span>`;
+      // 每一条日志都有独立的访问顺序，不显示汇总次数。
+      const visitNo = Number(row.visit_number || row.visit_count) || 1;
+      const countBadge = `<span class="visitor-count" title="该访客的本次访问序号">第${visitNo}次</span>`;
       // 位置显示，未知位置提供 hiofd 手动查询链接
       let locEl;
       if (row.ip_location && row.ip_location !== "未知地址") {
@@ -3260,7 +4038,7 @@
         const queryUrl = `https://tool.hiofd.com/ip/?ip=${encodeURIComponent(fullIp)}`;
         locEl = `<span class="visitor-loc unknown">未知位置 <a href="${queryUrl}" target="_blank" rel="noopener" class="visitor-loc-lookup" title="使用 hiofd 查询此 IP 归属地">查位置</a></span>`;
       }
-      const timeText = formatVisitorTime(row.last_seen);
+      const timeText = formatVisitorTime(row.visited_at || row.last_seen);
       return `<article class="visitor-row">
         <div class="visitor-row-main">
           ${nameBadge}
@@ -3440,9 +4218,11 @@
     const albumWrap = $("[data-album-manager]");
     const momentWrap = $("[data-moment-manager]");
     const progressWrap = $("[data-progress-manager]");
+    const projectWrap = $("[data-project-manager]");
     if (albumWrap) albumWrap.innerHTML = data.albums.map((album) => `<div class="manager-row"><strong>${escapeHtml(album.title)}</strong><span>${escapeHtml(album.meta)}</span><div><button type="button" data-edit-content data-type="album" data-id="${escapeHtml(album.id)}">编辑</button><button type="button" data-remove-content data-type="album" data-id="${escapeHtml(album.id)}">删除</button></div></div>`).join("");
     if (momentWrap) momentWrap.innerHTML = "";
     if (progressWrap) progressWrap.innerHTML = "";
+    if (projectWrap) projectWrap.innerHTML = data.projects.map((project) => `<div class="manager-row project-manager-row"><strong>${escapeHtml(project.title)}</strong><span>${escapeHtml(project.description || "暂无简介")}</span><div><button type="button" data-edit-project="${escapeHtml(project.id)}">编辑</button><button type="button" data-remove-project="${escapeHtml(project.id)}">删除</button></div></div>`).join("") || '<p class="comment-empty">还没有个人项目。</p>';
   }
 
   async function protectDashboard() {
@@ -3532,9 +4312,11 @@
     applySavedContent();
     initBrand();
     ensureActivityNavLink();
+    ensureFunctionNav();
     bindThemeButtons();
     bindTextFormatToolbars();
     bindNavToggle();
+    bindFunctionMenus();
     setActiveNav();
     populateFilters();
     initForms();
@@ -3555,8 +4337,13 @@
     if (page === "articles") renderArticles();
     if (page === "categories") renderCategories();
     if (page === "article-detail") renderDetail();
-    if (page === "life") renderTimeline("[data-life-timeline]", data.moments);
+    if (page === "life") renderLifeTimeline();
     if (page === "progress") renderTimeline("[data-progress-timeline]", data.progress);
+    if (page === "projects") renderProjects();
+    if (page === "media-list") renderMediaList();
+    initQuickNotes();
+    initQuickSites();
+    initMediaList();
     if (page === "about") renderAbout();
     if (page === "activity") { renderActivityLeaderboard(); renderActivityHeatmap(); renderFriendLinks(); }
     if (page === "photos") renderGallery();
@@ -3567,11 +4354,15 @@
     if (page === "game") {
       ensureJumpGame();
     }
+    if (page === "snake") {
+      ensureSnakeGame();
+    }
     if (page === "dashboard") {
       protectDashboard().then(() => {
         if (!state.isAdmin) return;
         initDashboardSectionSpy();
         initContentManagement();
+        initProjectManagement();
         initVisitorMonitor();
         renderAdminPosts();
         renderContentManagers();
@@ -3617,15 +4408,24 @@
     if (!drawer) {
       drawer = document.createElement("aside");
       drawer.className = "blog-game-drawer";
-      drawer.innerHTML = `<button class="blog-game-tab" type="button" data-game-drawer-toggle aria-expanded="false" aria-label="打开小罗自制小游戏"><img src="./assets/images/xiaoluo-jump-game-icon.jpg" alt=""></button><div class="blog-game-drawer-panel"><button class="blog-game-close" type="button" data-game-drawer-close aria-label="关闭小游戏入口">×</button><img src="./assets/images/xiaoluo-jump-game-icon.jpg" alt="小罗跳一跳图标"><p class="mini-title">XIAOLUO MINI GAME</p><h2>小罗自制小游戏</h2><p>小罗跳一跳：按住蓄力，松开起跳。</p><a class="primary-button small" href="./game.html" data-game-entry>开玩</a></div>`;
+      drawer.innerHTML = `<button class="blog-game-tab" type="button" data-game-drawer-toggle aria-expanded="false" aria-label="打开小罗自制小游戏"><img src="./assets/images/xiaoluo-jump-game-icon.jpg" alt=""></button><button class="blog-game-dismiss" type="button" data-game-drawer-dismiss aria-label="关闭右侧小游戏入口">×</button><div class="blog-game-drawer-panel"><img src="./assets/images/xiaoluo-jump-game-icon.jpg" alt="小罗小游戏图标"><p class="mini-title">XIAOLUO MINI GAME</p><h2>小罗游戏空间</h2><p>打开游戏列表，选择想玩的小游戏。</p><a class="primary-button small" href="./game.html" data-game-entry>进入游戏</a></div>`;
       document.body.appendChild(drawer);
       const toggle = $("[data-game-drawer-toggle]", drawer);
       const close = () => { drawer.classList.remove("open"); toggle.setAttribute("aria-expanded", "false"); };
+      const dismiss = (event) => {
+        event?.preventDefault();
+        event?.stopPropagation();
+        close();
+        drawer.hidden = true;
+        drawer.style.display = "none";
+      };
       toggle.onclick = () => { const open = drawer.classList.toggle("open"); toggle.setAttribute("aria-expanded", String(open)); };
-      $("[data-game-drawer-close]", drawer).onclick = close;
+      $("[data-game-drawer-dismiss]", drawer).onclick = dismiss;
     }
     // 游戏页面隐藏右侧抽屉
-    drawer.style.display = pageName() === "game" ? "none" : "";
+    const shouldHide = pageName() === "game" || pageName() === "snake";
+    drawer.hidden = shouldHide;
+    drawer.style.display = shouldHide ? "none" : "";
   }
 
   function ensureJumpGame() {
@@ -3644,7 +4444,25 @@
     requestAnimationFrame(() => requestAnimationFrame(boot));
   }
 
+  function ensureSnakeGame() {
+    const boot = () => {
+      if (window.initXiaoLuoSnakeGame) { window.initXiaoLuoSnakeGame(); return; }
+      let script = document.querySelector("script[data-snake-game-script]");
+      if (!script) {
+        script = document.createElement("script");
+        script.src = "./js/snake.js";
+        script.dataset.snakeGameScript = "true";
+        script.onload = () => window.initXiaoLuoSnakeGame?.();
+        document.body.appendChild(script);
+      }
+    };
+    requestAnimationFrame(() => requestAnimationFrame(boot));
+  }
+
   async function navigate(url, push = true) {
+    $all(".modal.open").forEach((modal) => modal.classList.remove("open"));
+    const savingOverlay = $("[data-saving-overlay]");
+    if (savingOverlay) savingOverlay.hidden = true;
     // 保存音乐状态，导航后强制恢复
     const audio = document.body.querySelector(":scope > [data-music-player]");
     const savedMusic = audio ? {
@@ -3675,9 +4493,11 @@
       return;
     }
     if (pageName() === "game") window.destroyXiaoLuoJumpGame?.();
+    if (pageName() === "snake") window.destroyXiaoLuoSnakeGame?.();
     document.title = nextDoc.title;
     document.body.dataset.page = nextDoc.body.dataset.page || "home";
     document.body.classList.toggle("game-page", nextDoc.body.classList.contains("game-page"));
+    document.body.classList.toggle("snake-page", nextDoc.body.classList.contains("snake-page"));
     currentMain.replaceWith(nextMain);
     if (push) history.pushState({}, "", url);
     window.scrollTo({ top: 0, behavior: "smooth" });

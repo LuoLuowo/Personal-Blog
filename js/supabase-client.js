@@ -251,12 +251,13 @@
       const user = data?.user;
       if (!user) { cachedUserInfo = { userId: null, userName: null }; userInfoCacheTime = now; return cachedUserInfo; }
       const { data: profile } = await client.from("profiles")
-        .select("display_name")
+        .select("display_name, is_admin")
         .eq("id", user.id)
         .maybeSingle();
       cachedUserInfo = {
         userId: user.id,
-        userName: profile?.display_name || user.email || "登录用户"
+        userName: profile?.display_name || user.email || "登录用户",
+        isAdmin: Boolean(profile?.is_admin)
       };
       userInfoCacheTime = now;
       return cachedUserInfo;
@@ -357,7 +358,7 @@
       const ipInfo = results[0].status === "fulfilled" ? results[0].value : { ip: "", location: "" };
       const userInfo = results[1].status === "fulfilled" ? results[1].value : { userId: null, userName: null };
       await Promise.allSettled([
-        client.from("page_views").insert({ page_path: pagePath, user_agent: navigator.userAgent }),
+        ...(userInfo.isAdmin ? [] : [client.from("page_views").insert({ page_path: pagePath, user_agent: navigator.userAgent })]),
         client.rpc("record_site_presence", {
           p_visitor_id: getVisitorId(),
           p_page_path: pagePath,
@@ -365,7 +366,7 @@
           p_ip_location: ipInfo.location || null,
           p_user_id: userInfo.userId || null,
           p_user_name: userInfo.userName || null,
-          p_increment_count: true
+          p_increment_count: !userInfo.isAdmin
         })
       ]);
     },
@@ -425,6 +426,13 @@
     async getRepeatVisitorsDetail() {
       if (!client) return [];
       const { data, error } = await client.rpc("get_repeat_visitors_detail");
+      if (error) throw error;
+      return data || [];
+    },
+
+    async getVisitorVisitLogs(scope = "all") {
+      if (!client) return [];
+      const { data, error } = await client.rpc("get_visitor_visit_logs", { p_scope: scope });
       if (error) throw error;
       return data || [];
     },
@@ -626,6 +634,54 @@
       if (error) throw error;
     },
 
+    async listSnakeGameRanking(limit = 50) {
+      const { data, error } = await client.rpc("list_snake_game_leaderboard", { p_limit: limit });
+      if (error) throw error;
+      return (data || []).map((row) => ({
+        player_key: row.out_player_key || row.player_key,
+        display_name: row.out_display_name || row.display_name,
+        avatar_url: row.out_avatar_url || row.avatar_url,
+        best_score: Number(row.out_best_score ?? row.best_score ?? 0),
+        is_guest: row.out_is_guest ?? row.is_guest,
+        profile: { display_name: row.out_display_name || row.display_name, avatar_url: row.out_avatar_url || row.avatar_url }
+      }));
+    },
+
+    async getMySnakeGameScore(userId) {
+      const { data, error } = await client.from("snake_game_scores").select("user_id, best_score, updated_at").eq("user_id", userId).maybeSingle();
+      if (error) throw error;
+      if (!data) return null;
+      const { data: profile, error: profileError } = await client.from("profiles").select("id, display_name, avatar_url").eq("id", userId).maybeSingle();
+      if (profileError) throw profileError;
+      return { ...data, profile: profile || null };
+    },
+
+    async submitSnakeGameScore(score) {
+      const { data, error } = await client.rpc("submit_snake_game_score", { p_score: Math.max(0, Math.floor(Number(score) || 0)) });
+      if (error) throw error;
+      const row = Array.isArray(data) ? data[0] : data;
+      return row ? { best_score: Number(row.out_best_score ?? row.best_score ?? 0) } : null;
+    },
+
+    async submitGuestSnakeGameScore(guestToken, score) {
+      const { data, error } = await client.rpc("submit_guest_snake_game_score", { p_guest_token: guestToken, p_score: Math.max(0, Math.floor(Number(score) || 0)) });
+      if (error) throw error;
+      const row = Array.isArray(data) ? data[0] : data;
+      return row ? { display_name: row.out_display_name || row.display_name, best_score: Number(row.out_best_score ?? row.best_score ?? 0) } : null;
+    },
+
+    async setGuestSnakeNickname(guestToken, nickname) {
+      const { data, error } = await client.rpc("set_guest_snake_nickname", { p_guest_token: guestToken, p_nickname: String(nickname || "").trim() });
+      if (error) throw error;
+      const row = Array.isArray(data) ? data[0] : data;
+      return row ? { display_name: row.out_display_name || row.display_name, best_score: Number(row.out_best_score ?? row.best_score ?? 0) } : null;
+    },
+
+    async deleteGuestSnakeScore(guestToken) {
+      const { error } = await client.rpc("delete_guest_snake_score", { p_guest_token: guestToken });
+      if (error) throw error;
+    },
+
     async listFriendLinks() {
       const { data, error } = await client.from("friend_links").select("*").order("sort_order", { ascending: true }).order("created_at", { ascending: true });
       if (error) throw error;
@@ -781,6 +837,20 @@
     async deleteContent(table, id, userId) {
       const { error } = await client.from(table).delete().eq("id", id).eq("user_id", userId);
       if (error) throw error;
+    },
+
+    async upsertMediaReview(userId, mediaItemId, reviewTitle, review) {
+      const { data, error } = await client.from("media_reviews")
+        .upsert({
+          user_id: userId,
+          media_item_id: mediaItemId,
+          review_title: reviewTitle,
+          review
+        }, { onConflict: "media_item_id" })
+        .select()
+        .single();
+      if (error) throw error;
+      return data;
     },
 
     async listPosts(userId) {

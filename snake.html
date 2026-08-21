@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <meta name="theme-color" content="#101a2c" />
+  <title>小罗贪吃蛇 | 小罗的Life</title>
+  <link rel="icon" href="./assets/images/xiaoluo-jump-game-icon.jpg" />
+  <link rel="stylesheet" href="./styles.css" />
+  <link rel="stylesheet" href="./font_fuhbx0kh6gc/iconfont.css" />
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="./js/supabase-config.js" defer></script>
+  <script src="./js/supabase-client.js" defer></script>
+  <script src="./js/data.js" defer></script>
+  <script src="./js/app.js" defer></script>
+  <script src="./js/snake.js" defer></script>
+</head>
+<body class="game-page snake-page" data-page="snake">
+  <header class="site-header">
+    <a class="brand" href="./index.html"><span class="brand-mark" data-site-logo></span><span data-site-name>小罗Blog</span></a>
+    <button class="nav-toggle" type="button" data-nav-toggle aria-label="打开导航">☰</button>
+    <nav class="top-nav" data-nav aria-label="主导航"><a href="./index.html">首页</a><a href="./articles.html">所有文章</a><a href="./life.html">生活圈</a><a href="./whispers.html">碎碎念</a><a href="./projects.html">个人项目</a><a href="./about.html">关于我</a><a href="./dashboard.html" data-admin-only hidden>后台</a></nav>
+    <div class="header-actions"><button class="icon-button" type="button" data-theme-toggle aria-label="切换日夜模式">◐</button><a class="ghost-button" href="./login.html" data-guest-only>登录</a><a class="primary-button small" href="./register.html" data-guest-only>注册</a><a class="user-entry" href="./dashboard.html" aria-label="用户后台" hidden><span class="user-avatar" data-profile-avatar>罗</span></a></div>
+  </header>
+  <main class="jump-game-shell">
+    <div class="game-space-toolbar">
+      <a class="game-back" href="./index.html">返回小罗Blog</a>
+    </div>
+    <section class="game-panel snake-game-panel">
+      <aside class="game-catalog">
+        <nav class="game-side-list" aria-label="小游戏列表">
+          <p class="mini-title">小游戏列表</p>
+          <a href="./game.html"><b>跳</b><span><strong>跳一跳</strong><small>蓄力起跳</small></span></a>
+          <a class="active" href="./snake.html" aria-current="page"><b>蛇</b><span><strong>贪吃蛇</strong><small>方向操控</small></span></a>
+        </nav>
+      </aside>
+      <aside class="game-intro snake-intro">
+        <div class="snake-game-icon" aria-hidden="true"><i></i><i></i><i></i><b></b></div>
+        <p class="mini-title">XIAOLUO MINI GAME</p>
+        <h1>小罗贪吃蛇</h1>
+        <p>绿色豆豆 +10 分；蓝色豆豆 +5 分并冰冻减速；红色豆豆 +5 分并急速冲刺。</p>
+        <div class="game-tips"><span>方向键 / WASD</span><span>手机滑动</span><span>空格暂停</span><span>R 键重开</span></div>
+        <div class="snake-skin-area">
+          <div class="snake-controls">
+            <button type="button" data-snake-music-toggle aria-pressed="true">音乐：开</button>
+            <button type="button" data-snake-skin-toggle aria-expanded="false">皮肤：森林</button>
+            <label class="snake-volume-control" title="调节吃豆音效音量">
+              <span>音效</span>
+              <input type="range" data-snake-sfx-volume min="0" max="2" step="0.05" value="1.25" aria-label="吃豆音效音量">
+            </label>
+          </div>
+          <div class="snake-skin-picker" data-snake-skin-picker hidden>
+            <button type="button" data-snake-skin="forest"><i></i><span>森林藤蔓<small>默认</small></span></button>
+            <button type="button" data-snake-skin="ocean"><i></i><span>深海气泡<small>累计 30 分</small></span></button>
+            <button type="button" data-snake-skin="sunset"><i></i><span>落日焰纹<small>累计 60 分</small></span></button>
+            <button type="button" data-snake-skin="violet"><i></i><span>紫夜符文<small>累计 120 分</small></span></button>
+            <button type="button" data-snake-skin="neon"><i></i><span>霓虹电弧<small>累计 240 分</small></span></button>
+            <button type="button" data-snake-skin="royal"><i></i><span>王冠秘金<small>累计 450 分</small></span></button>
+            <button type="button" data-snake-skin="mecha"><i></i><span>机甲核心<small>累计 800 分</small></span></button>
+            <button type="button" data-snake-skin="celestial"><i></i><span>星际轨道<small>累计 1400 分</small></span></button>
+            <button type="button" data-snake-skin="magma"><i></i><span>熔岩裂痕<small>累计 1800 分</small></span></button>
+            <button type="button" data-snake-skin="ice"><i></i><span>极地冰晶<small>累计 2600 分</small></span></button>
+            <button type="button" data-snake-skin="prism"><i></i><span>棱镜幻彩<small>累计 3600 分</small></span></button>
+            <button type="button" data-snake-skin="glitch"><i></i><span>故障像素<small>累计 5000 分</small></span></button>
+          </div>
+        </div>
+      </aside>
+      <section class="game-stage-wrap snake-stage-wrap">
+        <div class="game-scorebar"><div><span>本局得分</span><strong data-snake-score>0</strong></div><div><span>最高记录</span><strong data-snake-best>0</strong></div><button type="button" data-snake-restart aria-label="重新开始">重开</button></div>
+        <div class="snake-canvas-shell"><canvas data-snake-canvas width="720" height="720" aria-label="小罗贪吃蛇游戏画面"></canvas><button class="snake-start-button" type="button" data-snake-start>开始游戏</button></div>
+        <p class="game-hint" data-snake-hint>按方向键、WASD 或滑动屏幕开始</p>
+      </section>
+      <aside class="game-leaderboard" aria-label="贪吃蛇排行榜">
+        <div class="game-leaderboard-head">
+          <div><p class="mini-title">LEADERBOARD</p><h2>贪吃蛇排行</h2></div>
+          <div class="game-leaderboard-actions"><span>最高分</span><button type="button" class="game-join-btn" data-snake-join-btn>参与排行榜</button></div>
+        </div>
+        <ol class="game-ranking-list" data-snake-ranking-list><li class="game-ranking-empty">正在加载排行榜…</li></ol>
+        <div class="game-admin-panel" data-snake-admin-panel hidden>
+          <div class="game-admin-head"><p class="mini-title">ADMIN</p><h3>管理游客榜单</h3><button type="button" class="game-admin-refresh" data-snake-admin-refresh>刷新</button></div>
+          <ol class="game-admin-list" data-snake-admin-list></ol>
+        </div>
+      </aside>
+    </section>
+  </main>
+  <div class="modal game-nickname-modal" data-snake-nickname-modal>
+    <button class="modal-backdrop" type="button" data-snake-nickname-close aria-label="关闭"></button>
+    <section class="modal-card glass-card" role="dialog" aria-modal="true" aria-labelledby="snake-nickname-title">
+      <button class="modal-close" type="button" data-snake-nickname-close aria-label="关闭">×</button>
+      <p class="mini-title">JOIN LEADERBOARD</p><h2 id="snake-nickname-title">参与贪吃蛇排行</h2>
+      <p class="game-nickname-desc">填写上榜昵称，之后的最高分会自动保存。</p>
+      <form class="game-nickname-form" data-snake-nickname-form><input type="text" name="nickname" maxlength="20" placeholder="输入你的昵称（1-20字）" required /><button class="primary-button" type="submit">确认上榜</button></form>
+      <p class="game-nickname-error" data-snake-nickname-error hidden></p>
+    </section>
+  </div>
+</body>
+</html>
