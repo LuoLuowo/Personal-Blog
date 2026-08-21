@@ -19,7 +19,10 @@
     activityNextScore: 50,
     activityNextTitle: "漂泊者",
     cloudMutationVersion: 0,
-    mediaDataLoaded: false
+    mediaDataLoaded: false,
+    mediaRefreshNonce: 0,
+    mediaRefreshPromise: null,
+    mediaLastRefreshedAt: 0
   };
 
   const $ = (selector, root = document) => root.querySelector(selector);
@@ -1063,6 +1066,7 @@
       const reviewsByItem = new Map(data.mediaReviews.map((item) => [item.mediaItemId, item]));
       data.mediaItems = mediaItems.map((item) => { const review = reviewsByItem.get(item.id); return { id: item.id, title: item.title, reviewTitle: review?.title || "观后感", review: review?.review || "", noteUrl: item.note_url || "", coverUrl: item.cover_url || "", rating: Number(item.rating) || 0, mediaType: item.media_type || "未分类", tags: Array.isArray(item.tags) ? item.tags : [], people: item.people || "", watchedYear: Number(item.watched_year) || 0, watchedMonth: Number(item.watched_month) || 0, watchedDay: Number(item.watched_day) || 0, createdAt: item.created_at || "" }; });
       state.mediaDataLoaded = true;
+      state.mediaLastRefreshedAt = Date.now();
       data.mediaTypes = mediaTypes.map((item) => ({ id: item.id, name: item.name, isHidden: Boolean(item.is_hidden) }));
       data.notes = notes.map((item) => ({ id: item.id, title: item.title, body: item.body || "", attachments: Array.isArray(item.attachments) ? item.attachments : [], isDone: Boolean(item.is_done), createdAt: item.created_at || "" }));
       data.commonSites = commonSites.map((item) => ({ id: item.id, title: item.title, url: item.url, description: item.description || "", iconUrl: item.icon_url || "", createdAt: item.created_at || "" }));
@@ -2608,6 +2612,84 @@
     return `${item.watchedYear}年${month}${day}`;
   }
 
+  function applyMediaCloudRows(mediaItems, mediaTypes, mediaReviews = []) {
+    data.mediaReviews = mediaReviews.map((item) => ({ id: item.id, mediaItemId: item.media_item_id, title: item.review_title || "观后感", review: item.review || "" }));
+    const reviewsByItem = new Map(data.mediaReviews.map((item) => [item.mediaItemId, item]));
+    data.mediaItems = mediaItems.map((item) => {
+      const review = reviewsByItem.get(item.id);
+      return {
+        id: item.id,
+        title: item.title,
+        reviewTitle: review?.title || "观后感",
+        review: review?.review || "",
+        noteUrl: item.note_url || "",
+        coverUrl: item.cover_url || "",
+        rating: Number(item.rating) || 0,
+        mediaType: item.media_type || "未分类",
+        tags: Array.isArray(item.tags) ? item.tags : [],
+        people: item.people || "",
+        watchedYear: Number(item.watched_year) || 0,
+        watchedMonth: Number(item.watched_month) || 0,
+        watchedDay: Number(item.watched_day) || 0,
+        createdAt: item.created_at || ""
+      };
+    });
+    data.mediaTypes = mediaTypes.map((item) => ({ id: item.id, name: item.name, isHidden: Boolean(item.is_hidden) }));
+    state.mediaDataLoaded = true;
+    state.mediaLastRefreshedAt = Date.now();
+  }
+
+  async function refreshMediaListData(options = {}) {
+    const api = window.XiaoLuoSupabase;
+    const page = $("[data-media-page]");
+    const showLoader = Boolean(options.showLoader);
+    if (!api?.isConfigured) {
+      state.mediaDataLoaded = true;
+      if (page) renderMediaList();
+      return;
+    }
+    if (state.mediaRefreshPromise && !options.force) return state.mediaRefreshPromise;
+    const requestId = ++state.mediaRefreshNonce;
+    if (showLoader && page) {
+      state.mediaDataLoaded = false;
+      renderMediaList();
+    }
+    const request = (async () => {
+      let ownerId = state.cloudOwnerId || state.adminId;
+      if (!ownerId) ownerId = (await api.getAdminProfile())?.id || null;
+      if (!ownerId) throw new Error("暂时无法读取站长片单。");
+      const [mediaItems, mediaTypes, mediaReviews] = await Promise.all([
+        api.listContent("media_items", ownerId),
+        api.listContent("media_types", ownerId),
+        state.isAdmin ? api.listContent("media_reviews", ownerId).catch(() => []) : Promise.resolve([])
+      ]);
+      if (requestId !== state.mediaRefreshNonce) return;
+      state.adminId = ownerId;
+      state.cloudOwnerId = ownerId;
+      applyMediaCloudRows(mediaItems, mediaTypes, mediaReviews);
+      if (pageName() === "media-list") renderMediaList();
+    })();
+    state.mediaRefreshPromise = request;
+    try {
+      await request;
+    } finally {
+      if (requestId === state.mediaRefreshNonce) state.mediaRefreshPromise = null;
+    }
+  }
+
+  function ensureMediaListData() {
+    if (pageName() !== "media-list") return;
+    const needsInitialLoad = !state.mediaDataLoaded;
+    const isStale = Date.now() - state.mediaLastRefreshedAt > 30000;
+    if ((needsInitialLoad || isStale) && !state.mediaRefreshPromise) {
+      refreshMediaListData({ showLoader: needsInitialLoad }).catch((error) => {
+        state.mediaDataLoaded = true;
+        if (pageName() === "media-list") renderMediaList();
+        console.warn("Media list refresh failed:", error.message);
+      });
+    }
+  }
+
   function renderMediaList() {
     const page = $("[data-media-page]");
     const list = $("[data-media-list]");
@@ -2638,6 +2720,9 @@
     const tagBar = $("[data-media-tags]", page);
     tagBar.hidden = !allTags.length;
     tagBar.innerHTML = allTags.map((tag) => `<button class="media-tag-filter${activeTag === tag ? " active" : ""}" type="button" data-media-tag-filter="${escapeHtml(tag)}">#${escapeHtml(tag)} <small>${data.mediaItems.filter((item) => (item.tags || []).includes(tag)).length}</small></button>`).join("");
+    $all("[data-media-tag-filter]", tagBar).forEach((button) => {
+      if (state.isAdmin) button.title = "右键删除此标签";
+    });
     const waitingForCloud = Boolean(window.XiaoLuoSupabase?.isConfigured && !state.mediaDataLoaded);
     list.innerHTML = waitingForCloud ? '<div class="media-empty media-loading glass-card"><strong>正在加载片单…</strong><p>正在读取书籍、电影和观看记录。</p></div>' : visible.map((item) => `<article class="media-card" data-open-media-item="${escapeHtml(item.id)}"><button class="media-cover" type="button" aria-label="查看 ${escapeHtml(item.title)}">${mediaCoverHtml(item)}<span class="media-rating">★ ${item.rating ? item.rating.toFixed(1) : "未评分"}</span></button><div class="media-card-copy"><h2>${escapeHtml(item.title)}</h2><div class="media-card-meta"><p>${escapeHtml(item.mediaType)}</p>${item.people ? `<span>${escapeHtml(item.people)}</span>` : ""}<time>${escapeHtml(formatWatchedDate(item))}</time></div></div>${state.isAdmin ? `<button class="media-manage-button" type="button" data-edit-media-item="${escapeHtml(item.id)}" aria-label="编辑 ${escapeHtml(item.title)}">⋯</button>` : ""}</article>`).join("") || '<div class="media-empty glass-card"><strong>片单还在慢慢收藏</strong><p>管理员可以从右上角添加自己看过的电影、书籍、动漫或游戏。</p></div>';
     $all("[data-media-type-name]", page).forEach((button) => button.classList.add(mediaTypeClass(button.dataset.mediaTypeName)));
@@ -2646,6 +2731,15 @@
       const badge = $(".media-card-meta p", card);
       if (media && badge) badge.classList.add(mediaTypeClass(media.mediaType));
       if (media) $(".media-card-copy", card)?.insertAdjacentHTML("beforeend", mediaTagsHtml(media));
+    });
+    $all("[data-open-media-item]", list).forEach((card) => {
+      card.addEventListener("click", (event) => {
+        if (event.target.closest("[data-edit-media-item]")) return;
+        event.preventDefault();
+        event.stopPropagation();
+        const item = data.mediaItems.find((entry) => entry.id === card.dataset.openMediaItem);
+        if (item) openMediaDetail(item);
+      });
     });
     if (state.isAdmin && state.mediaDataLoaded && params().get("add") === "1" && !page.dataset.autoEditorOpened) {
       page.dataset.autoEditorOpened = "true";
@@ -2677,7 +2771,19 @@
         renderMediaList();
       } catch (error) { showCloudError(error); }
     });
-    document.addEventListener("click", (event) => {
+    document.addEventListener("click", async (event) => {
+      const refresh = event.target.closest("[data-media-refresh]");
+      if (refresh) {
+        refresh.classList.add("is-loading");
+        try {
+          await refreshMediaListData({ showLoader: true, force: true });
+        } catch (error) {
+          showCloudError(error);
+        } finally {
+          refresh.classList.remove("is-loading");
+        }
+        return;
+      }
       const sortToggle = event.target.closest("[data-media-sort-toggle]");
       if (sortToggle) {
         const menu = sortToggle.closest("[data-media-sort-menu]");
@@ -2722,12 +2828,14 @@
     document.addEventListener("contextmenu", async (event) => {
       const card = event.target.closest("[data-open-media-item]");
       const typeButton = event.target.closest("[data-media-type-name]");
-      if (!card && !typeButton) return;
+      const tagButton = event.target.closest("[data-media-tag-filter]");
+      if (!card && !typeButton && !tagButton) return;
       if (!state.isAdmin) return;
       event.preventDefault();
       try {
         if (card) await removeMediaItem(data.mediaItems.find((item) => item.id === card.dataset.openMediaItem));
         if (typeButton) await removeMediaType(typeButton.dataset.mediaTypeId, typeButton.dataset.mediaTypeName);
+        if (tagButton) await removeMediaTag(tagButton.dataset.mediaTagFilter);
       } catch (error) { showCloudError(error); }
     });
   }
@@ -2764,6 +2872,21 @@
       affected.forEach((item) => { item.mediaType = "未分类"; });
       const page = $("[data-media-page]");
       if (page?.dataset.mediaType === name) page.dataset.mediaType = "";
+      renderMediaList();
+    });
+  }
+
+  async function removeMediaTag(tagName) {
+    const name = String(tagName || "").trim();
+    if (!name || !await confirmPublish(`删除“#${name}”标签？`, "该标签会从所有相关片单中移除，删除后无法恢复。", "确认删除")) return;
+    await runWithLoading("正在删除片单标签…", async () => {
+      const affected = data.mediaItems.filter((item) => Array.isArray(item.tags) && item.tags.includes(name));
+      await Promise.all(affected.map((item) => window.XiaoLuoSupabase.updateContent("media_items", item.id, state.userId, {
+        tags: item.tags.filter((tag) => tag !== name)
+      })));
+      affected.forEach((item) => { item.tags = item.tags.filter((tag) => tag !== name); });
+      const page = $("[data-media-page]");
+      if (page?.dataset.mediaTag === name) page.dataset.mediaTag = "";
       renderMediaList();
     });
   }
@@ -4340,7 +4463,10 @@
     if (page === "life") renderLifeTimeline();
     if (page === "progress") renderTimeline("[data-progress-timeline]", data.progress);
     if (page === "projects") renderProjects();
-    if (page === "media-list") renderMediaList();
+    if (page === "media-list") {
+      renderMediaList();
+      ensureMediaListData();
+    }
     initQuickNotes();
     initQuickSites();
     initMediaList();
