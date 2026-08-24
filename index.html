@@ -24,7 +24,6 @@
     <nav class="top-nav" data-nav aria-label="主导航">
       <a class="active" href="./index.html">首页</a>
       <a href="./articles.html">所有文章</a>
-      <a href="./life.html">生活圈</a>
       <a href="./whispers.html">碎碎念</a>
       <a href="./projects.html">个人项目</a>
       <a href="./about.html">关于我</a>
@@ -67,7 +66,8 @@
       </form>
     </section>
 
-    <section class="dashboard">
+    <section class="home-reading-layout">
+      <aside class="home-column home-column-left" aria-label="个人信息与音乐">
       <article class="profile-widget glass-card reveal-card">
         <div class="avatar" data-profile-avatar>罗</div>
         <div>
@@ -76,15 +76,15 @@
           <p data-profile-bio>欢迎来到小罗博客网站。</p>
         </div>
         <ul class="contact-list">
-          <li class="contact-item" data-contact-item="github"><button type="button" data-contact-link aria-label="GitHub"><i class="contact-icon social-icon social-icon-github" aria-hidden="true"></i><span class="contact-tooltip" data-contact-value="github"></span></button></li>
+          <li class="contact-item" data-contact-item="github"><button type="button" data-contact-link aria-label="GitHub"><span class="contact-icon"><svg class="contact-brand-svg" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 .7a12 12 0 0 0-3.79 23.39c.6.11.82-.26.82-.58v-2.04c-3.34.73-4.04-1.61-4.04-1.61-.55-1.39-1.33-1.76-1.33-1.76-1.09-.75.08-.74.08-.74 1.2.08 1.83 1.23 1.83 1.23 1.07 1.83 2.8 1.3 3.48.99.11-.77.42-1.3.76-1.6-2.67-.3-5.47-1.34-5.47-5.96 0-1.32.47-2.4 1.23-3.25-.12-.3-.53-1.54.12-3.2 0 0 1-.33 3.3 1.24A11.4 11.4 0 0 1 12 6.36c1.02 0 2.04.14 3 .42 2.3-1.57 3.3-1.24 3.3-1.24.65 1.66.24 2.9.12 3.2.77.85 1.23 1.93 1.23 3.25 0 4.63-2.8 5.65-5.48 5.95.43.37.81 1.1.81 2.22v2.65c0 .32.22.69.83.57A12 12 0 0 0 12 .7Z"/></svg></span><span class="contact-tooltip" data-contact-value="github"></span></button></li>
           <li class="contact-item" data-contact-item="email"><button type="button" data-contact-link aria-label="邮箱"><span class="contact-icon contact-icon-email" aria-hidden="true">@</span><span class="contact-tooltip" data-contact-value="email"></span></button></li>
-          <li class="contact-item" data-contact-item="douyin"><button type="button" data-contact-link aria-label="抖音"><i class="contact-icon iconfont icon-douyin2" aria-hidden="true"></i><span class="contact-tooltip" data-contact-value="douyin"></span></button></li>
-          <li class="contact-item" data-contact-item="instagram"><button type="button" data-contact-link aria-label="Instagram"><i class="contact-icon social-icon social-icon-instagram" aria-hidden="true"></i><span class="contact-tooltip" data-contact-value="instagram"></span></button></li>
+          <li class="contact-item" data-contact-item="douyin"><button type="button" data-contact-link aria-label="抖音"><span class="contact-icon"><svg class="contact-brand-svg" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M14.2 3h3.05c.25 1.72 1.23 2.9 2.95 3.6v3.1a8.2 8.2 0 0 1-2.95-1.02v6.1a5.22 5.22 0 1 1-5.22-5.22c.37 0 .74.04 1.1.12v3.16a2.16 2.16 0 1 0 1.07 1.94V3Z"/></svg></span><span class="contact-tooltip" data-contact-value="douyin"></span></button></li>
+          <li class="contact-item" data-contact-item="instagram"><button type="button" data-contact-link aria-label="Instagram"><span class="contact-icon"><svg class="contact-brand-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" aria-hidden="true"><rect x="3.2" y="3.2" width="17.6" height="17.6" rx="5"/><circle cx="12" cy="12" r="4.1"/><circle cx="17.4" cy="6.7" r="1" fill="currentColor" stroke="none"/></svg></span><span class="contact-tooltip" data-contact-value="instagram"></span></button></li>
         </ul>
         <div class="profile-content-stats" aria-label="内容统计">
           <span><strong data-profile-post-count>0</strong>文章</span>
           <span><strong data-profile-photo-count>0</strong>照片</span>
-          <span><strong data-profile-moment-count>0</strong>生活</span>
+          <span><strong data-profile-whisper-count>0</strong>碎碎念</span>
         </div>
         <div class="profile-personal-tags" aria-label="个人标签">
           <span>注重感情</span>
@@ -99,20 +99,6 @@
       <article class="glass-card announcement-card reveal-card">
         <div class="announcement-heading"><div><p class="mini-title">公告栏</p><h3>公告栏</h3></div></div>
         <p data-site-announcement>暂无公告。</p>
-      </article>
-
-      <article class="glass-card guestbook-card reveal-card" data-guestbook-card>
-        <div class="guestbook-card-copy">
-          <p class="mini-title">ANONYMOUS MESSAGE</p>
-          <h3>匿名留言墙</h3>
-          <p>匿名留言，在这里你可以畅心所欲的抒发你的情感、生活、碎碎念等留言！快来留言啦~</p>
-        </div>
-        <div class="guestbook-mini-stream" aria-hidden="true">
-          <span>写一封信，投进小罗Blog</span>
-          <span>每一份来访，都值得被看见</span>
-          <span>今天也要有好心情</span>
-        </div>
-        <button class="guestbook-open-button" type="button" data-open-guestbook>匿名留话</button>
       </article>
 
       <article class="glass-card music-card reveal-card">
@@ -134,13 +120,34 @@
         <button class="music-library-button" type="button" data-music-library aria-label="打开歌单">歌单</button>
       </article>
 
+      </aside>
+
+      <section class="home-main-column" aria-label="最新文章">
+        <div class="section-heading"><div><p class="eyebrow">LATEST POSTS</p><div class="latest-title-row"><h2>最新文章</h2><span>仅显示最新四篇！</span></div></div><a class="text-link" href="./articles.html">查看全部</a></div>
+        <div class="article-grid home-article-list" data-latest-posts></div>
+      </section>
+
+      <aside class="home-column home-column-right" aria-label="站点功能与统计">
+
+      <article class="glass-card guestbook-card reveal-card" data-guestbook-card>
+        <div class="guestbook-card-copy">
+          <p class="mini-title">ANONYMOUS MESSAGE</p>
+          <h3>匿名留言墙</h3>
+          <p>匿名留言，在这里你可以畅心所欲的抒发你的情感、生活、碎碎念等留言！快来留言啦~</p>
+        </div>
+        <div class="guestbook-mini-stream" aria-hidden="true">
+          <span>写一封信，投进小罗Blog</span>
+          <span>每一份来访，都值得被看见</span>
+          <span>今天也要有好心情</span>
+        </div>
+        <button class="guestbook-open-button" type="button" data-open-guestbook>匿名留话</button>
+      </article>
+
       <article class="glass-card quick-card reveal-card">
         <p class="mini-title">快捷功能</p>
         <div class="quick-links">
-          <a class="quick-admin-link" href="./dashboard.html#life-settings" data-admin-entry>添加生活</a>
           <a class="quick-admin-link" href="./dashboard.html#project-settings" data-admin-entry>添加项目</a>
-          <a href="./life.html">生活圈</a>
-          <button class="quick-admin-link" type="button" data-admin-entry data-open-notes>笔记</button>
+          <button class="quick-admin-link" type="button" data-admin-entry data-open-notes>我的笔记</button>
           <button class="quick-admin-link" type="button" data-open-common-sites>常用网站</button>
           <a class="quick-admin-link" href="./media-list.html?add=1" data-admin-entry>添加片单</a>
           <a href="./game.html">小游戏</a>
@@ -161,11 +168,7 @@
         <div class="site-stat-row"><span>运行天数</span><strong data-site-running-days>第 1 天</strong></div>
         <div class="site-stat-row"><span>最近更新</span><strong data-site-last-update>刚刚更新</strong></div>
       </article>
-    </section>
-
-    <section class="content-band">
-      <div class="section-heading"><div><p class="eyebrow">LATEST POSTS</p><div class="latest-title-row"><h2>最新文章</h2><span>仅显示最新四篇！</span></div></div><a class="text-link" href="./articles.html">查看全部</a></div>
-      <div class="article-grid home-article-list" data-latest-posts></div>
+      </aside>
     </section>
     <button class="guestbook-mobile-fab" type="button" data-open-guestbook aria-label="打开留言漂流墙"><span class="guestbook-fab-envelope" aria-hidden="true"></span><span>留言</span></button>
   </main>

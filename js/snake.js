@@ -18,10 +18,11 @@
     const guestTokenKey = "xiaoluo-jump-game-guest-token";
     const guestNicknameKey = "xiaoluo-snake-game-nickname";
     const scoreRuleVersionKey = "xiaoluo-snake-score-rule-version";
-    if (localStorage.getItem(scoreRuleVersionKey) !== "ten-point-v2") {
+    if (localStorage.getItem(scoreRuleVersionKey) !== "ten-point-v3-player-scoped") {
       localStorage.removeItem("xiaoluo-snake-local-best");
       localStorage.removeItem("xiaoluo-snake-total-score");
-      localStorage.setItem(scoreRuleVersionKey, "ten-point-v2");
+      localStorage.removeItem("xiaoluo-snake-skin");
+      localStorage.setItem(scoreRuleVersionKey, "ten-point-v3-player-scoped");
     }
     let guestToken = localStorage.getItem(guestTokenKey);
     if (!session && !guestToken) { guestToken = crypto.randomUUID(); localStorage.setItem(guestTokenKey, guestToken); }
@@ -64,8 +65,10 @@
     let particles = [];
     let frame = 0;
     let touchStart = null;
-    const skinKey = "xiaoluo-snake-skin";
-    const totalScoreKey = "xiaoluo-snake-total-score";
+    // Skin progress belongs to one player only. A browser may be shared by several accounts.
+    const playerStorageSuffix = encodeURIComponent(playerKey);
+    const skinKey = `xiaoluo-snake-skin:${playerStorageSuffix}`;
+    const totalScoreKey = `xiaoluo-snake-total-score:${playerStorageSuffix}`;
     const skins = {
       forest: { name: "森林藤蔓", unlock: 0, decor: "leaf", head: "hsl(154 62% 48%)", body: "hsl(160 56% 42%)", glow: "rgba(55,210,139,.5)", eye: "#10261f", food: "#ff6b7d" },
       ocean: { name: "深海气泡", unlock: 30, decor: "bubble", head: "hsl(204 76% 52%)", body: "hsl(196 69% 45%)", glow: "rgba(66,177,237,.52)", eye: "#08253a", food: "#ffd166" },
@@ -186,7 +189,9 @@
       if (!skins[skinName] || totalScore < skins[skinName].unlock) skinName = "forest";
       const skin = skins[skinName];
       const skinToggle = document.querySelector("[data-snake-skin-toggle]");
+      const progress = document.querySelector("[data-snake-skin-progress]");
       if (skinToggle) skinToggle.textContent = `皮肤：${skin.name}`;
+      if (progress) progress.textContent = `当前账号累计分数：${totalScore}`;
       document.querySelectorAll("[data-snake-skin]").forEach((button) => {
         const option = skins[button.dataset.snakeSkin];
         const locked = totalScore < option.unlock;
@@ -468,6 +473,7 @@
     const musicToggle = document.querySelector("[data-snake-music-toggle]");
     const skinToggle = document.querySelector("[data-snake-skin-toggle]");
     const skinPicker = document.querySelector("[data-snake-skin-picker]");
+    const skinModal = document.querySelector("[data-snake-skin-modal]");
     const sfxVolumeControl = document.querySelector("[data-snake-sfx-volume]");
     if (sfxVolumeControl) {
       sfxVolumeControl.value = String(sfxVolume);
@@ -484,15 +490,21 @@
       syncMusicControls();
     }, { signal });
     skinToggle?.addEventListener("click", () => {
-      const opening = skinPicker.hidden;
-      skinPicker.hidden = !opening;
-      skinToggle.setAttribute("aria-expanded", String(opening));
+      skinModal.hidden = false;
+      skinModal.classList.add("open");
+      skinToggle.setAttribute("aria-expanded", "true");
     }, { signal });
+    document.querySelectorAll("[data-snake-skin-close]").forEach((button) => button.addEventListener("click", () => {
+      skinModal.classList.remove("open");
+      skinModal.hidden = true;
+      skinToggle?.setAttribute("aria-expanded", "false");
+    }, { signal }));
     document.querySelectorAll("[data-snake-skin]").forEach((button) => button.addEventListener("click", () => {
       if (totalScore < skins[button.dataset.snakeSkin].unlock) return;
       skinName = button.dataset.snakeSkin;
       localStorage.setItem(skinKey, skinName);
-      skinPicker.hidden = true;
+      skinModal.classList.remove("open");
+      skinModal.hidden = true;
       skinToggle?.setAttribute("aria-expanded", "false");
       syncSkinControls();
     }, { signal }));

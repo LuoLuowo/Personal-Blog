@@ -19,7 +19,7 @@
   <header class="site-header">
     <a class="brand" href="./index.html"><span class="brand-mark" data-site-logo></span><span data-site-name>小罗Blog</span></a>
     <button class="nav-toggle" type="button" data-nav-toggle aria-label="打开导航">☰</button>
-    <nav class="top-nav" data-nav aria-label="主导航"><a href="./index.html">首页</a><a href="./articles.html">所有文章</a><a href="./life.html">生活圈</a><a href="./whispers.html">碎碎念</a><a href="./projects.html">个人项目</a><a href="./about.html">关于我</a><a href="./dashboard.html" data-admin-only hidden>后台</a></nav>
+    <nav class="top-nav" data-nav aria-label="主导航"><a href="./index.html">首页</a><a href="./articles.html">所有文章</a><a href="./whispers.html">碎碎念</a><a href="./projects.html">个人项目</a><a href="./about.html">关于我</a><a href="./dashboard.html" data-admin-only hidden>后台</a></nav>
     <div class="header-actions"><button class="icon-button" type="button" data-theme-toggle aria-label="切换日夜模式">◐</button><a class="ghost-button" href="./login.html" data-guest-only>登录</a><a class="primary-button small" href="./register.html" data-guest-only>注册</a><a class="user-entry" href="./dashboard.html" aria-label="用户后台" hidden><span class="user-avatar" data-profile-avatar>罗</span></a></div>
   </header>
   <main class="jump-game-shell">
@@ -32,6 +32,7 @@
           <p class="mini-title">小游戏列表</p>
           <a href="./game.html"><b>跳</b><span><strong>跳一跳</strong><small>蓄力起跳</small></span></a>
           <a class="active" href="./snake.html" aria-current="page"><b>蛇</b><span><strong>贪吃蛇</strong><small>方向操控</small></span></a>
+          <a href="./wordfall.html"><b>词</b><span><strong>单词下落</strong><small>输入消灭</small></span></a>
         </nav>
       </aside>
       <aside class="game-intro snake-intro">
@@ -48,20 +49,6 @@
               <span>音效</span>
               <input type="range" data-snake-sfx-volume min="0" max="2" step="0.05" value="1.25" aria-label="吃豆音效音量">
             </label>
-          </div>
-          <div class="snake-skin-picker" data-snake-skin-picker hidden>
-            <button type="button" data-snake-skin="forest"><i></i><span>森林藤蔓<small>默认</small></span></button>
-            <button type="button" data-snake-skin="ocean"><i></i><span>深海气泡<small>累计 30 分</small></span></button>
-            <button type="button" data-snake-skin="sunset"><i></i><span>落日焰纹<small>累计 60 分</small></span></button>
-            <button type="button" data-snake-skin="violet"><i></i><span>紫夜符文<small>累计 120 分</small></span></button>
-            <button type="button" data-snake-skin="neon"><i></i><span>霓虹电弧<small>累计 240 分</small></span></button>
-            <button type="button" data-snake-skin="royal"><i></i><span>王冠秘金<small>累计 450 分</small></span></button>
-            <button type="button" data-snake-skin="mecha"><i></i><span>机甲核心<small>累计 800 分</small></span></button>
-            <button type="button" data-snake-skin="celestial"><i></i><span>星际轨道<small>累计 1400 分</small></span></button>
-            <button type="button" data-snake-skin="magma"><i></i><span>熔岩裂痕<small>累计 1800 分</small></span></button>
-            <button type="button" data-snake-skin="ice"><i></i><span>极地冰晶<small>累计 2600 分</small></span></button>
-            <button type="button" data-snake-skin="prism"><i></i><span>棱镜幻彩<small>累计 3600 分</small></span></button>
-            <button type="button" data-snake-skin="glitch"><i></i><span>故障像素<small>累计 5000 分</small></span></button>
           </div>
         </div>
       </aside>
@@ -91,6 +78,28 @@
       <p class="game-nickname-desc">填写上榜昵称，之后的最高分会自动保存。</p>
       <form class="game-nickname-form" data-snake-nickname-form><input type="text" name="nickname" maxlength="20" placeholder="输入你的昵称（1-20字）" required /><button class="primary-button" type="submit">确认上榜</button></form>
       <p class="game-nickname-error" data-snake-nickname-error hidden></p>
+    </section>
+  </div>
+  <div class="modal game-skin-modal snake-skin-modal" data-snake-skin-modal hidden>
+    <button class="modal-backdrop" type="button" data-snake-skin-close aria-label="关闭皮肤选择"></button>
+    <section class="modal-card glass-card game-skin-card" role="dialog" aria-modal="true" aria-labelledby="snake-skin-title">
+      <button class="modal-close" type="button" data-snake-skin-close aria-label="关闭">×</button>
+      <p class="mini-title">SNAKE SKINS</p><h2 id="snake-skin-title">选择贪吃蛇皮肤</h2>
+      <p class="game-skin-progress" data-snake-skin-progress>累计分数：0</p>
+      <div class="snake-skin-picker game-skin-list" data-snake-skin-picker>
+        <button type="button" data-snake-skin="forest"><i></i><span>森林藤蔓<small>默认</small></span></button>
+        <button type="button" data-snake-skin="ocean"><i></i><span>深海气泡<small>累计 30 分</small></span></button>
+        <button type="button" data-snake-skin="sunset"><i></i><span>落日焰纹<small>累计 60 分</small></span></button>
+        <button type="button" data-snake-skin="violet"><i></i><span>紫夜符文<small>累计 120 分</small></span></button>
+        <button type="button" data-snake-skin="neon"><i></i><span>霓虹电弧<small>累计 240 分</small></span></button>
+        <button type="button" data-snake-skin="royal"><i></i><span>王冠秘金<small>累计 450 分</small></span></button>
+        <button type="button" data-snake-skin="mecha"><i></i><span>机甲核心<small>累计 800 分</small></span></button>
+        <button type="button" data-snake-skin="celestial"><i></i><span>星际轨道<small>累计 1400 分</small></span></button>
+        <button type="button" data-snake-skin="magma"><i></i><span>熔岩裂痕<small>累计 1800 分</small></span></button>
+        <button type="button" data-snake-skin="ice"><i></i><span>极地冰晶<small>累计 2600 分</small></span></button>
+        <button type="button" data-snake-skin="prism"><i></i><span>棱镜幻彩<small>累计 3600 分</small></span></button>
+        <button type="button" data-snake-skin="glitch"><i></i><span>故障像素<small>累计 5000 分</small></span></button>
+      </div>
     </section>
   </div>
 </body>

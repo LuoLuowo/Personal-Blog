@@ -16,9 +16,9 @@
   <main class="auth-page">
     <section class="auth-card glass-card">
       <a class="brand" href="./index.html"><span class="brand-mark" data-site-logo>罗</span><span data-site-name>小罗Blog</span></a>
-      <div><p class="eyebrow">WELCOME BACK</p><h1>登录账号</h1><p>输入邮箱和密码进入后台。</p></div>
-      <form class="auth-form" data-auth-form="login">
-        <label><span>邮箱</span><input name="email" type="email" autocomplete="email" required placeholder="you@example.com"></label>
+      <div><p class="eyebrow">WELCOME BACK</p><h1>登录账号</h1><p>输入昵称或邮箱和密码登录。</p></div>
+      <form class="auth-form" method="post" action="./login.html" data-auth-form="login">
+        <label><span>昵称或邮箱</span><input name="email" type="text" autocomplete="username" required placeholder="请输入昵称或邮箱"></label>
         <label><span>密码</span><input name="password" type="password" autocomplete="current-password" required placeholder="请输入密码"></label>
         <button class="primary-button" type="submit">登录</button>
       </form>

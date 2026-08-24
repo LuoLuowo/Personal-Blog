@@ -1,6 +1,7 @@
 create table if not exists public.profiles (
   id uuid primary key references auth.users(id) on delete cascade,
   phone text unique,
+  email text unique,
   display_name text default 'Xiao Luo',
   avatar_url text,
   home_title text default 'XiaoLuo Blog',
@@ -26,7 +27,8 @@ create table if not exists public.posts (
   category text,
   tags jsonb not null default '[]'::jsonb,
   attachments jsonb not null default '[]'::jsonb,
-  status text default 'draft' check (status in ('draft', 'published')),
+  min_activity_score integer not null default 0 check (min_activity_score >= 0),
+  status text default 'published' check (status in ('draft', 'published', 'private')),
   created_at timestamptz default now(),
   updated_at timestamptz default now()
 );
@@ -34,6 +36,8 @@ create table if not exists public.posts (
 alter table public.posts add column if not exists category text;
 alter table public.posts add column if not exists tags jsonb not null default '[]'::jsonb;
 alter table public.posts add column if not exists attachments jsonb not null default '[]'::jsonb;
+alter table public.posts add column if not exists music_attachment jsonb;
+alter table public.posts add column if not exists min_activity_score integer not null default 0;
 
 create table if not exists public.categories (
   id uuid primary key default gen_random_uuid(),

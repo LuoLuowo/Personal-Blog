@@ -273,13 +273,23 @@
     isConfigured,
     getVisitorId,
 
-    async signUpWithEmail(email, password) {
+    async signUpWithEmail(email, password, displayName) {
       if (!client) throw new Error("Supabase 还没有配置。");
+      const nickname = String(displayName || "").trim();
+      if (!nickname) throw new Error("请输入昵称。");
+      const { data: nicknameTaken, error: nicknameError } = await client.from("profiles").select("id").eq("display_name", nickname).maybeSingle();
+      if (nicknameError) throw nicknameError;
+      if (nicknameTaken) {
+        const duplicateError = new Error("这个昵称已经被使用了，请换一个昵称。可直接使用原昵称登录。");
+        duplicateError.code = "nickname_already_registered";
+        throw duplicateError;
+      }
       const { data, error } = await client.auth.signUp({
         email: String(email || "").trim(),
         password,
         options: {
-          emailRedirectTo: `${window.location.origin}/login.html`
+          emailRedirectTo: `${window.location.origin}/login.html`,
+          data: { display_name: nickname }
         }
       });
       if (error) throw error;
@@ -288,14 +298,22 @@
         duplicateError.code = "user_already_registered";
         throw duplicateError;
       }
-      await this.ensureProfile(data.user, email);
+      await this.ensureProfile(data.user, email, nickname);
       return data;
     },
 
-    async signInWithEmail(email, password) {
+    async signInWithEmail(identifier, password) {
       if (!client) throw new Error("Supabase 还没有配置。");
+      const value = String(identifier || "").trim();
+      let email = value;
+      if (!value.includes("@")) {
+        const { data: profile, error: profileError } = await client.from("profiles").select("email").eq("display_name", value).maybeSingle();
+        if (profileError) throw profileError;
+        if (!profile?.email) throw new Error("没有找到这个昵称，请使用注册邮箱登录。");
+        email = profile.email;
+      }
       const { data, error } = await client.auth.signInWithPassword({
-        email: String(email || "").trim(),
+        email,
         password
       });
       if (error) throw error;
@@ -343,12 +361,20 @@
       return data.session;
     },
 
-    async ensureProfile(user, email) {
+    async ensureProfile(user, email, displayName = "") {
       if (!client || !user) return;
+      const resolvedDisplayName = String(displayName || user.user_metadata?.display_name || "").trim();
       const { data: existing, error: readError } = await client.from("profiles").select("id").eq("id", user.id).maybeSingle();
       if (readError) throw readError;
-      if (existing) return;
-      const { error } = await client.from("profiles").insert({ id: user.id, phone: null, updated_at: new Date().toISOString() });
+      if (existing) {
+        const normalizedEmail = String(email || user.email || "").trim() || null;
+        if (normalizedEmail) {
+          const { error: updateError } = await client.from("profiles").update({ email: normalizedEmail, updated_at: new Date().toISOString() }).eq("id", user.id).is("email", null);
+          if (updateError && !/column .*email.* does not exist/i.test(updateError.message || "")) throw updateError;
+        }
+        return;
+      }
+      const { error } = await client.from("profiles").insert({ id: user.id, phone: null, email: String(email || user.email || "").trim() || null, display_name: resolvedDisplayName || "普通用户", updated_at: new Date().toISOString() });
       if (error) console.warn("Profile save skipped:", error.message);
     },
 
@@ -382,23 +408,40 @@
         p_ip_address: ipInfo.ip || null,
         p_ip_location: ipInfo.location || null,
         p_user_id: userInfo.userId || null,
-        p_user_name: userInfo.userName || null
+        p_user_name: userInfo.userName || null,
+        p_increment_count: false
       });
       if (error && error.code !== "PGRST202") throw error;
     },
 
     async getSiteMetrics() {
       if (!client) return { uniqueVisitors: 0, onlineVisitors: 0, todayVisitors: 0 };
-      const [{ data, error }, todayResult] = await Promise.all([
+      const [metricsResult, todayResult] = await Promise.allSettled([
         client.rpc("get_site_metrics"),
         client.rpc("get_today_site_visitors")
       ]);
-      if (error) throw error;
-      const row = Array.isArray(data) ? data[0] : data;
+      if (metricsResult.status === "rejected" || metricsResult.value.error) {
+        throw metricsResult.status === "rejected" ? metricsResult.reason : metricsResult.value.error;
+      }
+      const payload = metricsResult.value.data;
+      const row = Array.isArray(payload) ? payload[0] : payload;
+      let todayValue = 0;
+      if (todayResult.status === "fulfilled" && !todayResult.value.error) {
+        const raw = todayResult.value.data;
+        const scalar = Array.isArray(raw) ? raw[0] : raw;
+        todayValue = Number(typeof scalar === "object" && scalar ? Object.values(scalar)[0] : scalar) || 0;
+      } else {
+        // Older projects may not have the scalar RPC yet; the detail RPC is a
+        // safe fallback and already returns one row per unique visitor.
+        try {
+          const fallback = await client.rpc("get_today_visitors_detail");
+          todayValue = Array.isArray(fallback.data) ? fallback.data.length : 0;
+        } catch (_) { todayValue = 0; }
+      }
       return {
         uniqueVisitors: Number(row?.unique_visitors || 0),
         onlineVisitors: Number(row?.online_visitors || 0),
-        todayVisitors: Number(todayResult.data || 0)
+        todayVisitors: todayValue
       };
     },
 
@@ -433,7 +476,11 @@
     async getVisitorVisitLogs(scope = "all") {
       if (!client) return [];
       const { data, error } = await client.rpc("get_visitor_visit_logs", { p_scope: scope });
-      if (error) throw error;
+      if (error) {
+        const fallback = scope === "today" ? this.getTodayVisitorsDetail : scope === "repeat" ? this.getRepeatVisitorsDetail : this.getAllVisitorsDetail;
+        if (typeof fallback === "function") return fallback.call(this);
+        throw error;
+      }
       return data || [];
     },
 
@@ -682,6 +729,40 @@
       if (error) throw error;
     },
 
+    async listWordfallGameRanking(limit = 50) {
+      const { data, error } = await client.rpc("list_wordfall_game_leaderboard", { p_limit: limit });
+      if (error) throw error;
+      return (data || []).map((row) => ({
+        player_key: row.out_player_key || row.player_key,
+        display_name: row.out_display_name || row.display_name,
+        avatar_url: row.out_avatar_url || row.avatar_url,
+        best_score: Number(row.out_best_score ?? row.best_score ?? 0),
+        is_guest: row.out_is_guest ?? row.is_guest,
+        profile: { display_name: row.out_display_name || row.display_name, avatar_url: row.out_avatar_url || row.avatar_url }
+      }));
+    },
+
+    async submitWordfallGameScore(score) {
+      const { data, error } = await client.rpc("submit_wordfall_game_score", { p_score: Math.max(0, Math.floor(Number(score) || 0)) });
+      if (error) throw error;
+      const row = Array.isArray(data) ? data[0] : data;
+      return row ? { best_score: Number(row.out_best_score ?? row.best_score ?? 0) } : null;
+    },
+
+    async setGuestWordfallNickname(guestToken, nickname) {
+      const { data, error } = await client.rpc("set_guest_wordfall_nickname", { p_guest_token: guestToken, p_nickname: String(nickname || "").trim() });
+      if (error) throw error;
+      const row = Array.isArray(data) ? data[0] : data;
+      return row ? { display_name: row.out_display_name || row.display_name, best_score: Number(row.out_best_score ?? row.best_score ?? 0) } : null;
+    },
+
+    async submitGuestWordfallGameScore(guestToken, score) {
+      const { data, error } = await client.rpc("submit_guest_wordfall_game_score", { p_guest_token: guestToken, p_score: Math.max(0, Math.floor(Number(score) || 0)) });
+      if (error) throw error;
+      const row = Array.isArray(data) ? data[0] : data;
+      return row ? { display_name: row.out_display_name || row.display_name, best_score: Number(row.out_best_score ?? row.best_score ?? 0) } : null;
+    },
+
     async listFriendLinks() {
       const { data, error } = await client.from("friend_links").select("*").order("sort_order", { ascending: true }).order("created_at", { ascending: true });
       if (error) throw error;
@@ -839,13 +920,14 @@
       if (error) throw error;
     },
 
-    async upsertMediaReview(userId, mediaItemId, reviewTitle, review) {
+    async upsertMediaReview(userId, mediaItemId, reviewTitle, review, isPublic = true) {
       const { data, error } = await client.from("media_reviews")
         .upsert({
           user_id: userId,
           media_item_id: mediaItemId,
           review_title: reviewTitle,
-          review
+          review,
+          is_public: isPublic
         }, { onConflict: "media_item_id" })
         .select()
         .single();
@@ -894,20 +976,22 @@
         client.from("post_comments").select("id, content, created_at, user_id, parent_id").eq("post_id", postId).order("created_at", { ascending: true }),
         ownLikeQuery
       ]);
-      if (likes.error || views.error || comments.error || ownLike.error) throw likes.error || views.error || comments.error || ownLike.error;
+      if (likes.error || views.error) throw likes.error || views.error;
       const commentRows = comments.data || [];
       const userIds = [...new Set(commentRows.map((comment) => comment.user_id).filter(Boolean))];
       let profiles = [];
       if (userIds.length) {
         const { data, error } = await client.from("profiles").select("id, display_name, avatar_url").in("id", userIds);
-        if (error) throw error;
-        profiles = data || [];
+        // 资料卡读取失败不应影响文章本身的互动统计和评论列表。
+        if (error) console.warn("Comment profile lookup failed:", error.message);
+        else profiles = data || [];
       }
       const profilesById = new Map(profiles.map((profile) => [profile.id, profile]));
       return {
         likes: likes.count || 0,
         views: views.count || 0,
         comments: commentRows.map((comment) => ({ ...comment, profile: profilesById.get(comment.user_id) || null })),
+        // 点赞状态读取失败不应阻断点赞按钮和其余统计显示。
         liked: Boolean(ownLike.data)
       };
     },

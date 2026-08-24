@@ -22,13 +22,24 @@
     mediaDataLoaded: false,
     mediaRefreshNonce: 0,
     mediaRefreshPromise: null,
-    mediaLastRefreshedAt: 0
+    mediaLastRefreshedAt: 0,
+    notesLoadVersion: 0
   };
 
   const $ = (selector, root = document) => root.querySelector(selector);
   const $all = (selector, root = document) => Array.from(root.querySelectorAll(selector));
   const params = () => new URLSearchParams(window.location.search);
   const pageName = () => document.body.dataset.page || "home";
+
+  // Brand icons are rendered as inline SVG so a slow/missing icon font cannot
+  // make the contact row disappear on a cold page load.
+  function contactIconMarkup(type) {
+    const common = 'class="contact-brand-svg" viewBox="0 0 24 24" aria-hidden="true" focusable="false"';
+    if (type === "github") return `<svg ${common} fill="currentColor"><path d="M12 .7a12 12 0 0 0-3.79 23.39c.6.11.82-.26.82-.58v-2.04c-3.34.73-4.04-1.61-4.04-1.61-.55-1.39-1.33-1.76-1.33-1.76-1.09-.75.08-.74.08-.74 1.2.08 1.83 1.23 1.83 1.23 1.07 1.83 2.8 1.3 3.48.99.11-.77.42-1.3.76-1.6-2.67-.3-5.47-1.34-5.47-5.96 0-1.32.47-2.4 1.23-3.25-.12-.3-.53-1.54.12-3.2 0 0 1-.33 3.3 1.24A11.4 11.4 0 0 1 12 6.36c1.02 0 2.04.14 3 .42 2.3-1.57 3.3-1.24 3.3-1.24.65 1.66.24 2.9.12 3.2.77.85 1.23 1.93 1.23 3.25 0 4.63-2.8 5.65-5.48 5.95.43.37.81 1.1.81 2.22v2.65c0 .32.22.69.83.57A12 12 0 0 0 12 .7Z"/></svg>`;
+    if (type === "instagram") return `<svg ${common} fill="none" stroke="currentColor" stroke-width="1.9"><rect x="3.2" y="3.2" width="17.6" height="17.6" rx="5"/><circle cx="12" cy="12" r="4.1"/><circle cx="17.4" cy="6.7" r="1" fill="currentColor" stroke="none"/></svg>`;
+    if (type === "douyin") return `<svg ${common} fill="currentColor"><path d="M14.2 3h3.05c.25 1.72 1.23 2.9 2.95 3.6v3.1a8.2 8.2 0 0 1-2.95-1.02v6.1a5.22 5.22 0 1 1-5.22-5.22c.37 0 .74.04 1.1.12v3.16a2.16 2.16 0 1 0 1.07 1.94V3Z"/></svg>`;
+    return '<span class="contact-icon-email" aria-hidden="true">@</span>';
+  }
 
   function requireLogin(message = "请先登录后再使用此功能。") {
     if (state.isLoggedIn) return true;
@@ -92,6 +103,17 @@
     }[char]));
   }
 
+  // Supabase rows use arrays, while older/imported rows may use comma text.
+  // All article UI reads this one normalized representation.
+  function parseCommaTags(value, limit = 24) {
+    const raw = Array.isArray(value) ? value : [value];
+    return [...new Set(raw
+      .flatMap((item) => String(item || "").split(/[，,]/))
+      .map((item) => item.trim().replace(/^#/, ""))
+      .filter(Boolean))]
+      .slice(0, limit);
+  }
+
   const HIGHLIGHT_COLORS = new Set(["#ffddd8", "#d8f2e2", "#dce9ff"]);
   const PROFILE_TAGS = ["注重感情", "独处", "自由", "全球游", "世界游", "热爱阅读", "探索未知", "爱动脑子", "脑洞大", "敏感", "爱学习", "吃货一枚", "学霸一枚", "热爱生活", "热爱旅游", "喜欢美女", "喜欢帅哥", "爱音乐"];
   const ADMIN_PROFILE_TAGS = ["注重感情", "独处", "自由", "世界游", "热爱阅读", "探索未知"];
@@ -99,7 +121,7 @@
   const WHISPER_EMOJIS = ["😀", "😂", "🥹", "😭", "😡", "🥳", "❤️", "👍", "✨", "🌈", "🍜", "☕", "🎮", "📚", "🌙", "🔥"];
   const ACTIVITY_LEVELS = [
     { score: 10, title: "初入人", right: "解锁发布、评论功能" },
-    { score: 50, title: "漂泊者", right: "解锁小罗生活圈入口" },
+    { score: 50, title: "漂泊者", right: "解锁更多专属阅读内容" },
     { score: 100, title: "知罗者", right: "权益正在开发中" },
     { score: 200, title: "熟知罗者", right: "权益正在开发中" },
     { score: 300, title: "深知罗者", right: "权益正在开发中" },
@@ -115,6 +137,12 @@
     ["每日签到", "+20", "按中国时间每日一次"], ["点赞", "+5", "每个有效点赞"],
     ["文章/动态评论", "+5", "评论和回复均计算"], ["发布碎碎念", "+5", "每一条有效发布"]
   ];
+
+  function activityLevelForScore(score) {
+    const value = Math.max(0, Number(score) || 0);
+    if (!value) return { score: 0, title: "全站公开" };
+    return [...ACTIVITY_LEVELS].reverse().find((level) => value >= level.score) || ACTIVITY_LEVELS[0];
+  }
   const CODE_LANGUAGES = [
     ["auto", "自动识别"], ["javascript", "JavaScript"], ["typescript", "TypeScript"], ["html", "HTML/XML"], ["css", "CSS"],
     ["python", "Python"], ["java", "Java"], ["c", "C"], ["cpp", "C++"], ["csharp", "C#"], ["go", "Go"], ["rust", "Rust"],
@@ -165,6 +193,28 @@
         parent.append(element);
         return;
       }
+      if (["h1", "h2", "h3", "h4", "h5", "blockquote"].includes(tag)) {
+        const element = document.createElement(tag);
+        [...node.childNodes].forEach((child) => appendClean(child, element));
+        parent.append(element);
+        return;
+      }
+      if (tag === "img") {
+        const src = node.getAttribute("src") || "";
+        const alt = node.getAttribute("alt") || "";
+        if (/^(https?:\/\/|data:image\/(?:png|jpe?g|gif|webp);base64,)/i.test(src)) {
+          const image = document.createElement("img");
+          image.src = src;
+          image.alt = alt.slice(0, 180);
+          const width = Number.parseInt(node.getAttribute("width") || node.style.width, 10);
+          const height = Number.parseInt(node.getAttribute("height") || node.style.height, 10);
+          if (Number.isFinite(width) && width > 20 && width <= 4000) image.width = width;
+          if (Number.isFinite(height) && height > 20 && height <= 4000) image.height = height;
+          image.loading = "lazy";
+          parent.append(image);
+        }
+        return;
+      }
       const mapped = tag === "b" ? "strong" : tag;
       if (["strong", "u"].includes(mapped)) {
         const element = document.createElement(mapped);
@@ -196,8 +246,11 @@
         return;
       }
       if (["div", "p"].includes(tag)) {
-        [...node.childNodes].forEach((child) => appendClean(child, parent));
-        if (node.nextSibling) parent.append(document.createElement("br"));
+        // Keep each editor block as its own block on the reading page. Flattening
+        // div/p here made a heading merge into the following line after saving.
+        const element = document.createElement(tag);
+        [...node.childNodes].forEach((child) => appendClean(child, element));
+        parent.append(element);
         return;
       }
       [...node.childNodes].forEach((child) => appendClean(child, parent));
@@ -206,9 +259,81 @@
     return output.innerHTML;
   }
 
+  function elementForRange(range, selector) {
+    if (!range) return null;
+    const nodes = [range.startContainer, range.endContainer, range.commonAncestorContainer]
+      .map((node) => node?.nodeType === Node.ELEMENT_NODE ? node : node?.parentElement)
+      .filter(Boolean);
+    return nodes.map((node) => node.closest?.(selector)).find(Boolean) || null;
+  }
+
+  function normalizedHighlightColor(element) {
+    if (!element) return "";
+    const color = String(element.style?.backgroundColor || window.getComputedStyle(element).backgroundColor || "")
+      .replace(/\s/g, "").toLowerCase();
+    const palette = {
+      "rgb(255,221,216)": "#ffddd8",
+      "rgb(216,242,226)": "#d8f2e2",
+      "rgb(220,233,255)": "#dce9ff"
+    };
+    return HIGHLIGHT_COLORS.has(color) ? color : (palette[color] || "");
+  }
+
+  function cleanEditorHighlights(input) {
+    $all("span.rich-highlight, span[style*='background-color']", input).forEach((span) => {
+      const color = normalizedHighlightColor(span);
+      if (color) {
+        span.className = "rich-highlight";
+        span.style.backgroundColor = color;
+        return;
+      }
+      // Transparent native formatting spans must not trap the caret or affect
+      // the text typed on the following line.
+      span.replaceWith(...span.childNodes);
+    });
+  }
+
+  function linkifyRichHtml(value) {
+    const holder = document.createElement("div");
+    holder.innerHTML = String(value || "");
+    const textNodes = [];
+    const walker = document.createTreeWalker(holder, NodeFilter.SHOW_TEXT, {
+      acceptNode(node) {
+        return node.parentElement?.closest("a, pre, code") ? NodeFilter.FILTER_REJECT : NodeFilter.FILTER_ACCEPT;
+      }
+    });
+    let node = walker.nextNode();
+    while (node) {
+      if (/https?:\/\/[^\s<]+/i.test(node.textContent || "")) textNodes.push(node);
+      node = walker.nextNode();
+    }
+    textNodes.forEach((textNode) => {
+      const fragment = document.createDocumentFragment();
+      const parts = (textNode.textContent || "").split(/(https?:\/\/[^\s<]+)/gi);
+      parts.forEach((part) => {
+        if (!/^https?:\/\/[^\s<]+$/i.test(part)) {
+          fragment.append(document.createTextNode(part));
+          return;
+        }
+        const link = document.createElement("a");
+        link.href = part;
+        link.target = "_blank";
+        link.rel = "noopener noreferrer";
+        link.textContent = part;
+        fragment.append(link);
+      });
+      textNode.replaceWith(fragment);
+    });
+    return holder.innerHTML;
+  }
+
+  function normalizeRichHtml(value) {
+    return linkifyRichHtml(sanitizeRichHtml(value));
+  }
+
   function formatRichText(value) {
     const raw = String(value || "");
-    return /<\/?[a-z][\s\S]*>/i.test(raw) ? sanitizeRichHtml(raw) : formatPlainRichText(raw);
+    return /<\/?[a-z][\s\S]*>/i.test(raw) ? normalizeRichHtml(raw) : formatPlainRichText(raw);
   }
 
   function linkify(value) { return formatRichText(value); }
@@ -217,7 +342,13 @@
     if (toolbar.querySelector('[data-format-action="orderedList"]')) return;
     const divider = $(".format-toolbar-divider", toolbar);
     const group = document.createDocumentFragment();
-    [["orderedList", "1.", "有序列表"], ["unorderedList", "•", "无序列表"], ["codeBlock", "</>", "插入代码块"]].forEach(([action, label, title]) => {
+    const heading = document.createElement("select");
+    heading.className = "format-heading-select";
+    heading.dataset.formatHeading = "";
+    heading.title = "设置标题层级";
+    heading.innerHTML = '<option value="p">正文</option><option value="h1">一级标题</option><option value="h2">二级标题</option><option value="h3">三级标题</option><option value="h4">四级标题</option><option value="h5">五级标题</option>';
+    group.append(heading);
+    [["orderedList", "1.", "有序列表"], ["unorderedList", "•", "无序列表"], ["quote", "❝", "插入引用"], ["codeBlock", "</>", "插入代码块"]].forEach(([action, label, title]) => {
       const button = document.createElement("button");
       button.type = "button";
       button.dataset.formatAction = action;
@@ -227,6 +358,41 @@
       group.append(button);
     });
     toolbar.insertBefore(group, divider || null);
+  }
+
+  function openRichLinkDialog(input) {
+    const selection = window.getSelection();
+    const savedRange = selection?.rangeCount && input.contains(selection.anchorNode) ? selection.getRangeAt(0).cloneRange() : null;
+    const selectedText = savedRange?.toString() || "链接文字";
+    let modal = $("[data-rich-link-modal]");
+    if (!modal) {
+      modal = document.createElement("div");
+      modal.className = "modal code-block-modal";
+      modal.dataset.richLinkModal = "";
+      modal.innerHTML = '<button class="modal-backdrop" type="button" data-rich-link-close aria-label="关闭"></button><section class="modal-card glass-card" role="dialog" aria-modal="true" aria-labelledby="rich-link-title"><button class="modal-close" type="button" data-rich-link-close aria-label="关闭">×</button><p class="mini-title">INSERT LINK</p><h2 id="rich-link-title">插入超链接</h2><form data-rich-link-form><label><span>显示文字</span><input name="label" required></label><label><span>链接地址</span><input name="url" type="url" placeholder="https://" required></label><div class="publish-confirm-actions"><button class="ghost-button" type="button" data-rich-link-close>取消</button><button class="primary-button" type="submit">插入链接</button></div></form></section>';
+      document.body.appendChild(modal);
+    }
+    const form = $("[data-rich-link-form]", modal);
+    form.reset();
+    form.label.value = selectedText;
+    $all("[data-rich-link-close]", modal).forEach((button) => { button.onclick = () => modal.classList.remove("open"); });
+    form.onsubmit = (event) => {
+      event.preventDefault();
+      const label = form.label.value.trim();
+      const url = form.url.value.trim();
+      if (!label || !/^https?:\/\//i.test(url)) return;
+      input.focus();
+      if (savedRange) {
+        const currentSelection = window.getSelection();
+        currentSelection.removeAllRanges();
+        currentSelection.addRange(savedRange);
+      }
+      document.execCommand("insertHTML", false, `<a href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(label)}</a>`);
+      input.dispatchEvent(new Event("input", { bubbles: true }));
+      modal.classList.remove("open");
+    };
+    modal.classList.add("open");
+    window.setTimeout(() => form.label.select(), 40);
   }
 
   function openCodeBlockDialog(input) {
@@ -256,8 +422,10 @@
         currentSelection.addRange(savedRange);
       }
       const languageAttribute = language === "auto" ? 'data-language="auto"' : `class="language-${language}" data-language="${language}"`;
-      document.execCommand("insertHTML", false, `<pre data-language="${language}"><code ${languageAttribute}>${escapeHtml(code)}</code></pre><div><br></div>`);
+      document.execCommand("insertHTML", false, `<div class="editor-code-buffer"><br></div><pre data-language="${language}"><code ${languageAttribute}>${escapeHtml(code)}</code></pre><div class="editor-code-buffer"><br></div>`);
+      ensureCodeBlockBuffers(input);
       input.dispatchEvent(new Event("input", { bubbles: true }));
+      window.setTimeout(() => highlightCodeBlocks(input), 0);
       modal.classList.remove("open");
     };
     modal.classList.add("open");
@@ -281,6 +449,246 @@
     window.__xiaoluoHighlightPromise.then(run);
   }
 
+  function getEditorSelectionRange(input) {
+    const selection = window.getSelection();
+    if (!selection?.rangeCount || !input.contains(selection.anchorNode)) return null;
+    return selection.getRangeAt(0).cloneRange();
+  }
+
+  function restoreEditorSelection(input, range) {
+    input.focus({ preventScroll: true });
+    if (!range) return;
+    const selection = window.getSelection();
+    selection.removeAllRanges();
+    selection.addRange(range);
+  }
+
+  function editorBlockAt(range, input) {
+    const node = range?.startContainer?.nodeType === Node.ELEMENT_NODE
+      ? range.startContainer
+      : range?.startContainer?.parentElement;
+    const block = node?.closest?.("h1, h2, h3, h4, h5, blockquote, p, div, li");
+    return block && input.contains(block) && block !== input ? block : null;
+  }
+
+  function placeEditorCaret(node, offset = 0) {
+    const range = document.createRange();
+    range.setStart(node, offset);
+    range.collapse(true);
+    const selection = window.getSelection();
+    selection.removeAllRanges();
+    selection.addRange(range);
+  }
+
+  function insertCleanParagraphAfter(block, range) {
+    const paragraph = document.createElement("div");
+    if (range) {
+      const caret = range.cloneRange();
+      caret.collapse(false);
+      const tail = document.createRange();
+      tail.setStart(caret.startContainer, caret.startOffset);
+      tail.setEnd(block, block.childNodes.length);
+      const remainder = tail.extractContents();
+      paragraph.append(remainder);
+    }
+    if (!paragraph.childNodes.length) paragraph.append(document.createElement("br"));
+    block.after(paragraph);
+    placeEditorCaret(paragraph, 0);
+  }
+
+  function exitEditorInlineFormat(input, range) {
+    restoreEditorSelection(input, range);
+    const heading = editorBlockAt(range, input)?.closest("h1, h2, h3, h4, h5");
+    if (heading) {
+      // Do not delegate this to execCommand: Chromium sometimes leaves an
+      // empty heading behind, which makes the next Enter appear to do nothing.
+      const tail = range.cloneRange();
+      tail.collapse(false);
+      tail.setEnd(heading, heading.childNodes.length);
+      const paragraph = document.createElement("div");
+      paragraph.append(tail.extractContents());
+      if (!paragraph.childNodes.length) paragraph.append(document.createElement("br"));
+      heading.after(paragraph);
+      placeEditorCaret(paragraph, 0);
+      document.execCommand("styleWithCSS", false, false);
+      if (document.queryCommandState("bold")) document.execCommand("bold", false, false);
+      if (document.queryCommandState("underline")) document.execCommand("underline", false, false);
+      document.execCommand("hiliteColor", false, "transparent");
+      cleanEditorHighlights(input);
+      return true;
+    }
+    document.execCommand("insertParagraph");
+    // Browsers split headings correctly with insertParagraph; explicitly turn
+    // the new block back into body text so Enter never needs a second press.
+    document.execCommand("formatBlock", false, "div");
+    document.execCommand("hiliteColor", false, "transparent");
+    if (document.queryCommandState("bold")) document.execCommand("bold", false, false);
+    if (document.queryCommandState("underline")) document.execCommand("underline", false, false);
+    cleanEditorHighlights(input);
+    return true;
+  }
+
+  function resetEmptyEditorTypingState(input, range) {
+    const block = editorBlockAt(range, input);
+    if (!block || block.textContent.trim() || /^H[1-5]$/i.test(block.tagName)) return;
+    restoreEditorSelection(input, range);
+    document.execCommand("styleWithCSS", false, false);
+    if (document.queryCommandState("bold")) document.execCommand("bold", false, false);
+    if (document.queryCommandState("underline")) document.execCommand("underline", false, false);
+    document.execCommand("hiliteColor", false, "transparent");
+  }
+
+  function rootEditorLineBlock(input, range) {
+    const directChild = (node) => {
+      let current = node?.nodeType === Node.ELEMENT_NODE ? node : node?.parentElement;
+      while (current?.parentElement && current.parentElement !== input) current = current.parentElement;
+      return current?.parentElement === input ? current : null;
+    };
+    const current = directChild(range?.startContainer);
+    if (!current) return null;
+    if (current.nodeType === Node.ELEMENT_NODE && /^(H[1-5]|P|DIV|LI)$/i.test(current.tagName)) return current;
+    const children = [...input.childNodes];
+    let start = Math.max(0, children.indexOf(current));
+    let end = start + 1;
+    while (start > 0 && children[start - 1]?.nodeName !== "BR") start -= 1;
+    while (end < children.length && children[end]?.nodeName !== "BR") end += 1;
+    const lineRange = document.createRange();
+    lineRange.setStart(input, start);
+    lineRange.setEnd(input, end);
+    const wrapper = document.createElement("div");
+    wrapper.append(lineRange.extractContents());
+    input.insertBefore(wrapper, input.childNodes[start] || null);
+    return wrapper;
+  }
+
+  function applyEditorHeading(input, heading, savedRange) {
+    const range = savedRange || getEditorSelectionRange(input);
+    restoreEditorSelection(input, range);
+    if (!range) return;
+    // Native formatBlock keeps the browser undo stack intact and applies the
+    // heading only to the selected/current block.
+    document.execCommand("formatBlock", false, heading === "p" ? "div" : heading);
+    input.dispatchEvent(new Event("input", { bubbles: true }));
+  }
+
+  function ensureCodeBlockBuffers(input) {
+    $all("pre", input).forEach((pre) => {
+      const insertBuffer = (position) => {
+        const buffer = document.createElement("div");
+        buffer.className = "editor-code-buffer";
+        buffer.append(document.createElement("br"));
+        pre[position](buffer);
+      };
+      if (!pre.previousElementSibling || /^(PRE|H[1-5]|BLOCKQUOTE)$/i.test(pre.previousElementSibling.tagName)) insertBuffer("before");
+      if (!pre.nextElementSibling || pre.nextElementSibling.tagName === "PRE") insertBuffer("after");
+    });
+  }
+
+  function bindEditorImageResize(input) {
+    let activeImage = null;
+    let startX = 0;
+    let startWidth = 0;
+    const finish = () => {
+      if (!activeImage) return;
+      activeImage.classList.remove("is-resizing");
+      activeImage = null;
+      input.dispatchEvent(new Event("input", { bubbles: true }));
+    };
+    input.addEventListener("pointerdown", (event) => {
+      const image = event.target.closest("img");
+      if (!image || !input.contains(image)) return;
+      $all("img.is-selected", input).forEach((item) => item.classList.remove("is-selected"));
+      image.classList.add("is-selected");
+      const rect = image.getBoundingClientRect();
+      const nearRightHandle = event.clientX >= rect.right - 26
+        && (event.clientY <= rect.top + 26 || event.clientY >= rect.bottom - 26);
+      if (event.button !== 0 || !nearRightHandle) return;
+      event.preventDefault();
+      activeImage = image;
+      startX = event.clientX;
+      startWidth = rect.width;
+      image.classList.add("is-resizing");
+      image.setPointerCapture?.(event.pointerId);
+    });
+    input.addEventListener("pointermove", (event) => {
+      if (!activeImage) return;
+      const maxWidth = Math.max(120, input.clientWidth - 28);
+      const width = Math.round(Math.min(maxWidth, Math.max(120, startWidth + event.clientX - startX)));
+      activeImage.style.width = `${width}px`;
+      activeImage.style.height = "auto";
+      activeImage.setAttribute("width", String(width));
+      activeImage.removeAttribute("height");
+    });
+    input.addEventListener("pointerup", finish);
+    input.addEventListener("pointercancel", finish);
+  }
+
+  function bindSelectionFormatToolbar(input, toolbar, rememberSelection) {
+    if (input.dataset.selectionToolbarBound) return;
+    input.dataset.selectionToolbarBound = "true";
+    const floating = document.createElement("div");
+    floating.className = "selection-format-toolbar";
+    floating.hidden = true;
+    floating.setAttribute("role", "toolbar");
+    floating.setAttribute("aria-label", "选中文字格式工具");
+    floating.innerHTML = [
+      '<button type="button" data-floating-action="bold" title="加粗">B</button>',
+      '<button type="button" data-floating-action="underline" title="下划线"><u>U</u></button>',
+      '<button type="button" data-floating-action="link" title="插入超链接">↗</button>',
+      '<button type="button" data-floating-action="orderedList" title="有序列表">1.</button>',
+      '<button type="button" data-floating-action="unorderedList" title="无序列表">•</button>',
+      '<button type="button" data-floating-action="codeBlock" title="代码块">&lt;/&gt;</button>',
+      '<button type="button" data-floating-heading="h1" title="一级标题">H1</button>',
+      '<button type="button" data-floating-heading="h2" title="二级标题">H2</button>',
+      '<button type="button" data-floating-heading="h3" title="三级标题">H3</button>',
+      '<button type="button" data-floating-heading="h4" title="四级标题">H4</button>',
+      '<button type="button" data-floating-heading="h5" title="五级标题">H5</button>',
+      '<button type="button" data-floating-action="quote" title="引用">❝</button>',
+      '<button type="button" data-floating-action="highlight" data-highlight-color="#ffddd8" class="format-highlight red" title="红色高亮"></button>',
+      '<button type="button" data-floating-action="highlight" data-highlight-color="#d8f2e2" class="format-highlight green" title="绿色高亮"></button>',
+      '<button type="button" data-floating-action="highlight" data-highlight-color="#dce9ff" class="format-highlight blue" title="蓝色高亮"></button>'
+    ].join("");
+    document.body.appendChild(floating);
+
+    const hide = () => { floating.hidden = true; };
+    const showForSelection = () => {
+      const range = getEditorSelectionRange(input);
+      if (!range || range.collapsed || !range.toString().trim()) { hide(); return; }
+      rememberSelection();
+      const rect = range.getBoundingClientRect();
+      if (!rect.width && !rect.height) { hide(); return; }
+      floating.hidden = false;
+      const width = floating.offsetWidth || 280;
+      floating.style.left = `${Math.max(8, Math.min(window.innerWidth - width - 8, rect.left + rect.width / 2 - width / 2))}px`;
+      floating.style.top = `${Math.max(8, rect.top - floating.offsetHeight - 10)}px`;
+    };
+
+    ["pointerdown", "mousedown"].forEach((eventName) => floating.addEventListener(eventName, (event) => event.preventDefault()));
+    floating.addEventListener("click", (event) => {
+      const action = event.target.closest("[data-floating-action]")?.dataset.floatingAction;
+      const heading = event.target.closest("[data-floating-heading]")?.dataset.floatingHeading;
+      if (heading) {
+        const headingSelect = toolbar.querySelector("[data-format-heading]");
+        if (headingSelect) {
+          headingSelect.value = heading;
+          headingSelect.dispatchEvent(new Event("change", { bubbles: true }));
+        }
+      } else if (action) {
+        const button = toolbar.querySelector(`[data-format-action="${action}"]${event.target.closest("[data-highlight-color]") ? `[data-highlight-color="${event.target.closest("[data-highlight-color]").dataset.highlightColor}"]` : ""}`);
+        button?.click();
+      }
+      window.setTimeout(showForSelection, 0);
+    });
+    input.addEventListener("mouseup", () => window.setTimeout(showForSelection, 0));
+    input.addEventListener("keyup", () => window.setTimeout(showForSelection, 0));
+    input.addEventListener("blur", () => window.setTimeout(hide, 120));
+    document.addEventListener("scroll", hide, true);
+    document.addEventListener("selectionchange", () => {
+      const selection = window.getSelection();
+      if (!selection?.anchorNode || !input.contains(selection.anchorNode)) hide();
+    });
+  }
+
   function bindTextFormatToolbars(scope = document) {
     $all("[data-format-toolbar]", scope).forEach((toolbar) => {
       if (toolbar.dataset.bound) return;
@@ -288,25 +696,53 @@
       toolbar.dataset.bound = "true";
       const input = toolbar.parentElement?.querySelector("[data-format-input]");
       if (!input) return;
+      let savedRange = null;
+      const rememberSelection = () => {
+        const range = getEditorSelectionRange(input);
+        if (range) savedRange = range;
+      };
+      bindSelectionFormatToolbar(input, toolbar, rememberSelection);
+      ["focus", "keyup", "mouseup", "select"].forEach((eventName) => input.addEventListener(eventName, rememberSelection));
+      input.addEventListener("focus", () => {
+        resetEmptyEditorTypingState(input, getEditorSelectionRange(input) || savedRange);
+      });
+      const headingSelect = $("[data-format-heading]", toolbar);
+      headingSelect?.addEventListener("mousedown", rememberSelection);
+      headingSelect?.addEventListener("change", () => {
+        applyEditorHeading(input, headingSelect.value, savedRange || getEditorSelectionRange(input));
+        rememberSelection();
+        headingSelect.value = "p";
+      });
       $all("[data-format-action]", toolbar).forEach((button) => {
-        button.addEventListener("mousedown", (event) => event.preventDefault());
+        button.addEventListener("mousedown", (event) => { rememberSelection(); event.preventDefault(); });
         button.onclick = () => {
           if (input.isContentEditable) {
-            input.focus();
+            const range = savedRange || getEditorSelectionRange(input);
             const action = button.dataset.formatAction;
-            if (action === "bold") document.execCommand("bold");
-            else if (action === "underline") document.execCommand("underline");
+            // Inline styles are selection-only, like standard note editors.
+            // This prevents a stray toolbar click from changing the style of later typing.
+            if (["bold", "underline", "highlight"].includes(action) && (!range || range.collapsed)) return;
+            restoreEditorSelection(input, range);
+            if (action === "bold") { document.execCommand("styleWithCSS", false, false); document.execCommand("bold"); }
+            else if (action === "underline") { document.execCommand("styleWithCSS", false, false); document.execCommand("underline"); }
             else if (action === "orderedList") document.execCommand("insertOrderedList");
             else if (action === "unorderedList") document.execCommand("insertUnorderedList");
-            else if (action === "codeBlock") { openCodeBlockDialog(input); return; }
-            else if (action === "highlight") document.execCommand("hiliteColor", false, button.dataset.highlightColor || "#dce9ff");
-            else if (action === "link") {
-              const url = window.prompt("请输入链接地址", "https://");
-              if (!url || !/^https?:\/\//i.test(url)) return;
-              document.execCommand("createLink", false, url);
-              $all("a", input).forEach((link) => { link.target = "_blank"; link.rel = "noopener noreferrer"; });
+            else if (action === "quote") {
+              const quote = elementForRange(range, "blockquote");
+              document.execCommand("formatBlock", false, quote ? "div" : "blockquote");
             }
+            else if (action === "codeBlock") { openCodeBlockDialog(input); return; }
+            else if (action === "highlight") {
+              const color = button.dataset.highlightColor || "#dce9ff";
+              const highlighted = elementForRange(range, ".rich-highlight, span[style*='background-color']");
+              const current = normalizedHighlightColor(highlighted);
+              document.execCommand("styleWithCSS", false, true);
+              document.execCommand("hiliteColor", false, current === color ? "transparent" : color);
+              cleanEditorHighlights(input);
+            }
+            else if (action === "link") { openRichLinkDialog(input); return; }
             input.dispatchEvent(new Event("input", { bubbles: true }));
+            rememberSelection();
             return;
           }
           const start = input.selectionStart;
@@ -326,10 +762,93 @@
         };
       });
       if (input.isContentEditable) {
+        document.execCommand("enableObjectResizing", false, true);
+        ensureCodeBlockBuffers(input);
+        bindEditorImageResize(input);
         input.addEventListener("keydown", (event) => {
+          const range = getEditorSelectionRange(input) || savedRange;
+          if (event.key === "Enter" && range) {
+            const heading = editorBlockAt(range, input)?.closest("h1, h2, h3, h4, h5");
+            const highlight = elementForRange(range, ".rich-highlight, span[style*='background-color']");
+            if (heading || highlight) {
+              event.preventDefault();
+              exitEditorInlineFormat(input, range);
+              input.dispatchEvent(new Event("input", { bubbles: true }));
+              rememberSelection();
+              return;
+            }
+          }
+          if (event.key === "Backspace" && range?.collapsed) {
+            const block = editorBlockAt(range, input);
+            const atStart = range.startOffset === 0;
+            if (block && atStart && block.previousElementSibling?.tagName === "PRE") event.preventDefault();
+          }
           if (!(event.ctrlKey || event.metaKey)) return;
-          if (event.key.toLowerCase() === "b") { event.preventDefault(); document.execCommand("bold"); }
-          if (event.key.toLowerCase() === "u") { event.preventDefault(); document.execCommand("underline"); }
+          if (event.key.toLowerCase() === "b") {
+            if (!range || range.collapsed) return;
+            event.preventDefault(); document.execCommand("styleWithCSS", false, false); document.execCommand("bold"); input.dispatchEvent(new Event("input", { bubbles: true })); rememberSelection();
+          }
+          if (event.key.toLowerCase() === "u") {
+            if (!range || range.collapsed) return;
+            event.preventDefault(); document.execCommand("styleWithCSS", false, false); document.execCommand("underline"); input.dispatchEvent(new Event("input", { bubbles: true })); rememberSelection();
+          }
+        });
+        input.addEventListener("dblclick", (event) => {
+          // Selection is only for copying and formatting through the toolbar;
+          // a double click must never mutate the selected text or its size.
+          event.stopPropagation();
+          rememberSelection();
+        });
+        input.addEventListener("click", (event) => {
+          const link = event.target.closest("a[href]");
+          if (!link || !input.contains(link)) return;
+          event.preventDefault();
+          window.open(link.href, "_blank", "noopener,noreferrer");
+        });
+        input.addEventListener("contextmenu", (event) => {
+          const image = event.target.closest("img");
+          if (!image || !input.contains(image)) return;
+          event.preventDefault();
+          confirmPublish("删除这张图片？", "删除后不会再保存到文章正文中。", "删除图片").then((confirmed) => {
+            if (!confirmed) return;
+            image.remove();
+            input.dispatchEvent(new Event("input", { bubbles: true }));
+          });
+        });
+        input.addEventListener("paste", async (event) => {
+          const images = [...(event.clipboardData?.items || [])]
+            .filter((item) => item.kind === "file" && item.type.startsWith("image/"))
+            .map((item) => item.getAsFile())
+            .filter(Boolean);
+          if (!images.length) return;
+          event.preventDefault();
+          if (!state.userId || !window.XiaoLuoSupabase?.isConfigured) {
+            alert("请登录管理员账号后再粘贴图片。");
+            return;
+          }
+          const range = getEditorSelectionRange(input) || savedRange;
+          try {
+            const urls = await runWithLoading("正在压缩图片中…", async () => uploadOptimizedImages(state.userId, "post-inline-images", images));
+            restoreEditorSelection(input, range);
+            document.execCommand("insertHTML", false, urls.map((url) => `<img src="${escapeHtml(url)}" alt="文章图片">`).join("<br>"));
+            input.dispatchEvent(new Event("input", { bubbles: true }));
+            rememberSelection();
+          } catch (error) {
+            showCloudError(error);
+          }
+        });
+        input.addEventListener("blur", () => {
+          const normalized = normalizeRichHtml(input.innerHTML);
+          if (normalized !== input.innerHTML) input.innerHTML = normalized;
+          highlightCodeBlocks(input);
+        });
+        input.addEventListener("input", () => {
+          cleanEditorHighlights(input);
+          $all("pre code", input).forEach((block) => delete block.dataset.highlighted);
+          $all("pre", input).forEach((pre) => {
+            if (!pre.textContent.trim()) pre.remove();
+          });
+          ensureCodeBlockBuffers(input);
         });
       }
     });
@@ -337,12 +856,15 @@
 
   function editorContentValue(form) {
     const input = $("[data-editor-content]", form);
-    return input ? sanitizeRichHtml(input.innerHTML) : (form.content?.value || "");
+    return input ? normalizeRichHtml(input.innerHTML) : (form.content?.value || "");
   }
 
   function setEditorContent(form, value) {
     const input = $("[data-editor-content]", form);
-    if (input) input.innerHTML = formatRichText(value);
+    if (input) {
+      input.innerHTML = formatRichText(value);
+      window.requestAnimationFrame(() => highlightCodeBlocks(input));
+    }
     else if (form.content) form.content.value = value || "";
   }
 
@@ -355,12 +877,26 @@
     return (parts || []).filter(Boolean).map((part) => `<div class="post-content-part">${formatRichText(part).replace(/\n/g, "<br>")}</div>`).join("");
   }
 
+  function articleContentWithOutline(parts) {
+    const holder = document.createElement("div");
+    holder.innerHTML = renderPostContent(parts);
+    const outline = [];
+    $all("h1, h2, h3, h4, h5", holder).forEach((heading, index) => {
+      const text = (heading.textContent || "").trim();
+      if (!text) return;
+      const id = `article-outline-${index + 1}`;
+      heading.id = id;
+      outline.push({ id, text, level: Number(heading.tagName.slice(1)) });
+    });
+    return { html: holder.innerHTML, outline };
+  }
+
   function formatExcerpt(paragraphs) {
     const items = (paragraphs || []).filter(Boolean).slice(0, 2);
     if (!items.length) return "<p>点击查看文章详情。</p>";
     // 首页摘要：剥离 HTML 标签，纯文本截断，避免列表/代码块撑开卡片
     const plain = items.map((item) => String(item).replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim()).filter(Boolean).join(" ");
-    const truncated = plain.length > 90 ? plain.slice(0, 90) + "…" : plain;
+    const truncated = plain.length > 180 ? plain.slice(0, 180) + "…" : plain;
     return `<p>${escapeHtml(truncated)}</p>`;
   }
 
@@ -380,8 +916,8 @@
   async function compressImageForUpload(file, options = {}) {
     if (!file?.type?.startsWith("image/") || file.type === "image/gif") return file;
     setSavingMessage("正在压缩图片中…");
-    const maxSide = options.maxSide || 1920;
-    const targetBytes = options.targetBytes || 600 * 1024;
+    const maxSide = options.maxSide || 1600;
+    const targetBytes = options.targetBytes || 400 * 1024;
     let bitmap;
     try {
       bitmap = await createImageBitmap(file);
@@ -391,12 +927,12 @@
       width = Math.max(1, Math.round(width * initialScale));
       height = Math.max(1, Math.round(height * initialScale));
       let blob = null;
-      for (let pass = 0; pass < 4; pass += 1) {
+      for (let pass = 0; pass < 5; pass += 1) {
         const canvas = document.createElement("canvas");
         canvas.width = width;
         canvas.height = height;
         canvas.getContext("2d").drawImage(bitmap, 0, 0, width, height);
-        for (const quality of [.84, .76, .68, .6, .52]) {
+        for (const quality of [.82, .72, .62, .52, .44]) {
           blob = await canvasToBlob(canvas, quality);
           if (blob && blob.size <= targetBytes) break;
         }
@@ -633,6 +1169,7 @@
       if (form.heroTitle) form.heroTitle.value = data.site.heroTitle;
       if (form.profileBio) form.profileBio.value = data.site.profileBio;
       if (form.announcement) form.announcement.value = data.site.announcement || "";
+      if (form.entryLoaderEnabled) form.entryLoaderEnabled.checked = data.site.contacts?.entry_loader_enabled !== false;
       if (form.profileName) form.profileName.value = data.site.profileName;
       const homeCoverPreview = $("[data-home-cover-preview]", form);
       if (homeCoverPreview) {
@@ -651,9 +1188,11 @@
       const type = item.dataset.contactItem;
       const value = data.site.contacts[type] || "";
       const control = $("[data-contact-link]", item);
+      const icon = $(".contact-icon", item);
       const tooltip = $("[data-contact-value]", item);
       if (tooltip) tooltip.textContent = value || "暂未填写";
       item.classList.toggle("has-contact", Boolean(value));
+      if (icon && ["github", "douyin", "instagram"].includes(type)) icon.innerHTML = contactIconMarkup(type);
       if (!control) return;
     });
   }
@@ -1033,7 +1572,7 @@
         api.listContent("projects", ownerId).catch(() => []),
         api.listContent("media_items", ownerId).catch(() => []),
         api.listContent("media_types", ownerId).catch(() => []),
-        state.isAdmin ? api.listContent("media_reviews", ownerId).catch(() => []) : Promise.resolve([]),
+        api.listContent("media_reviews", ownerId).catch(() => []),
         state.isAdmin ? api.listContent("notes", state.userId).catch(() => []) : Promise.resolve([]),
         state.isLoggedIn ? api.listContent("common_sites", ownerId).catch(() => []) : Promise.resolve([]),
         state.isAdmin ? api.listPosts(ownerId) : api.listPublishedPosts(ownerId),
@@ -1062,15 +1601,15 @@
       data.moments = sortTimelineByDate([...visibleMoments, ...lockedMoments]);
       data.progress = sortTimelineByDate(progress.map((item) => ({ id: item.id, title: item.title, date: item.entry_date, text: item.body || "", images: item.image_urls || [] })));
       data.projects = projects.map((item) => ({ id: item.id, title: item.title, description: item.description || "", coverUrl: item.cover_url || "", projectUrl: item.project_url || "", attachments: item.attachments || [], createdAt: item.created_at || "" }));
-      data.mediaReviews = mediaReviews.map((item) => ({ id: item.id, mediaItemId: item.media_item_id, title: item.review_title || "观后感", review: item.review || "" }));
+      data.mediaReviews = mediaReviews.map((item) => ({ id: item.id, mediaItemId: item.media_item_id, title: item.review_title || "观后感", review: item.review || "", isPublic: item.is_public !== false }));
       const reviewsByItem = new Map(data.mediaReviews.map((item) => [item.mediaItemId, item]));
-      data.mediaItems = mediaItems.map((item) => { const review = reviewsByItem.get(item.id); return { id: item.id, title: item.title, reviewTitle: review?.title || "观后感", review: review?.review || "", noteUrl: item.note_url || "", coverUrl: item.cover_url || "", rating: Number(item.rating) || 0, mediaType: item.media_type || "未分类", tags: Array.isArray(item.tags) ? item.tags : [], people: item.people || "", watchedYear: Number(item.watched_year) || 0, watchedMonth: Number(item.watched_month) || 0, watchedDay: Number(item.watched_day) || 0, createdAt: item.created_at || "" }; });
+      data.mediaItems = mediaItems.map((item) => { const review = reviewsByItem.get(item.id); return { id: item.id, title: item.title, reviewTitle: review?.title || "观后感", review: review?.review || "", reviewPublic: item.review_is_public !== false, noteUrl: item.note_url || "", coverUrl: item.cover_url || "", rating: Number(item.rating) || 0, mediaType: item.media_type || "未分类", tags: Array.isArray(item.tags) ? item.tags : [], people: item.people || "", watchedYear: Number(item.watched_year) || 0, watchedMonth: Number(item.watched_month) || 0, watchedDay: Number(item.watched_day) || 0, createdAt: item.created_at || "" }; });
       state.mediaDataLoaded = true;
       state.mediaLastRefreshedAt = Date.now();
       data.mediaTypes = mediaTypes.map((item) => ({ id: item.id, name: item.name, isHidden: Boolean(item.is_hidden) }));
-      data.notes = notes.map((item) => ({ id: item.id, title: item.title, body: item.body || "", attachments: Array.isArray(item.attachments) ? item.attachments : [], isDone: Boolean(item.is_done), createdAt: item.created_at || "" }));
+      data.notes = notes.map((item) => ({ id: item.id, title: item.title, body: item.body || "", attachments: Array.isArray(item.attachments) ? item.attachments : [], isDone: Boolean(item.is_done), folder: item.folder || "", isPinned: Boolean(item.is_pinned), createdAt: item.created_at || "", updatedAt: item.updated_at || item.created_at || "" }));
       data.commonSites = commonSites.map((item) => ({ id: item.id, title: item.title, url: item.url, description: item.description || "", iconUrl: item.icon_url || "", createdAt: item.created_at || "" }));
-      data.posts = posts.map((item) => ({ id: item.id, title: item.title, author: data.site.profileName, category: item.category || "未分类", tags: item.tags || [], attachments: item.attachments || [], publishedAt: formatPostDate(item.created_at), coverUrl: item.cover_url || "", coverClass: "gradient-a", excerpt: (item.content || "").replace(/<[^>]+>/g, "").slice(0, 110), content: [item.content || ""], featured: false }));
+      data.posts = posts.map((item) => ({ id: item.id, userId: item.user_id || ownerId, title: item.title, author: data.site.profileName, category: item.category || "未分类", tags: parseCommaTags(item.tags), attachments: item.attachments || [], musicAttachment: item.music_attachment || null, status: item.status || "published", minActivityScore: Number(item.min_activity_score) || 0, publishedAt: formatPostDate(item.created_at), coverUrl: item.cover_url || "", coverClass: "gradient-a", excerpt: (item.content || "").replace(/<[^>]+>/g, "").slice(0, 110), content: [item.content || ""], featured: false }));
       if (musicTracks.length) data.music = musicTracks.map((track) => ({ id: track.id, title: track.title, artist: track.artist || "小罗Blog", category: track.category || "", src: track.file_url }));
       state.cloudOwnerId = ownerId;
       initBrand();
@@ -1216,25 +1755,32 @@
   }
 
   function postCard(post) {
-    // 计算字数
-    const contentText = (post.content || []).map((b) => b?.text || "").join("") || (post.excerpt || "");
-    const wordCount = contentText.replace(/\s/g, "").length;
+    const rawContent = Array.isArray(post.content)
+      ? post.content.map((block) => typeof block === "string" ? block : (block?.text || "")).join("\n")
+      : String(post.content || "");
+    const textHolder = document.createElement("div");
+    textHolder.innerHTML = formatRichText(rawContent);
+    // Count actual visible characters, not HTML tags or the shortened card excerpt.
+    const wordCount = [...(textHolder.textContent || "").replace(/\s/g, "")].length;
     return `
       <article class="article-card glass-card ${post.coverUrl ? "has-cover" : "no-cover"}" data-post-id="${escapeHtml(post.id)}">
         <a class="article-card-hit" href="./article-detail.html?id=${post.id}" aria-label="阅读 ${escapeHtml(post.title)}"></a>
         ${post.coverUrl ? `<span class="article-cover ${post.coverClass}"><img src="${post.coverUrl}" alt="${escapeHtml(post.title)} 封面"></span>` : ""}
         <div class="article-body">
-          <p class="mini-title">${escapeHtml(post.category)}</p>
-          <h3>${escapeHtml(post.title)}</h3>
+          <div class="article-card-header">
+            <h3>${escapeHtml(post.title)}</h3>
+            <div class="article-card-topline">
+            <p class="mini-title">${escapeHtml(post.category)}</p>
+            <div class="tag-row">
+              <div class="tag-row-left">${post.minActivityScore ? `<span class="activity-read-label">${escapeHtml(activityLevelForScore(post.minActivityScore).title)}可读</span>` : ""}${post.tags.map((tag) => `<a href="./articles.html?tag=${encodeURIComponent(tag)}">#${escapeHtml(tag)}</a>`).join("")}</div>
+            </div>
+            </div>
+          </div>
           <div class="article-excerpt">${formatExcerpt(post.content || [post.excerpt])}</div>
-          <div class="article-meta"><span>${formatPostDate(post.publishedAt)}</span><span>${escapeHtml(post.author)}</span></div>
           ${post.attachments?.length ? `<p class="article-attachment-hint">含 ${post.attachments.length} 个附件，进入详情可下载</p>` : ""}
           <div class="article-card-footer">
-            <span class="article-engagement" data-post-card-engagement data-post-card-id="${escapeHtml(post.id)}">阅读 0 · 点赞 0 · 评论 0</span>
-            <div class="tag-row">
-              <div class="tag-row-left">${post.tags.map((tag) => `<a href="./articles.html?tag=${encodeURIComponent(tag)}">#${escapeHtml(tag)}</a>`).join("")}</div>
-              <span class="article-word-count">${wordCount}字</span>
-            </div>
+            <div class="article-meta"><span class="article-card-date">${formatPostDate(post.publishedAt)}</span><span class="article-card-author">${escapeHtml(post.author)}</span></div>
+            <div class="article-card-stats" data-post-card-id="${escapeHtml(post.id)}"><span data-post-card-comments>评论 0</span><span data-post-card-likes>点赞 0</span><span data-post-card-views>阅读 0</span><span class="article-word-count">${wordCount}字</span></div>
           </div>
         </div>
       </article>
@@ -1253,7 +1799,11 @@
     if (tagFilter) {
       const selected = tagFilter.value;
       tagFilter.innerHTML = '<option value="">全部标签</option>';
-      data.tags.forEach((tag) => tagFilter.insertAdjacentHTML("beforeend", `<option value="${escapeHtml(typeof tag === "string" ? tag : tag.name)}">${escapeHtml(typeof tag === "string" ? tag : tag.name)}</option>`));
+      const names = [...new Set([
+        ...data.tags.map((tag) => typeof tag === "string" ? tag : tag.name),
+        ...data.posts.flatMap((post) => parseCommaTags(post.tags))
+      ].filter(Boolean))];
+      names.forEach((tag) => tagFilter.insertAdjacentHTML("beforeend", `<option value="${escapeHtml(tag)}">${escapeHtml(tag)}</option>`));
       tagFilter.value = selected;
     }
 
@@ -1534,7 +2084,7 @@
       modal = document.createElement("div");
       modal.className = "modal content-post-editor-modal";
       modal.dataset.contentPostEditor = "";
-      modal.innerHTML = `<button class="modal-backdrop" type="button" data-content-editor-close aria-label="关闭"></button><section class="modal-card glass-card" role="dialog" aria-modal="true" aria-label="编辑帖子"><button class="modal-close" type="button" data-content-editor-close aria-label="关闭">×</button><p class="mini-title">POST EDITOR</p><h2 data-content-editor-heading>编辑帖子</h2><form data-content-editor-form><label><span>标题</span><input name="title" type="text" required></label><label><span>日期</span><input name="date" type="date" required></label><label><span>正文</span><div class="text-format-editor"><div class="text-format-toolbar" data-format-toolbar><button type="button" data-format-action="bold" title="加粗（Ctrl+B）"><b>B</b></button><button type="button" data-format-action="underline" title="下划线（Ctrl+U）"><u>U</u></button><button type="button" data-format-action="link" title="添加超链接">↗</button><span class="format-toolbar-divider"></span><button type="button" class="format-highlight red" data-format-action="highlight" data-highlight-color="#ffddd8" title="红色高亮"></button><button type="button" class="format-highlight green" data-format-action="highlight" data-highlight-color="#d8f2e2" title="绿色高亮"></button><button type="button" class="format-highlight blue" data-format-action="highlight" data-highlight-color="#dce9ff" title="蓝色高亮"></button></div><div class="rich-text-input compact" data-format-input data-content-editor-body contenteditable="true" role="textbox" aria-multiline="true" data-placeholder="选择文字后可使用加粗、下划线、链接和高亮"></div></div></label><section class="post-editor-images"><div><strong>已有图片</strong><p>可替换或删除单张图片。</p></div><div class="content-editor-image-grid" data-content-editor-images></div></section><label><span>添加图片</span><input name="newImages" type="file" accept="image/*" multiple></label><div class="publish-confirm-actions"><button class="danger-button" type="button" data-content-editor-delete>删除整条帖子</button><button class="primary-button" type="submit">保存修改</button></div></form></section>`;
+      modal.innerHTML = `<button class="modal-backdrop" type="button" data-content-editor-close aria-label="关闭"></button><section class="modal-card glass-card" role="dialog" aria-modal="true" aria-label="编辑帖子"><button class="modal-close" type="button" data-content-editor-close aria-label="关闭">×</button><p class="mini-title">POST EDITOR</p><h2 data-content-editor-heading>编辑帖子</h2><form data-content-editor-form><label><span>标题</span><input name="title" type="text" required></label><label><span>日期</span><input name="date" type="date" required></label><div class="rich-text-field"><span>正文</span><div class="text-format-editor"><div class="text-format-toolbar" data-format-toolbar><button type="button" data-format-action="bold" title="加粗（Ctrl+B）"><b>B</b></button><button type="button" data-format-action="underline" title="下划线（Ctrl+U）"><u>U</u></button><button type="button" data-format-action="link" title="添加超链接">↗</button><span class="format-toolbar-divider"></span><button type="button" class="format-highlight red" data-format-action="highlight" data-highlight-color="#ffddd8" title="红色高亮"></button><button type="button" class="format-highlight green" data-format-action="highlight" data-highlight-color="#d8f2e2" title="绿色高亮"></button><button type="button" class="format-highlight blue" data-format-action="highlight" data-highlight-color="#dce9ff" title="蓝色高亮"></button></div><div class="rich-text-input compact" data-format-input data-content-editor-body contenteditable="true" role="textbox" aria-multiline="true" data-placeholder="选择文字后可使用加粗、下划线、链接和高亮"></div></div></div><section class="post-editor-images"><div><strong>已有图片</strong><p>可替换或删除单张图片。</p></div><div class="content-editor-image-grid" data-content-editor-images></div></section><label><span>添加图片</span><input name="newImages" type="file" accept="image/*" multiple></label><div class="publish-confirm-actions"><button class="danger-button" type="button" data-content-editor-delete>删除整条帖子</button><button class="primary-button" type="submit">保存修改</button></div></form></section>`;
       document.body.appendChild(modal);
     }
     const table = type === "moment" ? "moments" : "progress_logs";
@@ -1742,7 +2292,13 @@
     const photoCount = data.posts.filter((post) => post.coverUrl).length + data.moments.reduce((count, item) => count + (item.images?.length || 0), 0);
     $all("[data-profile-post-count]").forEach((el) => { el.textContent = data.posts.length; });
     $all("[data-profile-photo-count]").forEach((el) => { el.textContent = photoCount; });
-    $all("[data-profile-moment-count]").forEach((el) => { el.textContent = data.moments.length; });
+    $all("[data-profile-whisper-count]").forEach((el) => { el.textContent = "0"; });
+    if (window.XiaoLuoSupabase?.listWhispers) {
+      window.XiaoLuoSupabase.listWhispers("", 1000).then((items) => {
+        const count = items.filter((item) => !item.parent_id).length;
+        $all("[data-profile-whisper-count]").forEach((el) => { el.textContent = count; });
+      }).catch(() => {});
+    }
     renderSiteStats();
     initGuestbook();
   }
@@ -2356,22 +2912,48 @@
     if (!list || !form) return;
     const pageSize = 6;
     let currentPage = 1;
-    form.q.value = params().get("q") || "";
-    form.category.value = params().get("category") || "";
-    form.tag.value = params().get("tag") || "";
+    const requestedQuery = params().get("q") || "";
+    const requestedCategory = params().get("category") || "";
+    const requestedTag = params().get("tag") || "";
+    const tagNames = [...new Set(data.posts.flatMap((post) => parseCommaTags(post.tags)))].sort((a, b) => a.localeCompare(b, "zh-CN"));
+    form.q.value = requestedQuery;
+    form.category.value = requestedCategory;
+    form.tag.innerHTML = '<option value="">全部标签</option>' + tagNames.map((tag) => `<option value="${escapeHtml(tag)}">${escapeHtml(tag)}</option>`).join("");
+    form.tag.value = requestedTag;
+    const categoryNames = [...new Set([
+      ...data.categories.map((category) => category.name),
+      ...data.posts.map((post) => post.category)
+    ].filter(Boolean))];
+    const categoryOptions = $("[data-article-categories]", form);
+    const tagOptions = $("[data-article-tags]", form);
+    if (categoryOptions) {
+      categoryOptions.innerHTML = `<button type="button" class="article-filter-chip${requestedCategory ? "" : " active"}" data-article-filter-category="">全部 <small>${data.posts.length}</small></button>` + categoryNames.map((category) => {
+        const count = data.posts.filter((post) => post.category === category).length;
+        return `<button type="button" class="article-filter-chip${requestedCategory === category ? " active" : ""}" data-article-filter-category="${escapeHtml(category)}">${escapeHtml(category)} <small>${count}</small></button>`;
+      }).join("");
+    }
+    if (tagOptions) {
+      tagOptions.innerHTML = `<button type="button" class="article-filter-chip${requestedTag ? "" : " active"}" data-article-filter-tag="">全部</button>` + tagNames.map((tag) => {
+        const count = data.posts.filter((post) => parseCommaTags(post.tags).includes(tag)).length;
+        return `<button type="button" class="article-filter-chip${requestedTag === tag ? " active" : ""}" data-article-filter-tag="${escapeHtml(tag)}">#${escapeHtml(tag)} <small>${count}</small></button>`;
+      }).join("");
+    }
 
     const draw = () => {
       const q = form.q.value.trim().toLowerCase();
       const category = form.category.value;
       const tag = form.tag.value;
       const filtered = data.posts.filter((post) => {
-        const hitText = [post.title, post.excerpt, post.category, post.tags.join(" ")].join(" ").toLowerCase().includes(q);
-        return hitText && (!category || post.category === category) && (!tag || post.tags.includes(tag));
+        const postTags = parseCommaTags(post.tags);
+        const hitText = [post.title, post.excerpt, post.category, postTags.join(" ")].join(" ").toLowerCase().includes(q);
+        return hitText && (!category || post.category === category) && (!tag || postTags.includes(tag));
       });
       const total = Math.max(1, Math.ceil(filtered.length / pageSize));
       currentPage = Math.min(currentPage, total);
       list.innerHTML = filtered.slice((currentPage - 1) * pageSize, currentPage * pageSize).map(postCard).join("") || '<p class="empty-state">暂时没有找到文章。</p>';
       loadPostCardEngagement(filtered.slice((currentPage - 1) * pageSize, currentPage * pageSize), list);
+      $all("[data-article-filter-category]", form).forEach((button) => button.classList.toggle("active", button.dataset.articleFilterCategory === category));
+      $all("[data-article-filter-tag]", form).forEach((button) => button.classList.toggle("active", button.dataset.articleFilterTag === tag));
       if (pagination) pagination.innerHTML = Array.from({ length: total }, (_, index) => `<button class="${index + 1 === currentPage ? "active" : ""}" type="button" data-page-number="${index + 1}">${index + 1}</button>`).join("");
     };
 
@@ -2379,6 +2961,15 @@
       form.dataset.bound = "true";
       form.addEventListener("submit", (event) => {
         event.preventDefault();
+        currentPage = 1;
+        draw();
+      });
+      form.addEventListener("click", (event) => {
+        const categoryButton = event.target.closest("[data-article-filter-category]");
+        const tagButton = event.target.closest("[data-article-filter-tag]");
+        if (!categoryButton && !tagButton) return;
+        if (categoryButton) form.category.value = categoryButton.dataset.articleFilterCategory;
+        if (tagButton) form.tag.value = tagButton.dataset.articleFilterTag;
         currentPage = 1;
         draw();
       });
@@ -2407,6 +2998,8 @@
   function renderDetail() {
     const wrap = $("[data-article-detail]");
     if (!wrap) return;
+    // 文章管理控件按当前管理员身份判断，不依赖云端站长资料是否刚好已经同步完成。
+    const canManagePosts = Boolean(state.isAdmin && state.userId);
     if (!data.posts.length) {
       wrap.innerHTML = '<section class="article-detail glass-card empty-state">正在加载文章…</section>';
       return;
@@ -2417,34 +3010,46 @@
       wrap.innerHTML = '<section class="article-detail glass-card empty-state">没有找到这篇文章。</section>';
       return;
     }
+    const postOwnerId = post.userId || state.cloudOwnerId || state.userId;
     const index = data.posts.findIndex((item) => item.id === post.id);
     const prev = data.posts[index - 1];
     const next = data.posts[index + 1];
     document.title = `${post.title} | ${data.site.name}`;
+    const requiredScore = Number(post.minActivityScore) || 0;
+    const canRead = !requiredScore || hasActivityAccess(requiredScore);
+    const requiredLevel = activityLevelForScore(requiredScore);
+    const articleContent = canRead ? articleContentWithOutline(post.content) : { html: "", outline: [] };
+    const hasOutline = articleContent.outline.length > 0;
+    const outlineHtml = hasOutline
+      ? `<aside class="article-outline glass-card"><p class="mini-title">ON THIS PAGE</p><h2>文章目录</h2><nav>${articleContent.outline.map((item) => `<a class="level-${item.level}" href="#${item.id}">${escapeHtml(item.text)}</a>`).join("")}</nav></aside>`
+      : "";
     wrap.innerHTML = `
-      <section class="article-detail-layout">
-      <article class="article-detail glass-card" data-post-id="${post.id}">
-        <p class="eyebrow">${escapeHtml(post.category)}</p>
-        <h1>${escapeHtml(post.title)}</h1>
+      <section class="article-detail-layout${hasOutline ? "" : " no-outline"}">
+      ${outlineHtml}
+      <div class="article-reading-column">
+      <article class="article-detail" data-post-id="${post.id}">
+        <p class="eyebrow">${escapeHtml(post.category)}${post.status === "private" ? " · 私密" : ""}</p>
+        <div class="article-title-row"><h1>${escapeHtml(post.title)}</h1>${canRead && post.musicAttachment?.url ? `<div class="article-music" data-article-music><p>搭配音乐会更沉浸式</p><div><button type="button" data-article-music-toggle aria-label="播放文章配乐">▶</button><strong title="${escapeHtml(post.musicAttachment.name || "文章配乐")}">${escapeHtml(post.musicAttachment.name || "文章配乐")}</strong></div><audio data-article-music-audio preload="metadata" src="${escapeHtml(post.musicAttachment.url)}"></audio></div>` : ""}</div>
         <div class="article-meta detail-meta"><span>${escapeHtml(post.author)}</span><span>${formatPostDate(post.publishedAt)}</span><span>${escapeHtml(post.category)}</span></div>
-        <div class="tag-row">${post.tags.map((tag) => `<a href="./articles.html?tag=${encodeURIComponent(tag)}">#${escapeHtml(tag)}</a>`).join("")}</div>
+        <div class="tag-row">${requiredScore ? `<span class="activity-read-label">${escapeHtml(requiredLevel.title)}可读</span>` : ""}${post.tags.map((tag) => `<a href="./articles.html?tag=${encodeURIComponent(tag)}">#${escapeHtml(tag)}</a>`).join("")}</div>
         ${post.coverUrl ? `<div class="detail-cover"><img src="${post.coverUrl}" alt="${escapeHtml(post.title)} 封面"></div>` : ""}
-        <div class="post-content">${renderPostContent(post.content)}</div>
-        ${post.attachments?.length ? `<section class="post-attachments"><h2>附件下载</h2>${post.attachments.map((file) => `<a href="${file.url}" data-protected-download download="${escapeHtml(file.name)}" target="_blank" rel="noopener">下载：${escapeHtml(file.name)}</a>`).join("")}</section>` : ""}
-        <div class="post-actions">
-          ${state.isAdmin && state.cloudOwnerId === state.userId ? `<a class="ghost-button" href="./editor.html?id=${post.id}">编辑文章</a>` : ""}
-          ${state.isAdmin && state.cloudOwnerId === state.userId ? `<button class="danger-button" type="button" data-delete-post="${post.id}">删除文章</button>` : ""}
+        ${canRead ? `<div class="post-content">${articleContent.html}</div>${post.attachments?.length ? `<section class="post-attachments"><h2>附件下载</h2>${post.attachments.map((file) => `<a href="${file.url}" data-protected-download download="${escapeHtml(file.name)}" target="_blank" rel="noopener">下载：${escapeHtml(file.name)}</a>`).join("")}</section>` : ""}` : `<section class="article-access-lock"><p class="mini-title">ACTIVITY ACCESS</p><h2>${state.isLoggedIn ? "你的称号权限不足" : "登录后查看"}</h2><p>${state.isLoggedIn ? `这篇文章需要达到「${escapeHtml(requiredLevel.title)}」才能阅读全文。你的活跃度为 ${state.activityScore}，继续参与互动后再来看看吧。` : `这篇文章需要达到「${escapeHtml(requiredLevel.title)}」后才能阅读全文，请先登录参与互动。`}</p><button class="primary-button small" type="button" data-post-access-request>${state.isLoggedIn ? "查看活跃榜" : "登录后查看"}</button></section>`}
+        ${canRead ? `<div class="post-actions">
+          ${canManagePosts ? `<a class="ghost-button" href="./editor.html?id=${post.id}">编辑文章</a>` : ""}
+          ${canManagePosts ? `<button class="danger-button" type="button" data-delete-post="${post.id}">删除文章</button>` : ""}
           <button type="button" data-post-like="${post.id}">点赞</button>
           <button type="button" data-placeholder-action="bookmark">收藏</button>
           <span class="post-engagement" data-post-engagement>阅读 0 · 点赞 0 · 评论 0</span>
-        </div>
+        </div>` : ""}
+        ${canManagePosts && post.status !== "private" ? `<section class="post-access-settings"><button class="ghost-button" type="button" data-post-access-toggle aria-expanded="false">阅读权限：${requiredScore ? `${escapeHtml(requiredLevel.title)}可读` : "全站公开"}</button><div data-post-access-panel hidden><div class="post-access-track"><span>全站公开</span><input type="range" min="0" max="${ACTIVITY_LEVELS.length}" step="1" value="${requiredScore ? Math.max(0, ACTIVITY_LEVELS.findIndex((level) => level.score === requiredLevel.score) + 1) : 0}" data-post-access-range><strong data-post-access-label>${requiredScore ? `${escapeHtml(requiredLevel.title)}（${requiredLevel.score} 活跃度）` : "全站公开"}</strong></div><div class="post-access-scale" aria-hidden="true"><span>公开</span><span>初入人</span><span>罗客神</span></div><small>拖动圆点设置阅读门槛，松开后立即保存。未达到要求的用户只能看到文章标题与封面。</small></div></section>` : ""}
       </article>
-      <aside class="comments glass-card detail-comments-sidebar">
+      ${canRead ? `<aside class="comments detail-comments-sidebar">
         <h2>评论</h2>
         <p data-comment-note>登录后可以发表评论。</p>
         <form data-post-comment-form data-post-id="${post.id}"><textarea name="content" placeholder="写下你的评论" maxlength="1000"></textarea><button class="primary-button small" type="submit">发表评论</button></form>
         <div class="comment-list" data-comment-list></div>
-      </aside>
+      </aside>` : ""}
+      </div>
       </section>
       <nav class="post-neighbor">
         ${prev ? `<a href="./article-detail.html?id=${prev.id}">上一篇：${escapeHtml(prev.title)}</a>` : "<span>已经是最新文章</span>"}
@@ -2452,18 +3057,103 @@
       </nav>
     `;
     highlightCodeBlocks(wrap);
-    loadPostEngagement(post.id);
+    if (canRead) {
+      bindArticleMusic(wrap);
+      loadPostEngagement(post.id);
+    }
+    $(`[data-post-access-request]`, wrap)?.addEventListener("click", () => {
+      if (!state.isLoggedIn) requireActivityAccess(requiredScore, "这篇文章");
+      else window.location.href = "./activity.html";
+    });
+    bindPostAccessSettings(wrap, post);
+  }
+
+  function bindPostAccessSettings(wrap, post) {
+    const settings = $(".post-access-settings", wrap);
+    if (!settings || settings.dataset.bound) return;
+    const postOwnerId = post.userId || state.cloudOwnerId || state.userId;
+    settings.dataset.bound = "true";
+    settings.addEventListener("click", (event) => {
+      const toggle = event.target.closest("[data-post-access-toggle]");
+      if (!toggle) return;
+      const panel = $("[data-post-access-panel]", settings);
+      if (!panel) return;
+      panel.hidden = !panel.hidden;
+      toggle.setAttribute("aria-expanded", String(!panel.hidden));
+    });
+    settings.addEventListener("input", (event) => {
+      const range = event.target.closest("[data-post-access-range]");
+      if (!range) return;
+      const label = $("[data-post-access-label]", settings);
+      const level = Number(range.value) ? ACTIVITY_LEVELS[Number(range.value) - 1] : null;
+      if (label) label.textContent = level ? `${level.title}（${level.score} 活跃度）` : "全站公开";
+    });
+    settings.addEventListener("change", async (event) => {
+      const range = event.target.closest("[data-post-access-range]");
+      if (!range || range.dataset.saving === "true") return;
+      const level = Number(range.value) ? ACTIVITY_LEVELS[Number(range.value) - 1] : null;
+      const nextScore = level?.score || 0;
+      range.dataset.saving = "true";
+      range.disabled = true;
+      try {
+        await runWithLoading("正在保存文章阅读权限…", async () => window.XiaoLuoSupabase.updatePost(postOwnerId, post.id, { min_activity_score: nextScore }));
+        post.minActivityScore = nextScore;
+        renderDetail();
+      } catch (error) {
+        range.disabled = false;
+        delete range.dataset.saving;
+        showCloudError(error);
+      }
+    });
+  }
+
+  function bindArticleMusic(scope) {
+    const player = $("[data-article-music]", scope);
+    // 大多数文章没有配乐。此前仍对空节点继续查询子元素，会中断
+    // 详情页后续的阅读、点赞、评论和权限控件初始化。
+    if (!player || player.dataset.bound) return;
+    const audio = $("[data-article-music-audio]", player);
+    const toggle = $("[data-article-music-toggle]", player);
+    if (!audio || !toggle) return;
+    player.dataset.bound = "true";
+    const sync = () => {
+      const playing = !audio.paused;
+      toggle.textContent = playing ? "❚❚" : "▶";
+      toggle.setAttribute("aria-label", playing ? "暂停文章配乐" : "播放文章配乐");
+      player.classList.toggle("is-playing", playing);
+    };
+    toggle.addEventListener("click", () => {
+      if (audio.paused) audio.play().catch(() => {
+        toggle.title = "音频地址无法播放，请检查文件或 URL 是否有效";
+        toggle.textContent = "!";
+      });
+      else audio.pause();
+    });
+    audio.addEventListener("error", () => {
+      player.classList.add("is-error");
+      toggle.title = "音频加载失败，请在编辑文章中替换配乐";
+      toggle.textContent = "!";
+    });
+    audio.addEventListener("play", sync);
+    audio.addEventListener("pause", sync);
+    audio.addEventListener("ended", sync);
+    sync();
   }
 
   async function loadPostEngagement(postId) {
     const api = window.XiaoLuoSupabase;
     if (!api?.isConfigured) return;
+    const isCurrentPost = () => $(".article-detail[data-post-id]")?.dataset.postId === String(postId);
     try {
-      await api.recordPostView(postId, state.userId);
+      // 阅读写入失败不能阻断已经存在的点赞、评论和阅读统计读取。
+      try { await api.recordPostView(postId, state.userId); }
+      catch (viewError) { console.warn("Post view record failed:", viewError.message); }
       const engagement = await api.getPostEngagement(postId, state.userId, api.getVisitorId());
-      const summary = $("[data-post-engagement]");
+      if (!isCurrentPost()) return;
+      const detailRoot = $(".article-detail[data-post-id]");
+      const summary = $("[data-post-engagement]", detailRoot);
       if (summary) summary.textContent = `阅读 ${engagement.views} · 点赞 ${engagement.likes} · 评论 ${engagement.comments.length}`;
-      const likeButton = $("[data-post-like]");
+      const likeButton = $("[data-post-like]", detailRoot);
       if (likeButton) {
         likeButton.textContent = engagement.liked ? `已点赞 ${engagement.likes}` : `点赞 ${engagement.likes}`;
         likeButton.classList.toggle("is-liked", engagement.liked);
@@ -2471,9 +3161,9 @@
           try { await api.togglePostLike(postId, state.userId, engagement.liked, api.getVisitorId()); await refreshAuthState(); await loadPostEngagement(postId); } catch (error) { showCloudError(error); }
         };
       }
-      const note = $("[data-comment-note]");
+      const note = $("[data-comment-note]", detailRoot?.parentElement || document);
       if (note) note.textContent = state.isLoggedIn ? "评论会保存到文章下方。" : "请先登录后发表评论。";
-      const commentList = $("[data-comment-list]");
+      const commentList = $("[data-comment-list]", detailRoot?.parentElement || document);
       if (commentList) commentList.innerHTML = commentThreadHtml(engagement.comments, "data-delete-post-comment");
       if (state.isAdmin && commentList) {
         $all("[data-delete-post-comment]", commentList).forEach((button) => {
@@ -2486,7 +3176,7 @@
           };
         });
       }
-      const form = $("[data-post-comment-form]");
+      const form = $("[data-post-comment-form]", detailRoot?.parentElement || document);
       let replyTo = null;
       if (form) bindReplyButtons(commentList, form, (id) => { replyTo = id; });
       if (form) {
@@ -2500,6 +3190,13 @@
       }
     } catch (error) {
       console.warn("Post engagement load failed:", error.message);
+      // 即使评论详情读取失败，也尽量展示三项已有统计，避免界面长期停留在 0。
+      try {
+        const fallback = await api.getPostEngagementSummary(postId);
+        if (!isCurrentPost()) return;
+        const summary = $("[data-post-engagement]", $(".article-detail[data-post-id]"));
+        if (summary) summary.textContent = `阅读 ${fallback.views} · 点赞 ${fallback.likes} · 评论 ${fallback.comments}`;
+      } catch (summaryError) { console.warn("Post engagement summary fallback failed:", summaryError.message); }
     }
   }
 
@@ -2510,7 +3207,10 @@
       try {
         const engagement = await api.getPostEngagementSummary(post.id);
         const target = scope.querySelector(`[data-post-card-id="${post.id}"]`);
-        if (target) target.textContent = `阅读 ${engagement.views} · 点赞 ${engagement.likes} · 评论 ${engagement.comments}`;
+        if (!target) return;
+        $("[data-post-card-views]", target).textContent = `阅读 ${engagement.views}`;
+        $("[data-post-card-likes]", target).textContent = `点赞 ${engagement.likes}`;
+        $("[data-post-card-comments]", target).textContent = `评论 ${engagement.comments}`;
       } catch (error) { console.warn("Post card engagement load failed:", error.message); }
     });
   }
@@ -2613,7 +3313,7 @@
   }
 
   function applyMediaCloudRows(mediaItems, mediaTypes, mediaReviews = []) {
-    data.mediaReviews = mediaReviews.map((item) => ({ id: item.id, mediaItemId: item.media_item_id, title: item.review_title || "观后感", review: item.review || "" }));
+    data.mediaReviews = mediaReviews.map((item) => ({ id: item.id, mediaItemId: item.media_item_id, title: item.review_title || "观后感", review: item.review || "", isPublic: item.is_public !== false }));
     const reviewsByItem = new Map(data.mediaReviews.map((item) => [item.mediaItemId, item]));
     data.mediaItems = mediaItems.map((item) => {
       const review = reviewsByItem.get(item.id);
@@ -2622,6 +3322,7 @@
         title: item.title,
         reviewTitle: review?.title || "观后感",
         review: review?.review || "",
+        reviewPublic: item.review_is_public !== false,
         noteUrl: item.note_url || "",
         coverUrl: item.cover_url || "",
         rating: Number(item.rating) || 0,
@@ -2661,7 +3362,7 @@
       const [mediaItems, mediaTypes, mediaReviews] = await Promise.all([
         api.listContent("media_items", ownerId),
         api.listContent("media_types", ownerId),
-        state.isAdmin ? api.listContent("media_reviews", ownerId).catch(() => []) : Promise.resolve([])
+        api.listContent("media_reviews", ownerId).catch(() => [])
       ]);
       if (requestId !== state.mediaRefreshNonce) return;
       state.adminId = ownerId;
@@ -2902,7 +3603,13 @@
       document.body.appendChild(modal);
     }
     const reviewText = item.review || "暂时还没有写观后感。";
-    $("[data-media-detail-content]", modal).innerHTML = `<aside class="media-detail-aside"><div class="media-detail-cover">${mediaCoverHtml(item)}</div>${item.noteUrl ? (state.isAdmin ? `<a class="media-note-link" href="${escapeHtml(item.noteUrl)}" target="_blank" rel="noopener noreferrer">打开相关笔记 ↗</a>` : '<button class="media-note-link media-note-locked" type="button" data-media-note-locked>相关笔记</button>') : ""}</aside><div class="media-detail-copy"><header class="media-detail-heading"><p class="mini-title">${escapeHtml(item.mediaType)}</p><h2>${escapeHtml(item.title)}</h2><div class="media-detail-meta"><strong>★ ${item.rating ? item.rating.toFixed(1) : "未评分"}</strong><time class="media-detail-date">${escapeHtml(formatWatchedDate(item))}</time>${item.people ? `<span>作者 / 演员：${escapeHtml(item.people)}</span>` : ""}</div></header>${state.isAdmin ? `<section class="media-review" tabindex="0"><p class="mini-title">PRIVATE NOTE</p><h3>${escapeHtml(item.reviewTitle || "观后感")}</h3><p class="media-review-summary">${escapeHtml(reviewText)}</p><div class="media-review-popover" role="tooltip"><strong>${escapeHtml(item.reviewTitle || "观后感")}</strong><p>${escapeHtml(reviewText)}</p></div></section>` : '<p class="media-private-note">观后感仅管理员可见</p>'}${state.isAdmin ? `<button class="primary-button small media-detail-edit" type="button" data-edit-media-from-detail="${escapeHtml(item.id)}">编辑片单</button>` : ""}</div>`;
+    const visibilityLabel = item.reviewPublic ? "公开中" : "私密中";
+    const reviewSection = state.isAdmin
+      ? `<section class="media-review" tabindex="0"><p class="mini-title">REVIEW · ${visibilityLabel}</p><h3>${escapeHtml(item.reviewTitle || "观后感")}</h3><p class="media-review-summary">${escapeHtml(reviewText)}</p><div class="media-review-popover" role="tooltip"><strong>${escapeHtml(item.reviewTitle || "观后感")}</strong><p>${escapeHtml(reviewText)}</p></div></section>`
+      : item.reviewPublic
+        ? `<section class="media-review media-review-public"><p class="mini-title">REVIEW</p><h3>${escapeHtml(item.reviewTitle || "观后感")}</h3><p class="media-review-summary">${escapeHtml(reviewText)}</p></section>`
+        : '<p class="media-private-note">观后感仅管理员可看</p>';
+    $("[data-media-detail-content]", modal).innerHTML = `<aside class="media-detail-aside"><div class="media-detail-cover">${mediaCoverHtml(item)}</div>${item.noteUrl ? (state.isAdmin ? `<a class="media-note-link" href="${escapeHtml(item.noteUrl)}" target="_blank" rel="noopener noreferrer">打开相关笔记 ↗</a>` : '<button class="media-note-link media-note-locked" type="button" data-media-note-locked>相关笔记</button>') : ""}</aside><div class="media-detail-copy"><header class="media-detail-heading"><p class="mini-title">${escapeHtml(item.mediaType)}</p><h2>${escapeHtml(item.title)}</h2><div class="media-detail-meta"><strong>★ ${item.rating ? item.rating.toFixed(1) : "未评分"}</strong><time class="media-detail-date">${escapeHtml(formatWatchedDate(item))}</time>${item.people ? `<span>作者 / 演员：${escapeHtml(item.people)}</span>` : ""}</div></header>${reviewSection}${state.isAdmin ? `<button class="primary-button small media-detail-edit" type="button" data-edit-media-from-detail="${escapeHtml(item.id)}">编辑片单</button>` : ""}</div>`;
     $all("[data-media-detail-close]", modal).forEach((button) => { button.onclick = () => modal.classList.remove("open"); });
     $("[data-media-note-locked]", modal)?.addEventListener("click", () => showActivityNotice("私人笔记", "私人笔记，暂时无法查看。"));
     $("[data-edit-media-from-detail]", modal)?.addEventListener("click", () => { modal.classList.remove("open"); openMediaEditor(item); });
@@ -2919,20 +3626,21 @@
     return year && month ? new Date(year, month, 0).getDate() : 0;
   }
 
-  async function persistMediaReview(mediaItemId, title, review) {
+  async function persistMediaReview(mediaItemId, title, review, isPublic) {
     const existing = data.mediaReviews.find((item) => item.mediaItemId === mediaItemId);
     if (existing) {
-      await window.XiaoLuoSupabase.updateContent("media_reviews", existing.id, state.userId, { review_title: title, review });
+      await window.XiaoLuoSupabase.updateContent("media_reviews", existing.id, state.userId, { review_title: title, review, is_public: isPublic });
       existing.title = title;
       existing.review = review;
+      existing.isPublic = isPublic;
       return;
     }
-    const row = await window.XiaoLuoSupabase.upsertMediaReview(state.userId, mediaItemId, title, review);
+    const row = await window.XiaoLuoSupabase.upsertMediaReview(state.userId, mediaItemId, title, review, isPublic);
     const cached = data.mediaReviews.find((item) => item.mediaItemId === mediaItemId);
     if (cached) {
-      Object.assign(cached, { id: row.id, title: row.review_title || title, review: row.review || "" });
+      Object.assign(cached, { id: row.id, title: row.review_title || title, review: row.review || "", isPublic: row.is_public !== false });
     } else {
-      data.mediaReviews.push({ id: row.id, mediaItemId: row.media_item_id, title: row.review_title || title, review: row.review || "" });
+      data.mediaReviews.push({ id: row.id, mediaItemId: row.media_item_id, title: row.review_title || title, review: row.review || "", isPublic: row.is_public !== false });
     }
   }
 
@@ -2943,7 +3651,7 @@
       modal = document.createElement("div");
       modal.className = "modal media-editor-modal";
       modal.dataset.mediaEditorModal = "";
-      modal.innerHTML = '<button class="modal-backdrop" type="button" data-media-editor-close aria-label="关闭"></button><section class="modal-card glass-card media-editor-card" role="dialog" aria-modal="true"><button class="modal-close" type="button" data-media-editor-close aria-label="关闭">×</button><p class="mini-title">MY MEDIA LIST</p><h2 data-media-editor-title>添加片单</h2><form data-media-editor-form><label>名称<input name="title" required placeholder="例如：一部电影或一本书"></label><div class="form-grid"><label>片单类型<select name="mediaType" data-media-editor-type></select></label><label>评分<input name="rating" type="number" min="0" max="10" step="0.1" placeholder="0.0 - 10.0"></label></div><label>作者 / 演员<input name="people" placeholder="例如：作者、导演或主要演员"></label><label>标签 <small>多个标签用逗号分隔</small><input name="tags" placeholder="例如：治愈、经典、科幻"></label><fieldset class="media-watch-field"><legend>观看时间</legend><div><select name="watchedYear" data-media-watch-year></select><select name="watchedMonth" data-media-watch-month></select><select name="watchedDay" data-media-watch-day></select></div></fieldset><label>笔记链接 <small>可填写本站或其他网站的相关笔记</small><input name="noteUrl" type="url" placeholder="https://example.com/my-note"></label><label>观后感标题 <small>仅管理员可见</small><input name="reviewTitle" maxlength="80" placeholder="例如：写给这部作品的一点感受"></label><label>观后感内容 <small>仅管理员可见</small><textarea name="review" rows="8" placeholder="记录自己的完整感受"></textarea></label><label class="upload-field"><span>上传封面图片</span><input name="cover" type="file" accept="image/*"></label><label>或使用封面 URL<input name="coverUrl" type="url" placeholder="https://example.com/cover.webp"></label><div class="media-editor-existing" data-media-editor-existing></div><div class="modal-form-actions"><button class="danger-button" type="button" data-delete-media-item hidden>删除</button><button class="primary-button" type="submit">保存片单</button></div></form></section>';
+      modal.innerHTML = '<button class="modal-backdrop" type="button" data-media-editor-close aria-label="关闭"></button><section class="modal-card glass-card media-editor-card" role="dialog" aria-modal="true"><button class="modal-close" type="button" data-media-editor-close aria-label="关闭">×</button><p class="mini-title">MY MEDIA LIST</p><h2 data-media-editor-title>添加片单</h2><form data-media-editor-form><label>名称<input name="title" required placeholder="例如：一部电影或一本书"></label><div class="form-grid"><label>片单类型<select name="mediaType" data-media-editor-type></select></label><label>评分<input name="rating" type="number" min="0" max="10" step="0.1" placeholder="0.0 - 10.0"></label></div><label>作者 / 演员<input name="people" placeholder="例如：作者、导演或主要演员"></label><label>标签 <small>多个标签用逗号分隔</small><input name="tags" placeholder="例如：治愈、经典、科幻"></label><fieldset class="media-watch-field"><legend>观看时间</legend><div><select name="watchedYear" data-media-watch-year></select><select name="watchedMonth" data-media-watch-month></select><select name="watchedDay" data-media-watch-day></select></div></fieldset><label>笔记链接 <small>可填写本站或其他网站的相关笔记</small><input name="noteUrl" type="url" placeholder="https://example.com/my-note"></label><div class="form-grid"><label>观后感标题<input name="reviewTitle" maxlength="80" placeholder="例如：写给这部作品的一点感受"></label><label>观后感可见性<select name="reviewVisibility"><option value="public">公开</option><option value="private">私密</option></select><small>私密内容仅管理员可看</small></label></div><label>观后感内容<textarea name="review" rows="8" placeholder="记录自己的完整感受"></textarea></label><label class="upload-field"><span>上传封面图片</span><input name="cover" type="file" accept="image/*"></label><label>或使用封面 URL<input name="coverUrl" type="url" placeholder="https://example.com/cover.webp"></label><div class="media-editor-existing" data-media-editor-existing></div><div class="modal-form-actions"><button class="danger-button" type="button" data-delete-media-item hidden>删除</button><button class="primary-button" type="submit">保存片单</button></div></form></section>';
       document.body.appendChild(modal);
     }
     const form = $("[data-media-editor-form]", modal);
@@ -2957,6 +3665,7 @@
     form.noteUrl.value = item?.noteUrl || "";
     form.reviewTitle.value = item?.reviewTitle || "观后感";
     form.review.value = item?.review || "";
+    form.reviewVisibility.value = item?.reviewPublic === false ? "private" : "public";
     const currentYear = new Date().getFullYear();
     form.watchedYear.innerHTML = mediaDateOptions(currentYear - 80, currentYear + 1, "年", item?.watchedYear);
     form.watchedMonth.innerHTML = mediaDateOptions(1, 12, "月", item?.watchedMonth);
@@ -2997,18 +3706,19 @@
           if (noteUrl && !/^https:\/\//i.test(noteUrl)) throw new Error("笔记链接必须以 https:// 开头。");
           const reviewTitle = form.reviewTitle.value.trim() || "观后感";
           const tags = form.tags.value.split(",").map((tag) => tag.trim()).filter(Boolean).slice(0, 12);
-          const payload = { title: form.title.value.trim(), media_type: form.mediaType.value, rating: Number(form.rating.value) || 0, tags, people: form.people.value.trim(), note_url: noteUrl || null, description: "", watched_year: Number(form.watchedYear.value) || null, watched_month: Number(form.watchedMonth.value) || null, watched_day: Number(form.watchedDay.value) || null, cover_url: coverUrl || null };
+          const reviewPublic = form.reviewVisibility.value === "public";
+          const payload = { title: form.title.value.trim(), media_type: form.mediaType.value, rating: Number(form.rating.value) || 0, tags, people: form.people.value.trim(), note_url: noteUrl || null, description: "", watched_year: Number(form.watchedYear.value) || null, watched_month: Number(form.watchedMonth.value) || null, watched_day: Number(form.watchedDay.value) || null, cover_url: coverUrl || null, review_is_public: reviewPublic };
           if (item) {
             state.cloudMutationVersion += 1;
             await window.XiaoLuoSupabase.updateContent("media_items", item.id, state.userId, payload);
-            await persistMediaReview(item.id, reviewTitle, form.review.value.trim());
+            await persistMediaReview(item.id, reviewTitle, form.review.value.trim(), reviewPublic);
             if (item.coverUrl && item.coverUrl !== coverUrl) await window.XiaoLuoSupabase.deleteFilesByPublicUrls([item.coverUrl]);
-            Object.assign(item, { title: payload.title, mediaType: payload.media_type, rating: payload.rating, tags, people: payload.people, noteUrl: payload.note_url || "", reviewTitle, review: form.review.value.trim(), watchedYear: payload.watched_year || 0, watchedMonth: payload.watched_month || 0, watchedDay: payload.watched_day || 0, coverUrl: payload.cover_url || "" });
+            Object.assign(item, { title: payload.title, mediaType: payload.media_type, rating: payload.rating, tags, people: payload.people, noteUrl: payload.note_url || "", reviewTitle, review: form.review.value.trim(), reviewPublic, watchedYear: payload.watched_year || 0, watchedMonth: payload.watched_month || 0, watchedDay: payload.watched_day || 0, coverUrl: payload.cover_url || "" });
           } else {
             state.cloudMutationVersion += 1;
             const row = await window.XiaoLuoSupabase.addContent("media_items", { user_id: state.userId, ...payload });
-            await persistMediaReview(row.id, reviewTitle, form.review.value.trim());
-            data.mediaItems.unshift({ id: row.id, title: row.title, mediaType: row.media_type, rating: Number(row.rating) || 0, tags: Array.isArray(row.tags) ? row.tags : tags, people: row.people || "", noteUrl: row.note_url || "", reviewTitle, review: form.review.value.trim(), watchedYear: Number(row.watched_year) || 0, watchedMonth: Number(row.watched_month) || 0, watchedDay: Number(row.watched_day) || 0, coverUrl: row.cover_url || "", createdAt: row.created_at || "" });
+            await persistMediaReview(row.id, reviewTitle, form.review.value.trim(), reviewPublic);
+            data.mediaItems.unshift({ id: row.id, title: row.title, mediaType: row.media_type, rating: Number(row.rating) || 0, tags: Array.isArray(row.tags) ? row.tags : tags, people: row.people || "", noteUrl: row.note_url || "", reviewTitle, review: form.review.value.trim(), reviewPublic, watchedYear: Number(row.watched_year) || 0, watchedMonth: Number(row.watched_month) || 0, watchedDay: Number(row.watched_day) || 0, coverUrl: row.cover_url || "", createdAt: row.created_at || "" });
           }
           modal.classList.remove("open"); renderMediaList();
         });
@@ -3027,77 +3737,605 @@
     });
   }
 
+  function destroyNotesDesk() {
+    const modal = $("[data-notes-desk-modal]");
+    if (!modal) return;
+    clearTimeout(Number(modal.dataset.notesAutosaveTimer || 0));
+    if (modal.dataset.notesDirty === "true" && modal.dataset.notesSaving !== "true") {
+      // Start the cloud write before detaching the old page. The guarded save
+      // deliberately skips stale UI updates after navigation, not the write.
+      void saveActiveNote(modal);
+    }
+    modal.remove();
+  }
+
   async function openNotesDesk() {
     let modal = $("[data-notes-desk-modal]");
+    if (modal && modal.dataset.notesOwnerId !== state.userId) {
+      destroyNotesDesk();
+      modal = null;
+    }
     if (!modal) {
       modal = document.createElement("div");
       modal.className = "modal notes-desk-modal";
       modal.dataset.notesDeskModal = "";
-      modal.innerHTML = '<button class="modal-backdrop" type="button" data-notes-desk-close aria-label="关闭笔记"></button><section class="notes-desk glass-card" role="dialog" aria-modal="true" aria-label="笔记"><aside class="notes-sidebar"><div class="notes-sidebar-head"><strong>笔记</strong><button type="button" data-notes-new aria-label="新建笔记">+</button><button type="button" data-notes-desk-close aria-label="关闭笔记">×</button></div><label class="notes-search"><span>⌕</span><input type="search" data-notes-search placeholder="搜索笔记"></label><div class="notes-list" data-notes-desk-list></div></aside><section class="notes-editor" data-notes-editor></section></section>';
+      modal.dataset.notesOwnerId = state.userId || "";
+      modal.dataset.notesFolder = "all";
+      modal.innerHTML = '<button class="modal-backdrop" type="button" data-notes-desk-close aria-label="关闭我的笔记"></button><section class="notes-desk glass-card" role="dialog" aria-modal="true" aria-label="我的笔记"><aside class="notes-sidebar"><div class="notes-sidebar-head"><strong>我的笔记</strong><button type="button" data-notes-new aria-label="新建笔记">+</button><button type="button" data-notes-desk-close aria-label="关闭笔记">×</button></div><label class="notes-search"><span>⌕</span><input type="search" data-notes-search placeholder="搜索笔记"></label><div class="notes-folders-head"><strong>文件夹</strong><button type="button" data-notes-new-folder aria-label="新建文件夹">+</button></div><div class="notes-folders" data-notes-folders></div><div class="notes-list" data-notes-desk-list></div></aside><section class="notes-editor" data-notes-editor></section></section>';
       document.body.appendChild(modal);
       bindNotesDesk(modal);
     }
-    if (!data.notes.length) {
-      try {
-        const rows = await window.XiaoLuoSupabase.listContent("notes", state.userId);
-        data.notes = rows.map((item) => ({ id: item.id, title: item.title, body: item.body || "", attachments: Array.isArray(item.attachments) ? item.attachments : [], isDone: Boolean(item.is_done), createdAt: item.created_at || "" }));
-      } catch (_) { /* 表还未创建时显示空状态，避免影响首页。 */ }
-    }
-    if (!modal.dataset.activeNoteId && data.notes[0]) modal.dataset.activeNoteId = data.notes[0].id;
-    renderNotesDesk(modal);
     modal.classList.add("open");
+    const loadVersion = String(++state.notesLoadVersion);
+    modal.dataset.notesLoadVersion = loadVersion;
+    $("[data-notes-desk-list]", modal).innerHTML = '<p class="note-empty">正在同步笔记…</p>';
+    try {
+      const [rows, folderRows] = await Promise.all([
+        window.XiaoLuoSupabase.listContent("notes", state.userId),
+        window.XiaoLuoSupabase.listContent("note_folders", state.userId).catch(() => [])
+      ]);
+      if (!modal.isConnected || modal.dataset.notesLoadVersion !== loadVersion || modal.dataset.notesOwnerId !== state.userId) return;
+      data.notes = rows.map((item) => ({ id: item.id, title: item.title, body: item.body || "", attachments: Array.isArray(item.attachments) ? item.attachments : [], isDone: Boolean(item.is_done), folder: item.folder || "", isPinned: Boolean(item.is_pinned), createdAt: item.created_at || "", updatedAt: item.updated_at || item.created_at || "" }));
+      data.noteFolders = folderRows.map((item) => ({ id: item.id, name: item.name || "" })).filter((item) => item.name);
+    } catch (error) {
+      console.warn("Notes load failed:", error?.message || error);
+      if (modal.isConnected && modal.dataset.notesLoadVersion === loadVersion) $("[data-notes-desk-list]", modal).innerHTML = '<p class="note-empty">笔记同步失败，请关闭后重试。</p>';
+      return;
+    }
+    if (!modal.isConnected || modal.dataset.notesLoadVersion !== loadVersion) return;
+    if (!data.notes.some((note) => String(note.id) === String(modal.dataset.activeNoteId))) modal.dataset.activeNoteId = String(data.notes[0]?.id || "");
+    renderNotesDesk(modal);
+  }
+
+  function notePlainText(value) {
+    const node = document.createElement("div");
+    node.innerHTML = String(value || "");
+    return (node.textContent || "").replace(/\u00a0/g, " ").trim();
+  }
+
+  function noteEditorHtml(value) {
+    const source = String(value || "");
+    if (/<\/?(?:a|b|strong|br|ol|ul|li|p|div)(?:\s|>)/i.test(source)) return sanitizeNoteHtml(source);
+    return escapeHtml(source).replace(/\r?\n/g, "<br>");
+  }
+
+  function sanitizeNoteHtml(value) {
+    const holder = document.createElement("div");
+    holder.innerHTML = String(value || "");
+    holder.querySelectorAll(".note-box-block").forEach((box) => {
+      box.replaceWith(document.createTextNode(box.textContent || ""));
+    });
+    holder.querySelectorAll("script,style,iframe,object,embed,svg,math").forEach((node) => node.remove());
+    // Contenteditable creates DIV/P blocks for Enter. Keeping them preserves
+    // the user's line breaks instead of merging the next line upward on save.
+    const allowed = new Set(["A", "B", "STRONG", "BR", "OL", "UL", "LI", "P", "DIV"]);
+    [...holder.querySelectorAll("*")].reverse().forEach((node) => {
+      if (!allowed.has(node.tagName)) {
+        node.replaceWith(...node.childNodes);
+        return;
+      }
+      if (node.tagName === "A") {
+        const href = node.getAttribute("href") || "";
+        if (!/^https?:\/\//i.test(href)) {
+          node.replaceWith(document.createTextNode(node.textContent || ""));
+          return;
+        }
+        node.replaceChildren(...node.childNodes);
+        node.setAttribute("href", href);
+        node.setAttribute("target", "_blank");
+        node.setAttribute("rel", "noopener noreferrer");
+        node.setAttribute("contenteditable", "false");
+      } else {
+        [...node.attributes].forEach((attribute) => node.removeAttribute(attribute.name));
+      }
+    });
+    return holder.innerHTML;
+  }
+
+  function noteCaretOffset(root) {
+    const selection = window.getSelection();
+    if (!selection?.rangeCount || !root.contains(selection.anchorNode)) return null;
+    const range = selection.getRangeAt(0).cloneRange();
+    const before = range.cloneRange();
+    before.selectNodeContents(root);
+    before.setEnd(range.startContainer, range.startOffset);
+    return before.toString().length;
+  }
+
+  function restoreNoteCaret(root, offset) {
+    if (offset === null || offset === undefined) return;
+    const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+    let remaining = offset;
+    let node = walker.nextNode();
+    while (node) {
+      if (remaining <= node.textContent.length) {
+        const range = document.createRange();
+        range.setStart(node, Math.max(0, remaining));
+        range.collapse(true);
+        const selection = window.getSelection();
+        selection.removeAllRanges();
+        selection.addRange(range);
+        return;
+      }
+      remaining -= node.textContent.length;
+      node = walker.nextNode();
+    }
+  }
+
+  function linkifyNoteEditor(editor) {
+    if (!editor) return false;
+    const caret = noteCaretOffset(editor);
+    const nodes = [];
+    const walker = document.createTreeWalker(editor, NodeFilter.SHOW_TEXT, {
+      acceptNode(node) {
+        return node.parentElement?.closest("a, textarea") ? NodeFilter.FILTER_REJECT : NodeFilter.FILTER_ACCEPT;
+      }
+    });
+    let node = walker.nextNode();
+    while (node) { if (/https?:\/\/[^\s<]+/i.test(node.textContent || "")) nodes.push(node); node = walker.nextNode(); }
+    if (!nodes.length) return false;
+    nodes.forEach((textNode) => {
+      const fragment = document.createDocumentFragment();
+      const parts = (textNode.textContent || "").split(/(https?:\/\/[^\s<]+)/gi);
+      parts.forEach((part) => {
+        if (/^https?:\/\/[^\s<]+$/i.test(part)) {
+          const link = document.createElement("a");
+          link.href = part;
+          link.target = "_blank";
+          link.rel = "noopener noreferrer";
+          link.contentEditable = "false";
+          link.textContent = compactNoteLinkLabel(part);
+          link.title = part;
+          fragment.appendChild(link);
+        } else fragment.appendChild(document.createTextNode(part));
+      });
+      textNode.replaceWith(fragment);
+    });
+    restoreNoteCaret(editor, caret);
+    return true;
+  }
+
+  function compactNoteLinkLabel(value) {
+    try {
+      const url = new URL(value);
+      const path = url.pathname.split("/").filter(Boolean)[0];
+      return `${url.hostname.replace(/^www\./, "")}${path ? `/${path}/…` : ""}`;
+    } catch (_) { return String(value).slice(0, 34); }
+  }
+
+  function setNotesSaveState(modal, value) {
+    const target = $("[data-notes-save-state]", modal);
+    if (!target) return;
+    target.textContent = value;
+    target.dataset.state = value === "已保存" ? "saved" : value === "未保存" ? "dirty" : "saving";
+  }
+
+  function renderNotesList(modal) {
+    const search = $("[data-notes-search]", modal)?.value.trim().toLowerCase() || "";
+    const folder = modal.dataset.notesFolder || "all";
+    const notes = [...data.notes]
+      .filter((note) => folder === "all" || (folder === "pinned" ? note.isPinned : (note.folder || "") === folder))
+      .filter((note) => `${note.title} ${notePlainText(note.body)}`.toLowerCase().includes(search))
+      .sort((a, b) => Number(b.isPinned) - Number(a.isPinned) || new Date(b.updatedAt || b.createdAt) - new Date(a.updatedAt || a.createdAt));
+    const active = data.notes.find((note) => String(note.id) === String(modal.dataset.activeNoteId)) || null;
+    $("[data-notes-desk-list]", modal).innerHTML = notes.map((note) => `<button class="notes-list-item${String(note.id) === String(active?.id) ? " active" : ""}" type="button" data-notes-open="${escapeHtml(note.id)}"><strong>${note.isPinned ? '<i aria-label="置顶">⌃</i>' : ""}${escapeHtml(note.title || "未命名笔记")}</strong><span>${escapeHtml(notePlainText(note.body) || "空白笔记")}</span><time>${new Date(note.updatedAt || note.createdAt || Date.now()).toLocaleDateString("zh-CN", { month: "numeric", day: "numeric" })}</time></button>`).join("") || '<p class="note-empty">没有找到笔记。</p>';
+    bindNotesListButtons(modal);
+  }
+
+  async function activateNote(modal, noteId) {
+    if (!modal?.isConnected || !noteId) return;
+    if (String(noteId) === String(modal.dataset.activeNoteId)) return;
+    if (!data.notes.some((note) => String(note.id) === String(noteId))) return;
+    // Flush the currently edited note first. saveActiveNote is guarded against
+    // overlapping requests, so a slow network cannot redirect this click back
+    // to the old note.
+    await saveActiveNote(modal);
+    if (!modal.isConnected || !data.notes.some((note) => String(note.id) === String(noteId))) return;
+    modal.dataset.activeNoteId = String(noteId);
+    renderNotesDesk(modal);
+  }
+
+  function bindNotesListButtons(modal) {
+    const list = $("[data-notes-desk-list]", modal);
+    if (!list || list.dataset.notesListBound === "true") return;
+    list.dataset.notesListBound = "true";
+    list.addEventListener("click", async (event) => {
+      const button = event.target.closest("[data-notes-open]");
+      if (!button) return;
+      event.preventDefault();
+      event.stopPropagation();
+      await activateNote(modal, button.dataset.notesOpen);
+    });
+  }
+
+  function renderNotesFolders(modal) {
+    const activeFolder = modal.dataset.notesFolder || "all";
+    const folders = [...new Set([...(data.noteFolders || []).map((item) => item.name), ...data.notes.map((note) => (note.folder || "").trim())].filter(Boolean))].sort((a, b) => a.localeCompare(b, "zh-CN"));
+    $("[data-notes-folders]", modal).innerHTML = [`<button type="button" data-notes-folder="all" class="${activeFolder === "all" ? "active" : ""}">全部笔记 <span>${data.notes.length}</span></button>`, `<button type="button" data-notes-folder="pinned" class="${activeFolder === "pinned" ? "active" : ""}">置顶笔记 <span>${data.notes.filter((note) => note.isPinned).length}</span></button>`, ...folders.map((folder) => `<button type="button" data-notes-folder="${escapeHtml(folder)}" class="${activeFolder === folder ? "active" : ""}">⌁ ${escapeHtml(folder)} <span>${data.notes.filter((note) => note.folder === folder).length}</span></button>`)].join("");
+  }
+
+  function noteDownloadUrl(file) {
+    try {
+      const url = new URL(file.url, window.location.href);
+      url.searchParams.set("download", file.name || "attachment");
+      return url.toString();
+    } catch (_) { return file.url; }
+  }
+
+  function syncNoteBoxValues(editor) {
+    // Box blocks are independent contenteditable hosts; their current HTML is
+    // already part of the editor DOM and is preserved by innerHTML.
+  }
+
+  function bindNotesBoxButton(modal) {
+    const button = $("[data-notes-insert-box]", modal);
+    if (!button || button.dataset.notesBoxBound === "true") return;
+    button.dataset.notesBoxBound = "true";
+    button.addEventListener("pointerdown", (event) => event.preventDefault());
+    button.addEventListener("click", (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      insertNoteBoxBlock($("[data-notes-body]", modal));
+      markNotesDirty(modal);
+    });
+  }
+
+  function bindNotesBoxBlocks(modal) {
+    // 浏览器原生 resize:both 会直接写 inline style，sanitizeNoteHtml 会保存。
+    // 不再用 ResizeObserver 反复覆写，避免拖拽松手后被回弹。
+    const editor = $("[data-notes-body]", modal);
+    if (!editor) return;
+    $all(".note-box-block", editor).forEach((box) => {
+      if (box.dataset.noteBoxReady === "true") return;
+      box.dataset.noteBoxReady = "true";
+      // 拖拽结束后标记脏，触发自动保存
+      box.addEventListener("mouseup", () => markNotesDirty(modal));
+      box.addEventListener("touchend", () => markNotesDirty(modal));
+    });
   }
 
   function renderNotesDesk(modal) {
-    const search = $("[data-notes-search]", modal)?.value.trim().toLowerCase() || "";
-    const notes = data.notes.filter((note) => `${note.title} ${note.body}`.toLowerCase().includes(search));
-    const active = data.notes.find((note) => note.id === modal.dataset.activeNoteId) || null;
-    $("[data-notes-desk-list]", modal).innerHTML = notes.map((note) => `<button class="notes-list-item${note.id === active?.id ? " active" : ""}" type="button" data-notes-open="${escapeHtml(note.id)}"><strong>${escapeHtml(note.title || "未命名笔记")}</strong><span>${escapeHtml(note.body || "空白笔记")}</span><time>${new Date(note.createdAt || Date.now()).toLocaleDateString("zh-CN", { month: "numeric", day: "numeric" })}</time></button>`).join("") || '<p class="note-empty">没有找到笔记。</p>';
+    const active = data.notes.find((note) => String(note.id) === String(modal.dataset.activeNoteId)) || null;
+    $("[data-notes-link-edit]", modal)?.remove();
+    $("[data-notes-link-dialog]", modal)?.remove();
+    renderNotesFolders(modal);
+    renderNotesList(modal);
     const attachments = active?.attachments || [];
-    const attachmentHtml = attachments.length ? `<div class="notes-attachments"><strong>附件</strong>${attachments.map((file) => `<a href="${escapeHtml(file.url)}" download="${escapeHtml(file.name)}" target="_blank" rel="noopener">${escapeHtml(file.name)}</a>`).join("")}</div>` : "";
-    $("[data-notes-editor]", modal).innerHTML = active ? `<div class="notes-editor-head"><input data-notes-title value="${escapeHtml(active.title)}" placeholder="笔记标题"><span>Ctrl+S 保存</span></div><textarea data-notes-body placeholder="写下一件临时要记住的事…">${escapeHtml(active.body)}</textarea>${attachmentHtml}<footer><label class="notes-attach-button">添加附件<input type="file" multiple data-notes-files></label><button class="danger-button" type="button" data-notes-delete>删除</button><button class="primary-button small" type="button" data-notes-save>保存</button></footer>` : '<div class="notes-empty-editor"><strong>选择一条笔记</strong><p>或点击左上角加号，新建一条备忘录。</p></div>';
+    const attachmentHtml = attachments.length ? `<div class="notes-attachments"><strong>附件</strong>${attachments.map((file, index) => `<span class="notes-attachment"><a href="${escapeHtml(noteDownloadUrl(file))}" download="${escapeHtml(file.name)}" target="_blank" rel="noopener">下载 ${escapeHtml(file.name)}</a><button type="button" data-notes-attachment-delete="${index}" aria-label="删除 ${escapeHtml(file.name)}">×</button></span>`).join("")}</div>` : "";
+    $("[data-notes-editor]", modal).innerHTML = active ? `<div class="notes-editor-head"><input data-notes-title value="${escapeHtml(active.title)}" placeholder="笔记标题"><span class="notes-save-state" data-notes-save-state data-state="saved">已保存</span></div><div class="notes-editor-body" data-notes-body contenteditable="true" role="textbox" aria-multiline="true" data-placeholder="写下一件临时要记住的事…">${noteEditorHtml(active.body)}</div>${attachmentHtml}<footer><div class="notes-editor-actions"><button class="notes-tool-button" type="button" data-notes-insert-box>盒子块</button><label class="notes-attach-button">添加附件<input type="file" multiple data-notes-files></label></div><button class="primary-button small" type="button" data-notes-save>立即保存</button></footer>` : '<div class="notes-empty-editor"><strong>选择一条笔记</strong><p>或点击左上角加号，新建一条备忘录。</p></div>';
+    modal.dataset.notesDirty = "false";
+    setNotesSaveState(modal, "已保存");
+  }
+
+  function markNotesDirty(modal) {
+    modal.dataset.notesDirty = "true";
+    modal.dataset.notesEditVersion = String(Number(modal.dataset.notesEditVersion || 0) + 1);
+    setNotesSaveState(modal, "未保存");
+    clearTimeout(Number(modal.dataset.notesAutosaveTimer || 0));
+    modal.dataset.notesAutosaveTimer = String(window.setTimeout(() => saveActiveNote(modal), 700));
+  }
+
+  async function saveActiveNote(modal, files = []) {
+    if (!modal?.isConnected || modal.dataset.notesOwnerId !== state.userId) return;
+    const active = data.notes.find((note) => String(note.id) === String(modal.dataset.activeNoteId));
+    if (!active) return;
+    if (modal.dataset.notesSaving === "true") {
+      modal.dataset.notesSaveQueued = "true";
+      return;
+    }
+    const titleInput = $("[data-notes-title]", modal);
+    const bodyEditor = $("[data-notes-body]", modal);
+    const title = titleInput?.value.trim() || "未命名笔记";
+    if (bodyEditor) {
+      syncNoteBoxValues(bodyEditor);
+      linkifyNoteEditor(bodyEditor);
+    }
+    const body = sanitizeNoteHtml(bodyEditor?.innerHTML || "");
+    const changed = modal.dataset.notesDirty === "true" || files.length > 0;
+    if (!changed) return;
+    const saveVersion = Number(modal.dataset.notesEditVersion || 0);
+    const activeId = active.id;
+    const ownerId = state.userId;
+    let saveFailed = false;
+    modal.dataset.notesSaving = "true";
+    setNotesSaveState(modal, files.length ? "正在上传附件…" : "保存中…");
+    try {
+      const uploaded = await Promise.all(files.map(async (file) => ({ name: file.name, url: await window.XiaoLuoSupabase.uploadFile(ownerId, "note-attachments", file) })));
+      const attachments = [...(active.attachments || []), ...uploaded];
+      await window.XiaoLuoSupabase.updateContent("notes", active.id, ownerId, { title, body, attachments, folder: active.folder || "", is_pinned: Boolean(active.isPinned) });
+      if (!modal.isConnected || modal.dataset.notesOwnerId !== ownerId || modal.dataset.activeNoteId !== activeId) return;
+      active.title = title;
+      active.body = body;
+      active.attachments = attachments;
+      active.updatedAt = new Date().toISOString();
+      const changedWhileSaving = Number(modal.dataset.notesEditVersion || 0) !== saveVersion;
+      modal.dataset.notesDirty = changedWhileSaving ? "true" : "false";
+      setNotesSaveState(modal, changedWhileSaving ? "未保存" : "已保存");
+      renderNotesList(modal);
+      if (uploaded.length && !changedWhileSaving && String(active.id) === String(modal.dataset.activeNoteId)) renderNotesDesk(modal);
+    } catch (error) {
+      saveFailed = true;
+      modal.dataset.notesDirty = "true";
+      setNotesSaveState(modal, "未保存");
+      showCloudError(error);
+    } finally {
+      modal.dataset.notesSaving = "false";
+      if (!saveFailed && (modal.dataset.notesSaveQueued === "true" || modal.dataset.notesDirty === "true")) {
+        modal.dataset.notesSaveQueued = "false";
+        window.setTimeout(() => saveActiveNote(modal), 120);
+      }
+    }
+  }
+
+  async function deleteNoteAttachment(modal, index) {
+    const active = data.notes.find((note) => note.id === modal.dataset.activeNoteId);
+    const file = active?.attachments?.[index];
+    if (!active || !file) return;
+    if (!await confirmPublish("确认删除这个附件？", "删除后无法恢复。", "确认删除")) return;
+    if (modal.dataset.notesSaving === "true") return;
+    await saveActiveNote(modal);
+    setNotesSaveState(modal, "正在删除附件…");
+    const attachments = active.attachments.filter((_, itemIndex) => itemIndex !== index);
+    try {
+      await window.XiaoLuoSupabase.updateContent("notes", active.id, state.userId, { attachments });
+      active.attachments = attachments;
+      active.updatedAt = new Date().toISOString();
+      await window.XiaoLuoSupabase.deleteFilesByPublicUrls?.([file.url]);
+      renderNotesDesk(modal);
+    } catch (error) {
+      setNotesSaveState(modal, "未保存");
+      showCloudError(error);
+    }
+  }
+
+  async function deleteNoteFromDesk(modal, noteId) {
+    const note = data.notes.find((item) => String(item.id) === String(noteId));
+    if (!note) return;
+    if (!await confirmPublish("确认删除这条笔记？", "删除后无法恢复。", "确认删除")) return;
+    await window.XiaoLuoSupabase.deleteContent("notes", note.id, state.userId);
+    data.notes = data.notes.filter((item) => String(item.id) !== String(note.id));
+    modal.dataset.activeNoteId = String(data.notes[0]?.id || "");
+    renderNotesDesk(modal);
+  }
+
+  async function updateNoteMetadata(modal, noteId, changes) {
+    const note = data.notes.find((item) => String(item.id) === String(noteId));
+    if (!note || !modal.isConnected) return;
+    const nextFolder = changes.folder !== undefined ? String(changes.folder || "") : String(note.folder || "");
+    const nextPinned = changes.is_pinned !== undefined ? Boolean(changes.is_pinned) : Boolean(note.isPinned);
+    setNotesSaveState(modal, "保存中…");
+    await window.XiaoLuoSupabase.updateContent("notes", note.id, state.userId, { folder: nextFolder, is_pinned: nextPinned });
+    note.folder = nextFolder;
+    note.isPinned = nextPinned;
+    note.updatedAt = new Date().toISOString();
+    renderNotesDesk(modal);
+  }
+
+  function showNotesContextMenu(modal, noteId, clientX, clientY) {
+    $("[data-notes-context-menu]", modal)?.remove();
+    const menu = document.createElement("div");
+    menu.className = "notes-context-menu";
+    menu.dataset.notesContextMenu = "";
+    const note = data.notes.find((item) => item.id === noteId);
+    menu.style.left = `${Math.min(clientX, window.innerWidth - 205)}px`;
+    menu.style.top = `${Math.min(clientY, window.innerHeight - 96)}px`;
+    menu.innerHTML = `<button type="button" data-notes-context-pin="${escapeHtml(noteId)}">${note?.isPinned ? "取消置顶" : "置顶笔记"}</button><button type="button" data-notes-context-delete="${escapeHtml(noteId)}">删除笔记</button>`;
+    modal.append(menu);
+  }
+
+  function openNotesFolderDialog(modal) {
+    $("[data-notes-folder-dialog]", modal)?.remove();
+    const dialog = document.createElement("form");
+    dialog.className = "notes-folder-dialog";
+    dialog.dataset.notesFolderDialog = "";
+    dialog.innerHTML = '<strong>新建文件夹</strong><input name="folder" maxlength="30" placeholder="例如：学习计划" required autofocus><div><button type="button" data-notes-folder-cancel>取消</button><button class="primary-button small" type="submit">创建</button></div>';
+    modal.append(dialog);
+    $("input", dialog).focus();
+    dialog.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      const name = new FormData(dialog).get("folder")?.toString().trim();
+      if (!name) return;
+      if ((data.noteFolders || []).some((folder) => folder.name === name)) {
+        modal.dataset.notesFolder = name;
+        dialog.remove();
+        renderNotesDesk(modal);
+        return;
+      }
+      try {
+        const row = await window.XiaoLuoSupabase.addContent("note_folders", { user_id: state.userId, name });
+        data.noteFolders = [...(data.noteFolders || []), { id: row.id, name: row.name || name }];
+        modal.dataset.notesFolder = name;
+        dialog.remove();
+        renderNotesDesk(modal);
+      } catch (error) { showCloudError(error); }
+    });
+  }
+
+  function insertNoteBoxBlock(editor) {
+    if (!editor) return;
+    const box = document.createElement("div");
+    box.className = "note-box-block";
+    box.setAttribute("contenteditable", "true");
+    box.innerHTML = '<div class="note-box-content" contenteditable="true" aria-label="盒子块内容" spellcheck="true" data-placeholder="在这里输入内容…"></div>';
+    const selection = window.getSelection();
+    const anchor = selection?.anchorNode;
+    const anchorElement = anchor?.nodeType === Node.ELEMENT_NODE ? anchor : anchor?.parentElement;
+    const currentBox = anchorElement?.closest?.(".note-box-block");
+    if (currentBox && editor.contains(currentBox)) currentBox.insertAdjacentElement("afterend", box);
+    else editor.append(box);
+    const range = document.createRange();
+    const content = box.querySelector(".note-box-content");
+    range.selectNodeContents(content || box);
+    range.collapse(true);
+    selection?.removeAllRanges();
+    selection?.addRange(range);
+    editor.focus();
+    content?.focus();
+  }
+
+  function openNoteLinkEditor(modal, link) {
+    if (!modal || !link || !modal.isConnected) return;
+    $("[data-notes-link-dialog]", modal)?.remove();
+    const dialog = document.createElement("form");
+    dialog.className = "notes-link-dialog";
+    dialog.dataset.notesLinkDialog = "";
+    dialog.innerHTML = `<strong>编辑超链接</strong><label>显示名称<input name="label" value="${escapeHtml(link.textContent || "")}" required></label><label>链接地址<input name="url" type="url" value="${escapeHtml(link.href)}" required></label><div><button type="button" data-notes-link-cancel>取消</button><button class="primary-button small" type="submit">保存链接</button></div>`;
+    modal.append(dialog);
+    dialog.addEventListener("submit", (event) => {
+      event.preventDefault();
+      const values = new FormData(dialog);
+      const url = values.get("url")?.toString().trim() || "";
+      if (!/^https?:\/\//i.test(url)) return;
+      link.href = url;
+      link.textContent = values.get("label")?.toString().trim() || compactNoteLinkLabel(url);
+      link.title = url;
+      dialog.remove();
+      markNotesDirty(modal);
+    });
+    // Keep clicks and focus inside the floating editor; the notes desk has
+    // delegated click handlers for links and note selection.
+    dialog.addEventListener("pointerdown", (event) => event.stopPropagation());
+    dialog.addEventListener("click", (event) => event.stopPropagation());
   }
 
   function bindNotesDesk(modal) {
     $all("[data-notes-desk-close]", modal).forEach((button) => { button.onclick = () => modal.classList.remove("open"); });
-    $("[data-notes-search]", modal).addEventListener("input", () => renderNotesDesk(modal));
+    $("[data-notes-search]", modal).addEventListener("input", () => renderNotesList(modal));
+    modal.addEventListener("mousedown", (event) => {
+      if (event.button !== 0) return;
+      const body = event.target.closest?.("[data-notes-body]");
+      if (!body || !modal.contains(body)) return;
+      // 点击盒子块内任何区域（含 padding/边框）都不抢走 textarea 焦点
+      if (event.target.closest(".note-box-block")) return;
+      body.focus({ preventScroll: true });
+    });
     modal.addEventListener("keydown", (event) => {
-      if (!(event.ctrlKey || event.metaKey) || event.key.toLowerCase() !== "s") return;
       if (!event.target.closest("[data-notes-editor]")) return;
+      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "s") {
+        event.preventDefault();
+        saveActiveNote(modal);
+      }
+      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "b" && event.target.closest("[data-notes-body]")) {
+        event.preventDefault();
+        document.execCommand("bold");
+        markNotesDirty(modal);
+      }
+      if (event.key === "Enter" && event.target.matches("[data-notes-body]") && !event.target.closest("li")) {
+        // Keep every normal line break as a BR. Native contenteditable starts
+        // inserting DIV blocks after consecutive Enters, which creates uneven gaps.
+        event.preventDefault();
+        document.execCommand("insertLineBreak");
+        markNotesDirty(modal);
+      }
+    });
+    modal.addEventListener("input", (event) => {
+      if (event.target.matches("[data-notes-title]") || event.target.closest?.("[data-notes-body]")) markNotesDirty(modal);
+    });
+    modal.addEventListener("blur", (event) => {
+      if (!event.target.matches("[data-notes-body]")) return;
+      if (linkifyNoteEditor(event.target)) markNotesDirty(modal);
+    }, true);
+    modal.addEventListener("change", (event) => {
+      if (!event.target.matches("[data-notes-files]")) return;
+      const files = [...event.target.files];
+      if (files.length) {
+        modal.dataset.notesEditVersion = String(Number(modal.dataset.notesEditVersion || 0) + 1);
+        saveActiveNote(modal, files);
+      }
+      event.target.value = "";
+    });
+    modal.addEventListener("contextmenu", (event) => {
+      const note = event.target.closest("[data-notes-open]");
+      if (!note) return;
       event.preventDefault();
-      $("[data-notes-save]", modal)?.click();
+      showNotesContextMenu(modal, note.dataset.notesOpen, event.clientX, event.clientY);
+    });
+    let linkHideTimer = 0;
+    const hideLinkEditorButton = () => {
+      clearTimeout(linkHideTimer);
+      linkHideTimer = window.setTimeout(() => $("[data-notes-link-edit]", modal)?.remove(), 180);
+    };
+    modal.addEventListener("pointerover", (event) => {
+      const link = event.target.closest("[data-notes-body] a[href]");
+      if (!link) return;
+      clearTimeout(linkHideTimer);
+      const old = $("[data-notes-link-edit]", modal);
+      if (old?.dataset.notesLinkTarget === link.href && old._noteLink === link) return;
+      old?.remove();
+      const trigger = document.createElement("button");
+      const rect = link.getBoundingClientRect();
+      trigger.type = "button";
+      trigger.className = "notes-link-edit-trigger";
+      trigger.dataset.notesLinkEdit = "";
+      trigger.dataset.notesLinkTarget = link.href;
+      trigger.style.left = `${Math.min(rect.right + 7, window.innerWidth - 76)}px`;
+      trigger.style.top = `${Math.max(rect.top - 2, 12)}px`;
+      trigger.textContent = "编辑";
+      trigger._noteLink = link;
+      trigger.addEventListener("pointerenter", () => clearTimeout(linkHideTimer));
+      trigger.addEventListener("pointerleave", hideLinkEditorButton);
+      modal.append(trigger);
+    });
+    modal.addEventListener("pointerout", (event) => {
+      if (event.target.closest("[data-notes-body] a[href]")) hideLinkEditorButton();
     });
     modal.addEventListener("click", async (event) => {
-      const open = event.target.closest("[data-notes-open]");
-      if (open) { modal.dataset.activeNoteId = open.dataset.notesOpen; renderNotesDesk(modal); return; }
+      const linkEdit = event.target.closest("[data-notes-link-edit]");
+      if (linkEdit) { event.preventDefault(); event.stopPropagation(); openNoteLinkEditor(modal, linkEdit._noteLink); linkEdit.remove(); return; }
+      if (event.target.closest("[data-notes-folder-cancel]")) { $("[data-notes-folder-dialog]", modal)?.remove(); return; }
+      if (event.target.closest("[data-notes-link-cancel]")) { $("[data-notes-link-dialog]", modal)?.remove(); return; }
+      if (event.target.closest("[data-notes-new-folder]")) { openNotesFolderDialog(modal); return; }
+      const folderButton = event.target.closest("[data-notes-folder]");
+      if (folderButton) { modal.dataset.notesFolder = folderButton.dataset.notesFolder; renderNotesDesk(modal); return; }
+      const pin = event.target.closest("[data-notes-context-pin]");
+      if (pin) {
+        event.preventDefault();
+        event.stopPropagation();
+        try { const note = data.notes.find((item) => String(item.id) === String(pin.dataset.notesContextPin)); await updateNoteMetadata(modal, pin.dataset.notesContextPin, { is_pinned: !note?.isPinned }); } catch (error) { showCloudError(error); }
+        $("[data-notes-context-menu]", modal)?.remove();
+        return;
+      }
+      const contextDelete = event.target.closest("[data-notes-context-delete]");
+      if (contextDelete) {
+        event.preventDefault();
+        event.stopPropagation();
+        $("[data-notes-context-menu]", modal)?.remove();
+        try { await deleteNoteFromDesk(modal, contextDelete.dataset.notesContextDelete); } catch (error) { showCloudError(error); }
+        return;
+      }
+      if (!event.target.closest("[data-notes-context-menu]")) $("[data-notes-context-menu]", modal)?.remove();
+      const noteLink = event.target.closest("[data-notes-body] a[href]");
+      if (noteLink) {
+        event.preventDefault();
+        window.open(noteLink.href, "_blank", "noopener");
+        return;
+      }
       try {
-        if (event.target.closest("[data-notes-new]")) {
-          await runWithLoading("正在新建笔记…", async () => {
-            const row = await window.XiaoLuoSupabase.addContent("notes", { user_id: state.userId, title: "未命名笔记", body: "", is_done: false });
-            const note = { id: row.id, title: row.title, body: row.body || "", attachments: Array.isArray(row.attachments) ? row.attachments : [], isDone: false, createdAt: row.created_at || "" };
-            data.notes.unshift(note); modal.dataset.activeNoteId = note.id; renderNotesDesk(modal);
-          });
+        if (event.target.closest("[data-notes-insert-box]")) {
+          event.preventDefault();
+          event.stopPropagation();
+          insertNoteBoxBlock($("[data-notes-body]", modal));
+          markNotesDirty(modal);
           return;
         }
-        const active = data.notes.find((note) => note.id === modal.dataset.activeNoteId);
+        const attachmentDelete = event.target.closest("[data-notes-attachment-delete]");
+        if (attachmentDelete) {
+          await deleteNoteAttachment(modal, Number(attachmentDelete.dataset.notesAttachmentDelete));
+          return;
+        }
+        if (event.target.closest("[data-notes-new]")) {
+          await saveActiveNote(modal);
+          setNotesSaveState(modal, "正在新建…");
+          const folder = ["all", "pinned"].includes(modal.dataset.notesFolder) ? "" : modal.dataset.notesFolder;
+          const row = await window.XiaoLuoSupabase.addContent("notes", { user_id: state.userId, title: "未命名笔记", body: "", attachments: [], is_done: false, folder, is_pinned: false });
+          const note = { id: row.id, title: row.title, body: row.body || "", attachments: Array.isArray(row.attachments) ? row.attachments : [], isDone: false, folder: row.folder || folder || "", isPinned: Boolean(row.is_pinned), createdAt: row.created_at || "", updatedAt: row.updated_at || row.created_at || "" };
+          data.notes.unshift(note); modal.dataset.activeNoteId = String(note.id); renderNotesDesk(modal);
+          return;
+        }
+        const active = data.notes.find((note) => String(note.id) === String(modal.dataset.activeNoteId));
         if (!active) return;
         if (event.target.closest("[data-notes-save]")) {
-          const title = $("[data-notes-title]", modal).value.trim() || "未命名笔记";
-          const body = $("[data-notes-body]", modal).value.trim();
-          const files = [...($("[data-notes-files]", modal)?.files || [])];
-          await runWithLoading("正在保存笔记…", async () => {
-            const uploaded = await Promise.all(files.map(async (file) => ({ name: file.name, url: await window.XiaoLuoSupabase.uploadFile(state.userId, "note-attachments", file) })));
-            const noteAttachments = [...(active.attachments || []), ...uploaded];
-            await window.XiaoLuoSupabase.updateContent("notes", active.id, state.userId, { title, body, attachments: noteAttachments });
-            active.title = title; active.body = body; active.attachments = noteAttachments; renderNotesDesk(modal);
-          });
-        }
-        if (event.target.closest("[data-notes-delete]")) {
-          if (!await confirmPublish("确认删除这条笔记？", "删除后无法恢复。", "确认删除")) return;
-          await window.XiaoLuoSupabase.deleteContent("notes", active.id, state.userId);
-          data.notes = data.notes.filter((note) => note.id !== active.id);
-          modal.dataset.activeNoteId = data.notes[0]?.id || "";
-          renderNotesDesk(modal);
+          await saveActiveNote(modal);
         }
       } catch (error) { showCloudError(error); }
     });
@@ -3381,13 +4619,19 @@
   function renderAbout() {
     const stats = {
       "[data-about-post-count]": data.posts.length,
-      "[data-about-moment-count]": data.moments.length,
+      "[data-about-whisper-count]": 0,
       "[data-about-progress-count]": data.progress.length
     };
     Object.entries(stats).forEach(([selector, count]) => {
       const target = $(selector);
       if (target) target.textContent = count;
     });
+    if (window.XiaoLuoSupabase?.listWhispers) {
+      window.XiaoLuoSupabase.listWhispers("", 1000).then((items) => {
+        const target = $("[data-about-whisper-count]");
+        if (target) target.textContent = items.filter((item) => !item.parent_id).length;
+      }).catch(() => {});
+    }
     const links = $("[data-about-contact-links]");
     if (links) {
       const contacts = data.site.contacts || {};
@@ -3399,7 +4643,7 @@
       ].filter(([, value]) => value);
       links.innerHTML = entries.map(([label, value, type]) => {
         const href = type === "email" ? `mailto:${value}` : (/^https?:\/\//i.test(value) ? value : "#");
-        const icon = type === "github" ? '<i class="social-icon social-icon-github" aria-hidden="true"></i>' : type === "instagram" ? '<i class="social-icon social-icon-instagram" aria-hidden="true"></i>' : type === "douyin" ? '<i class="about-platform-icon iconfont icon-douyin2" aria-hidden="true"></i>' : '<i class="about-platform-icon email" aria-hidden="true">@</i>';
+        const icon = type === "github" || type === "instagram" || type === "douyin" ? contactIconMarkup(type) : '<i class="about-platform-icon email" aria-hidden="true">@</i>';
         return `<a class="about-contact-link ${type}" href="${escapeHtml(href)}"${href === "#" ? ` data-contact-copy="${escapeHtml(value)}"` : ' target="_blank" rel="noopener"'}>${icon}<span>${escapeHtml(label)}</span><strong>${escapeHtml(value)}</strong></a>`;
       }).join("") || '<p class="about-contact-empty">联系方式正在整理中。</p>';
       $all("[data-contact-copy]", links).forEach((link) => { link.onclick = async (event) => { event.preventDefault(); try { await navigator.clipboard.writeText(link.dataset.contactCopy); link.classList.add("copied"); setTimeout(() => link.classList.remove("copied"), 1200); } catch (_) {} }; });
@@ -3654,10 +4898,12 @@
       avatar_url: data.site.avatarDataUrl || "",
       home_background_url: data.site.homeBackground.imageUrl || "",
       contacts: {
+      ...data.site.contacts,
       email: form.contactEmail?.value.trim() || "",
       github: form.contactGithub?.value.trim() || "https://github.com/LuoLuowo",
       douyin: form.contactDouyin?.value.trim() || "",
-      instagram: form.contactInstagram?.value.trim() || "xiaoluo672"
+      instagram: form.contactInstagram?.value.trim() || "xiaoluo672",
+      entry_loader_enabled: form.entryLoaderEnabled?.checked !== false
       }
     };
 
@@ -3676,8 +4922,9 @@
         data.site.avatarDataUrl = profile.avatar_url;
         data.site.homeBackground.imageUrl = profile.home_background_url || "";
         data.site.contacts = profile.contacts;
+        localStorage.setItem("xiaoluo-entry-loader-enabled", String(profile.contacts.entry_loader_enabled !== false));
         initBrand();
-        alert("已保存到 Supabase，首页现在已经生效。");
+        alert("已保存，首页现在已经生效。");
       } catch (error) { showCloudError(error); }
     };
 
@@ -3739,11 +4986,15 @@
             msg.textContent = "两次输入的密码不一致。";
             return;
           }
+          if (form.dataset.authForm === "register" && !form.displayName.value.trim()) {
+            msg.textContent = "请输入昵称。";
+            return;
+          }
           msg.textContent = "正在处理...";
           const requestedNext = new URLSearchParams(location.search).get("next");
           const nextPage = requestedNext && requestedNext.startsWith("/") ? `.${requestedNext}` : "";
           if (form.dataset.authForm === "register") {
-            const result = await api.signUpWithEmail(form.email.value, form.password.value);
+            const result = await api.signUpWithEmail(form.email.value, form.password.value, form.displayName.value);
             if (result.session) {
               await api.signOut();
               msg.textContent = "注册成功，请先去邮箱确认后再登录。";
@@ -3850,15 +5101,25 @@
             const editingId = form.dataset.editPostId || "";
             const existing = data.posts.find((post) => post.id === editingId);
             const oldCover = existing?.coverUrl || null;
+            const oldMusic = existing?.musicAttachment || null;
             const cover = form.cover?.files?.[0] ? await uploadOptimizedImage(state.userId, "post-covers", form.cover.files[0]) : oldCover;
             if (cancelled()) return;
             const attachmentFiles = Array.from(form.attachments?.files || []);
             const attachments = [...(existing?.attachments || []), ...await Promise.all(attachmentFiles.map(async (file) => ({ name: file.name, url: await window.XiaoLuoSupabase.uploadFile(state.userId, "post-attachments", file) })))];
+            let musicAttachment = existing?.musicAttachment || null;
+            const musicUrl = form.musicUrl?.value.trim() || "";
+            const musicTitle = form.musicTitle?.value.trim() || "";
+            if (musicUrl && !/^https?:\/\//i.test(musicUrl)) throw new Error("音乐 URL 必须以 http:// 或 https:// 开头。");
+            if (musicUrl) musicAttachment = { name: musicTitle || musicUrl.split("/").pop()?.split("?")[0] || "文章配乐", url: musicUrl };
+            else if (form.music?.files?.[0]) musicAttachment = { name: musicTitle || form.music.files[0].name, url: await window.XiaoLuoSupabase.uploadFile(state.userId, "post-music", form.music.files[0]) };
+            else if (musicAttachment?.url && musicTitle) musicAttachment = { ...musicAttachment, name: musicTitle };
             if (cancelled()) return;
-            const postData = { title: form.title.value.trim(), content: editorContentValue(form).trim(), cover_url: cover, category: form.category.value || "未分类", tags: form.tags.value.split(",").map((tag) => tag.trim()).filter(Boolean), attachments, status: "published" };
+            const postData = { title: form.title.value.trim(), content: editorContentValue(form).trim(), cover_url: cover, category: form.category.value || "未分类", tags: parseCommaTags(form.tags.value), attachments, music_attachment: musicAttachment, status: form.visibility?.value === "private" ? "private" : "published" };
             if (editingId) await window.XiaoLuoSupabase.updatePost(state.userId, editingId, postData);
             else await window.XiaoLuoSupabase.savePost(state.userId, postData);
             if (editingId && form.cover?.files?.[0] && oldCover && oldCover !== cover) await window.XiaoLuoSupabase.deleteFilesByPublicUrls([oldCover]);
+            if (editingId && oldMusic?.url && oldMusic.url !== musicAttachment?.url && oldMusic.url.includes("/storage/v1/object/")) await window.XiaoLuoSupabase.deleteFilesByPublicUrls([oldMusic.url]);
+            if (existing) existing.musicAttachment = musicAttachment;
             form.reset();
             setEditorContent(form, "");
             alert(editingId ? "文章已更新到 Supabase。" : "文章已发布到 Supabase。");
@@ -3880,6 +5141,9 @@
     form.title.value = post.title || "";
     setEditorContent(form, (post.content || []).join("\n"));
     form.tags.value = (post.tags || []).join(", ");
+    if (form.musicUrl) form.musicUrl.value = post.musicAttachment?.url && !post.musicAttachment.url.includes("/storage/v1/object/") ? post.musicAttachment.url : "";
+    if (form.musicTitle) form.musicTitle.value = post.musicAttachment?.name || "";
+    if (form.visibility) form.visibility.value = post.status === "private" ? "private" : "published";
     if (![...form.category.options].some((option) => option.value === post.category)) {
       form.category.insertAdjacentHTML("beforeend", `<option value="${escapeHtml(post.category)}">${escapeHtml(post.category)}</option>`);
     }
@@ -3897,6 +5161,8 @@
     const coverInputLabel = $("[data-editor-cover-input-label]");
     const attachmentSection = $("[data-editor-existing-attachments]");
     const attachmentList = $("[data-editor-attachment-list]");
+    const musicSection = $("[data-editor-existing-music]");
+    const musicList = $("[data-editor-music-list]");
     if (coverSection && coverPreview) {
       coverSection.hidden = !post.coverUrl;
       coverPreview.src = post.coverUrl || "";
@@ -3905,6 +5171,21 @@
     if (attachmentSection && attachmentList) {
       attachmentSection.hidden = !(post.attachments?.length);
       attachmentList.innerHTML = (post.attachments || []).map((file, index) => `<div><a href="${file.url}" target="_blank" rel="noopener">${escapeHtml(file.name)}</a><button class="danger-button" type="button" data-delete-post-attachment="${index}">删除</button></div>`).join("");
+    }
+    if (musicSection && musicList) {
+      musicSection.hidden = !post.musicAttachment?.url;
+      musicList.innerHTML = post.musicAttachment?.url ? `<div><a href="${escapeHtml(post.musicAttachment.url)}" target="_blank" rel="noopener">${escapeHtml(post.musicAttachment.name || "文章配乐")}</a><button class="danger-button" type="button" data-delete-post-music>删除</button></div>` : "";
+      $("[data-delete-post-music]", musicList)?.addEventListener("click", async () => {
+        if (!await confirmPublish("确认删除文章配乐？", "删除后无法恢复。", "确认删除")) return;
+        try {
+          await runWithLoading("正在删除文章配乐…", async () => {
+            await window.XiaoLuoSupabase.updatePost(state.userId, post.id, { music_attachment: null });
+            if (post.musicAttachment.url.includes("/storage/v1/object/")) await window.XiaoLuoSupabase.deleteFilesByPublicUrls([post.musicAttachment.url]);
+          });
+          post.musicAttachment = null;
+          renderEditorExistingMedia(post);
+        } catch (error) { showCloudError(error); }
+      });
     }
     const deleteCover = $("[data-delete-post-cover]");
     if (deleteCover) deleteCover.onclick = async () => {
@@ -4483,6 +5764,9 @@
     if (page === "snake") {
       ensureSnakeGame();
     }
+    if (page === "wordfall") {
+      ensureWordfallGame();
+    }
     if (page === "dashboard") {
       protectDashboard().then(() => {
         if (!state.isAdmin) return;
@@ -4549,7 +5833,7 @@
       $("[data-game-drawer-dismiss]", drawer).onclick = dismiss;
     }
     // 游戏页面隐藏右侧抽屉
-    const shouldHide = pageName() === "game" || pageName() === "snake";
+    const shouldHide = pageName() === "game" || pageName() === "snake" || pageName() === "wordfall";
     drawer.hidden = shouldHide;
     drawer.style.display = shouldHide ? "none" : "";
   }
@@ -4585,7 +5869,23 @@
     requestAnimationFrame(() => requestAnimationFrame(boot));
   }
 
+  function ensureWordfallGame() {
+    const boot = () => {
+      if (window.initXiaoLuoWordfall) { window.initXiaoLuoWordfall(); return; }
+      let script = document.querySelector("script[data-wordfall-game-script]");
+      if (!script) {
+        script = document.createElement("script");
+        script.src = "./js/wordfall.js";
+        script.dataset.wordfallGameScript = "true";
+        script.onload = () => window.initXiaoLuoWordfall?.();
+        document.body.appendChild(script);
+      }
+    };
+    requestAnimationFrame(() => requestAnimationFrame(boot));
+  }
+
   async function navigate(url, push = true) {
+    destroyNotesDesk();
     $all(".modal.open").forEach((modal) => modal.classList.remove("open"));
     const savingOverlay = $("[data-saving-overlay]");
     if (savingOverlay) savingOverlay.hidden = true;
@@ -4620,10 +5920,12 @@
     }
     if (pageName() === "game") window.destroyXiaoLuoJumpGame?.();
     if (pageName() === "snake") window.destroyXiaoLuoSnakeGame?.();
+    if (pageName() === "wordfall") window.destroyXiaoLuoWordfall?.();
     document.title = nextDoc.title;
     document.body.dataset.page = nextDoc.body.dataset.page || "home";
     document.body.classList.toggle("game-page", nextDoc.body.classList.contains("game-page"));
     document.body.classList.toggle("snake-page", nextDoc.body.classList.contains("snake-page"));
+    document.body.classList.toggle("wordfall-page", nextDoc.body.classList.contains("wordfall-page"));
     currentMain.replaceWith(nextMain);
     if (push) history.pushState({}, "", url);
     window.scrollTo({ top: 0, behavior: "smooth" });
@@ -4650,6 +5952,12 @@
     // 渲染页面
     requestAnimationFrame(() => {
       renderCurrentPage();
+      // The home cards are data-driven. After a PJAX main replacement, give
+      // the new home container one extra frame to settle before hydrating it.
+      if (pageName() === "home") {
+        requestAnimationFrame(renderHome);
+        window.setTimeout(() => { if (pageName() === "home") renderHome(); }, 120);
+      }
       restoreMusic();
       // 多次延迟恢复，防止异步操作导致切歌
       setTimeout(restoreMusic, 0);
@@ -4667,6 +5975,23 @@
       if (url.origin !== location.origin) return;
       if (link.target || link.hasAttribute("download") || (url.hash && url.pathname === location.pathname)) return;
       if (!url.pathname.endsWith(".html") && !url.pathname.endsWith("/")) return;
+      // Lock restricted articles before navigation. This keeps the full article
+      // content out of the detail view until the reader has earned the level.
+      if (link.classList.contains("article-card-hit") && url.pathname.endsWith("article-detail.html")) {
+        const postId = url.searchParams.get("id");
+        const post = data.posts.find((item) => item.id === postId);
+        const requiredScore = Number(post?.minActivityScore) || 0;
+        if (requiredScore && !hasActivityAccess(requiredScore)) {
+          event.preventDefault();
+          const level = activityLevelForScore(requiredScore);
+          if (!state.isLoggedIn) {
+            showActivityNotice("登录后查看", `这篇文章需要达到「${level.title}」才能阅读，请先登录后再参与互动。`, { login: true });
+          } else {
+            showActivityNotice("称号权限不足", `这篇文章需要达到「${level.title}」才能阅读。你当前活跃度为 ${state.activityScore}，请提升后再阅读。`);
+          }
+          return;
+        }
+      }
       if (url.pathname.endsWith("whispers.html") && !state.isLoggedIn) {
         event.preventDefault();
         showWhisperLoginModal();
@@ -4795,7 +6120,8 @@
   initPostDeleteActions();
   initWebSearch();
   watchAuthState();
-  if (pageName() === "home" && !sessionStorage.getItem("xiaoluo-home-entry-seen")) {
+  const entryLoaderEnabled = localStorage.getItem("xiaoluo-entry-loader-enabled") !== "false";
+  if (pageName() === "home" && entryLoaderEnabled && !sessionStorage.getItem("xiaoluo-home-entry-seen")) {
     sessionStorage.setItem("xiaoluo-home-entry-seen", "true");
     showEntryLoader();
   }
@@ -4803,7 +6129,11 @@
     .then(async () => {
       renderCurrentPage();
       await loadCloudData();
-      if ($("[data-entry-loader]")) await hideEntryLoaderAfterAssets();
+      const cloudLoaderEnabled = data.site.contacts?.entry_loader_enabled !== false;
+      localStorage.setItem("xiaoluo-entry-loader-enabled", String(cloudLoaderEnabled));
+      const entryLoader = $("[data-entry-loader]");
+      if (entryLoader && cloudLoaderEnabled) await hideEntryLoaderAfterAssets();
+      else entryLoader?.remove();
     })
     .catch(() => { renderCurrentPage(); if ($("[data-entry-loader]")) hideEntryLoaderAfterAssets(); });
 })();

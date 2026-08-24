@@ -22,7 +22,6 @@
     <nav class="top-nav" data-nav aria-label="主导航">
       <a href="./index.html">首页</a>
       <a href="./articles.html">所有文章</a>
-      <a href="./life.html">生活圈</a>
       <a href="./whispers.html">碎碎念</a>
       <a href="./projects.html">个人项目</a>
       <a href="./about.html">关于我</a>
@@ -40,7 +39,6 @@
       <a href="#home-settings">首页设置</a>
       <a href="./editor.html">新建文章</a>
       <a href="#tags">文章分类与标签</a>
-      <a href="#life-settings">生活圈</a>
       <a href="#project-settings">个人项目</a>
       <a href="#about-settings">关于我设置</a>
       <a class="active" href="#dashboard">仪表盘</a>
@@ -150,37 +148,6 @@
         </div>
       </section>
 
-      <section class="admin-panel glass-card" id="life-settings">
-        <div class="section-heading compact">
-          <div>
-            <p class="mini-title">LIFE</p>
-            <h2>生活圈</h2>
-            <p>发布新的生活圈动态。</p>
-          </div>
-          <a class="text-link" href="./life.html">进入生活圈管理</a>
-        </div>
-        <form class="content-entry-form standalone-entry-form" data-content-form="moment">
-          <input name="title" type="text" placeholder="动态标题" required>
-          <input name="date" type="date">
-          <div class="text-format-editor">
-            <div class="text-format-toolbar" data-format-toolbar><button type="button" data-format-action="bold"
-                title="加粗（Ctrl+B）"><b>B</b></button><button type="button" data-format-action="underline"
-                title="下划线（Ctrl+U）"><u>U</u></button><button type="button" data-format-action="link"
-                title="添加超链接">↗</button><span class="format-toolbar-divider"></span><button type="button"
-                class="format-highlight red" data-format-action="highlight" data-highlight-color="#ffddd8"
-                title="红色高亮"></button><button type="button" class="format-highlight green"
-                data-format-action="highlight" data-highlight-color="#d8f2e2" title="绿色高亮"></button><button
-                type="button" class="format-highlight blue" data-format-action="highlight"
-                data-highlight-color="#dce9ff" title="蓝色高亮"></button></div>
-            <div class="rich-text-input compact" data-format-input data-content-text contenteditable="true"
-              role="textbox" aria-multiline="true" data-placeholder="记录这一刻"></div>
-          </div>
-          <label class="upload-field"><span>添加图片（最多 9 张）</span><input name="images" type="file" accept="image/*"
-              multiple data-supabase-storage="moment-images"></label>
-          <button class="primary-button small" type="submit">发布到生活圈</button>
-        </form>
-      </section>
-
       <section class="admin-panel glass-card" id="project-settings">
         <div class="section-heading compact">
           <div>
@@ -220,6 +187,7 @@
           <label class="wide-field home-cover-upload"><span>首页封面图</span><input name="homeCover" type="file"
               accept="image/*" data-supabase-storage="home-covers"><small>用于首页顶部大背景图。上传后会自动压缩并转换为 WebP。</small><img
               data-home-cover-preview alt="当前首页封面图" hidden></label>
+          <label class="setting-toggle wide-field"><input name="entryLoaderEnabled" type="checkbox" checked><span><strong>进入网站加载页</strong><small>开启后，访客首次进入首页会看到“小罗Blog”加载动画。</small></span></label>
           <label><span>头像</span><input name="avatar" type="file" accept="image/*"
               data-supabase-storage="avatars"></label>
           <label><span>昵称</span><input name="profileName" type="text" value="小罗"></label>

@@ -54,6 +54,9 @@ begin
     raise exception 'invalid visitor id';
   end if;
 
+  -- 不信任浏览器提交的 user id；匿名访问保持为空，登录访问使用当前会话身份。
+  p_user_id := auth.uid();
+
   select coalesce(is_admin, false) into v_is_admin
   from public.profiles
   where id = p_user_id;
@@ -131,7 +134,7 @@ returns bigint
 language sql stable security definer
 set search_path = public, pg_temp
 as $$
-  select count(*)
+  select count(distinct sl.visitor_id)
   from public.site_visitor_logs sl
   where sl.visited_at >= date_trunc('day', now() at time zone 'Asia/Shanghai') at time zone 'Asia/Shanghai'
     and not exists (select 1 from public.profiles p where p.id = sl.user_id and p.is_admin = true);
@@ -165,6 +168,7 @@ as $$
     sl.visit_number
   from public.site_visitor_logs sl
   where sl.ip_address is not null
+    and not exists (select 1 from public.profiles p where p.id = sl.user_id and p.is_admin = true)
     and (
       p_scope = 'all'
       or (p_scope = 'today' and sl.visited_at >= date_trunc('day', now() at time zone 'Asia/Shanghai') at time zone 'Asia/Shanghai')
@@ -202,6 +206,7 @@ as $$
     sl.visit_number
   from public.site_visitor_logs sl
   where sl.ip_address ilike '%' || p_ip || '%'
+    and not exists (select 1 from public.profiles p where p.id = sl.user_id and p.is_admin = true)
   order by sl.visited_at desc
   limit 100;
 $$;

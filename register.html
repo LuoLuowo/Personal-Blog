@@ -17,7 +17,8 @@
     <section class="auth-card glass-card">
       <a class="brand" href="./index.html"><span class="brand-mark" data-site-logo>罗</span><span data-site-name>小罗Blog</span></a>
       <div><p class="eyebrow">CREATE ACCOUNT</p><h1>注册账号</h1><p>注册后可以进入后台管理内容。</p></div>
-      <form class="auth-form" data-auth-form="register">
+      <form class="auth-form" method="post" action="./register.html" data-auth-form="register">
+        <label><span>昵称</span><input name="displayName" type="text" autocomplete="nickname" maxlength="24" required placeholder="请输入昵称"></label>
         <label><span>邮箱</span><input name="email" type="email" autocomplete="email" required placeholder="you@example.com"></label>
         <label><span>密码</span><input name="password" type="password" autocomplete="new-password" required placeholder="至少 6 位密码"></label>
         <label><span>确认密码</span><input name="confirmPassword" type="password" autocomplete="new-password" required placeholder="再次输入密码"></label>
