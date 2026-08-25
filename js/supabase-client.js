@@ -249,7 +249,7 @@
     try {
       const { data } = await client.auth.getUser();
       const user = data?.user;
-      if (!user) { cachedUserInfo = { userId: null, userName: null }; userInfoCacheTime = now; return cachedUserInfo; }
+      if (!user) { cachedUserInfo = { userId: null, userName: null, isAdmin: false }; userInfoCacheTime = now; return cachedUserInfo; }
       const { data: profile } = await client.from("profiles")
         .select("display_name, is_admin")
         .eq("id", user.id)
@@ -262,7 +262,7 @@
       userInfoCacheTime = now;
       return cachedUserInfo;
     } catch (_) {
-      cachedUserInfo = { userId: null, userName: null };
+      cachedUserInfo = { userId: null, userName: null, isAdmin: false };
       userInfoCacheTime = now;
       return cachedUserInfo;
     }
@@ -382,26 +382,35 @@
       if (!client) return;
       const results = await Promise.allSettled([fetchIpInfo(), getCurrentUserInfo()]);
       const ipInfo = results[0].status === "fulfilled" ? results[0].value : { ip: "", location: "" };
-      const userInfo = results[1].status === "fulfilled" ? results[1].value : { userId: null, userName: null };
-      await Promise.allSettled([
-        ...(userInfo.isAdmin ? [] : [client.from("page_views").insert({ page_path: pagePath, user_agent: navigator.userAgent })]),
-        client.rpc("record_site_presence", {
-          p_visitor_id: getVisitorId(),
-          p_page_path: pagePath,
-          p_ip_address: ipInfo.ip || null,
-          p_ip_location: ipInfo.location || null,
-          p_user_id: userInfo.userId || null,
-          p_user_name: userInfo.userName || null,
-          p_increment_count: !userInfo.isAdmin
-        })
-      ]);
+      const userInfo = results[1].status === "fulfilled" ? results[1].value : { userId: null, userName: null, isAdmin: false };
+      // Presence and visit logs are separate backend concerns. Do not hide an
+      // RPC failure behind Promise.allSettled: otherwise the online list can
+      // update while today's/history/repeat lists silently stay empty.
+      if (!userInfo.isAdmin) {
+        const { error: viewError } = await client.from("page_views").insert({ page_path: pagePath, user_agent: navigator.userAgent });
+        if (viewError) console.warn("Page view record failed:", viewError.message);
+      }
+      const { error } = await client.rpc("record_site_presence", {
+        p_visitor_id: getVisitorId(),
+        p_page_path: pagePath,
+        p_ip_address: ipInfo.ip || null,
+        p_ip_location: ipInfo.location || null,
+        p_user_id: userInfo.userId || null,
+        p_user_name: userInfo.userName || null,
+        p_increment_count: !Boolean(userInfo.isAdmin)
+      });
+      if (error) {
+        console.warn("Visitor visit record failed. Run supabase/repair-anonymous-visitor-logs.sql:", error.message);
+        return false;
+      }
+      return true;
     },
 
     async heartbeatPresence(pagePath) {
       if (!client) return;
       const results = await Promise.allSettled([fetchIpInfo(), getCurrentUserInfo()]);
       const ipInfo = results[0].status === "fulfilled" ? results[0].value : { ip: "", location: "" };
-      const userInfo = results[1].status === "fulfilled" ? results[1].value : { userId: null, userName: null };
+      const userInfo = results[1].status === "fulfilled" ? results[1].value : { userId: null, userName: null, isAdmin: false };
       const { error } = await client.rpc("record_site_presence", {
         p_visitor_id: getVisitorId(),
         p_page_path: pagePath,
