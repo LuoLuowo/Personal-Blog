@@ -33,6 +33,14 @@
       try { isAdmin = Boolean((await api.getProfile(session.user.id))?.is_admin); } catch (_) {}
     }
 
+    // PJAX may finish a second navigation while the session/profile requests
+    // above are still pending. Never bind the old game instance to a detached
+    // canvas or to controls from the new page.
+    if (!canvas.isConnected || document.querySelector("[data-snake-canvas]") !== canvas) {
+      canvas.dataset.snakeBooting = "";
+      return;
+    }
+
     canvas.dataset.snakeReady = "true";
     canvas.dataset.snakeBooting = "";
     const ctx = canvas.getContext("2d");

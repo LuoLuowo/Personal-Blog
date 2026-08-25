@@ -23,7 +23,10 @@
     mediaRefreshNonce: 0,
     mediaRefreshPromise: null,
     mediaLastRefreshedAt: 0,
-    notesLoadVersion: 0
+    notesLoadVersion: 0,
+    notesReturnOpen: false,
+    navigationVersion: 0,
+    navigationController: null
   };
 
   const $ = (selector, root = document) => root.querySelector(selector);
@@ -1455,7 +1458,8 @@
     }
     migrateLegacyUserData();
     clearOversizedSettings();
-    resetPublicView();
+    // Auth refreshes are frequent (token renewal, likes, comments and profile
+    // updates). They must never clear the already loaded blog content.
     state.sessionLoaded = true;
     applyAuthUI();
     return session;
@@ -1780,7 +1784,7 @@
           ${post.attachments?.length ? `<p class="article-attachment-hint">含 ${post.attachments.length} 个附件，进入详情可下载</p>` : ""}
           <div class="article-card-footer">
             <div class="article-meta"><span class="article-card-date">${formatPostDate(post.publishedAt)}</span><span class="article-card-author">${escapeHtml(post.author)}</span></div>
-            <div class="article-card-stats" data-post-card-id="${escapeHtml(post.id)}"><span data-post-card-comments>评论 0</span><span data-post-card-likes>点赞 0</span><span data-post-card-views>阅读 0</span><span class="article-word-count">${wordCount}字</span></div>
+            <div class="article-card-stats" data-post-card-id="${escapeHtml(post.id)}"><span data-post-card-likes>点赞 0</span><span data-post-card-views>阅读 0</span><span class="article-word-count">${wordCount}字</span></div>
           </div>
         </div>
       </article>
@@ -3208,9 +3212,10 @@
         const engagement = await api.getPostEngagementSummary(post.id);
         const target = scope.querySelector(`[data-post-card-id="${post.id}"]`);
         if (!target) return;
-        $("[data-post-card-views]", target).textContent = `阅读 ${engagement.views}`;
-        $("[data-post-card-likes]", target).textContent = `点赞 ${engagement.likes}`;
-        $("[data-post-card-comments]", target).textContent = `评论 ${engagement.comments}`;
+        const views = $("[data-post-card-views]", target);
+        const likes = $("[data-post-card-likes]", target);
+        if (views) views.textContent = `阅读 ${engagement.views}`;
+        if (likes) likes.textContent = `点赞 ${engagement.likes}`;
       } catch (error) { console.warn("Post card engagement load failed:", error.message); }
     });
   }
@@ -3733,7 +3738,10 @@
     document.body.dataset.quickNotesBound = "true";
     document.addEventListener("click", (event) => {
       if (!event.target.closest("[data-open-notes]")) return;
-      if (state.isAdmin) openNotesDesk();
+      if (state.isAdmin) {
+        state.notesReturnOpen = true;
+        openNotesDesk();
+      }
     });
   }
 
@@ -3765,6 +3773,7 @@
       document.body.appendChild(modal);
       bindNotesDesk(modal);
     }
+    state.notesReturnOpen = true;
     modal.classList.add("open");
     const loadVersion = String(++state.notesLoadVersion);
     modal.dataset.notesLoadVersion = loadVersion;
@@ -4116,7 +4125,7 @@
     const menu = document.createElement("div");
     menu.className = "notes-context-menu";
     menu.dataset.notesContextMenu = "";
-    const note = data.notes.find((item) => item.id === noteId);
+    const note = data.notes.find((item) => String(item.id) === String(noteId));
     menu.style.left = `${Math.min(clientX, window.innerWidth - 205)}px`;
     menu.style.top = `${Math.min(clientY, window.innerHeight - 96)}px`;
     menu.innerHTML = `<button type="button" data-notes-context-pin="${escapeHtml(noteId)}">${note?.isPinned ? "取消置顶" : "置顶笔记"}</button><button type="button" data-notes-context-delete="${escapeHtml(noteId)}">删除笔记</button>`;
@@ -4199,17 +4208,23 @@
   }
 
   function bindNotesDesk(modal) {
-    $all("[data-notes-desk-close]", modal).forEach((button) => { button.onclick = () => modal.classList.remove("open"); });
+    $all("[data-notes-desk-close]", modal).forEach((button) => {
+      button.onclick = () => {
+        state.notesReturnOpen = false;
+        modal.classList.remove("open");
+        $("[data-notes-context-menu]", modal)?.remove();
+      };
+    });
     $("[data-notes-search]", modal).addEventListener("input", () => renderNotesList(modal));
-    modal.addEventListener("mousedown", (event) => {
-      if (event.button !== 0) return;
-      const body = event.target.closest?.("[data-notes-body]");
-      if (!body || !modal.contains(body)) return;
-      // 点击盒子块内任何区域（含 padding/边框）都不抢走 textarea 焦点
-      if (event.target.closest(".note-box-block")) return;
-      body.focus({ preventScroll: true });
+    modal.addEventListener("pointerdown", (event) => {
+      const menu = $("[data-notes-context-menu]", modal);
+      if (menu && !event.target.closest("[data-notes-context-menu]")) menu.remove();
     });
     modal.addEventListener("keydown", (event) => {
+      if (event.key === "Escape" && $("[data-notes-context-menu]", modal)) {
+        $("[data-notes-context-menu]", modal).remove();
+        return;
+      }
       if (!event.target.closest("[data-notes-editor]")) return;
       if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "s") {
         event.preventDefault();
@@ -4338,6 +4353,392 @@
           await saveActiveNote(modal);
         }
       } catch (error) { showCloudError(error); }
+    });
+  }
+
+  // Rebuilt notes desk: deliberately isolated from the retired rich-note
+  // experiment above. The old editor mixed nested contenteditables, floating
+  // controls and delegated pointer handlers, which could steal focus while
+  // typing. This version owns one editable surface only.
+  function notePlainText(value) {
+    const holder = document.createElement("div");
+    holder.innerHTML = String(value || "");
+    return (holder.textContent || "").replace(/\u00a0/g, " ").trim();
+  }
+
+  function sanitizeNoteHtml(value) {
+    const holder = document.createElement("div");
+    holder.innerHTML = String(value || "");
+    holder.querySelectorAll("script,style,iframe,object,embed,svg,math").forEach((node) => node.remove());
+    const allowed = new Set(["A", "B", "STRONG", "U", "BR", "P", "DIV", "OL", "UL", "LI"]);
+    [...holder.querySelectorAll("*")].reverse().forEach((node) => {
+      if (!allowed.has(node.tagName)) {
+        node.replaceWith(...node.childNodes);
+        return;
+      }
+      if (node.tagName === "A") {
+        const href = node.getAttribute("href") || "";
+        if (!/^https?:\/\//i.test(href)) {
+          node.replaceWith(document.createTextNode(node.textContent || ""));
+          return;
+        }
+        node.replaceChildren(...node.childNodes);
+        node.setAttribute("href", href);
+        node.setAttribute("target", "_blank");
+        node.setAttribute("rel", "noopener noreferrer");
+      } else {
+        [...node.attributes].forEach((attribute) => node.removeAttribute(attribute.name));
+      }
+    });
+    return holder.innerHTML;
+  }
+
+  function noteEditorHtml(value) {
+    const source = String(value || "");
+    if (/<\/?(?:a|b|strong|u|br|p|div|ol|ul|li)(?:\s|>)/i.test(source)) return sanitizeNoteHtml(source);
+    return escapeHtml(source).replace(/\r?\n/g, "<br>");
+  }
+
+  function setNotesSaveState(modal, value) {
+    const target = $("[data-notes-save-state]", modal);
+    if (!target) return;
+    target.textContent = value;
+    target.dataset.state = value === "已保存" ? "saved" : value === "未保存" ? "dirty" : "saving";
+  }
+
+  function renderNotesList(modal) {
+    const list = $("[data-notes-desk-list]", modal);
+    if (!list) return;
+    const search = $("[data-notes-search]", modal)?.value.trim().toLowerCase() || "";
+    const activeId = String(modal.dataset.activeNoteId || "");
+    const notes = [...data.notes]
+      .filter((note) => `${note.title} ${notePlainText(note.body)}`.toLowerCase().includes(search))
+      .sort((a, b) => Number(Boolean(b.isPinned)) - Number(Boolean(a.isPinned)) || new Date(b.updatedAt || b.createdAt || 0) - new Date(a.updatedAt || a.createdAt || 0));
+    list.innerHTML = notes.map((note) => `<button class="notes-list-item${String(note.id) === activeId ? " active" : ""}" type="button" data-rebuilt-note-open="${escapeHtml(note.id)}"><strong>${note.isPinned ? '<i class="notes-pin-mark" title="已置顶" aria-label="已置顶">⌃</i>' : ""}${escapeHtml(note.title || "未命名笔记")}</strong><span>${escapeHtml(notePlainText(note.body) || "空白笔记")}</span><time>${new Date(note.updatedAt || note.createdAt || Date.now()).toLocaleDateString("zh-CN", { month: "numeric", day: "numeric" })}</time></button>`).join("") || '<p class="note-empty">还没有笔记，点击加号新建一条。</p>';
+  }
+
+  function noteAttachmentHtml(note) {
+    const attachments = Array.isArray(note?.attachments) ? note.attachments : [];
+    if (!attachments.length) return "";
+    return `<div class="notes-attachments"><strong>附件</strong>${attachments.map((file, index) => `<span class="notes-attachment"><a href="${escapeHtml(noteDownloadUrl(file))}" download="${escapeHtml(file.name || "attachment")}" target="_blank" rel="noopener">下载 ${escapeHtml(file.name || "附件")}</a><button type="button" data-rebuilt-note-file-delete="${index}" aria-label="删除附件">×</button></span>`).join("")}</div>`;
+  }
+
+  function renderNotesDesk(modal) {
+    const active = data.notes.find((note) => String(note.id) === String(modal.dataset.activeNoteId)) || null;
+    renderNotesList(modal);
+    const editor = $("[data-notes-editor]", modal);
+    if (!editor) return;
+    if (!active) {
+      editor.innerHTML = '<div class="notes-empty-editor"><strong>还没有选中笔记</strong><p>点击左上角加号，新建一条笔记。</p></div>';
+      return;
+    }
+    editor.innerHTML = `<header class="notes-editor-head"><input data-notes-title value="${escapeHtml(active.title || "")}" placeholder="笔记标题"><span class="notes-save-state" data-notes-save-state data-state="saved">已保存</span></header><div class="notes-editor-tools" role="toolbar" aria-label="笔记编辑工具"><button class="notes-tool-button" type="button" data-rebuilt-note-bold title="加粗 Ctrl+B"><b>B</b></button><button class="notes-tool-button" type="button" data-rebuilt-note-underline title="下划线 Ctrl+U"><u>U</u></button><button class="notes-tool-button" type="button" data-rebuilt-note-link title="添加链接">链接</button></div><div class="notes-editor-body" data-notes-body contenteditable="true" role="textbox" aria-multiline="true" spellcheck="true" data-placeholder="粘贴网址会自动识别为可点击链接…">${noteEditorHtml(active.body)}</div>${noteAttachmentHtml(active)}<footer><label class="notes-attach-button">添加附件<input type="file" multiple data-rebuilt-note-files></label><button class="primary-button small" type="button" data-rebuilt-note-save>立即保存</button></footer>`;
+    modal.dataset.notesDirty = "false";
+    setNotesSaveState(modal, "已保存");
+  }
+
+  function markNotesDirty(modal) {
+    if (!modal?.isConnected) return;
+    modal.dataset.notesDirty = "true";
+    modal.dataset.notesEditVersion = String(Number(modal.dataset.notesEditVersion || 0) + 1);
+    setNotesSaveState(modal, "未保存");
+    clearTimeout(Number(modal.dataset.notesAutosaveTimer || 0));
+    modal.dataset.notesAutosaveTimer = String(window.setTimeout(() => void saveActiveNote(modal), 800));
+  }
+
+  function createEditableLink(editor, label, href, savedRange = null) {
+    const selection = window.getSelection();
+    const range = savedRange || (selection?.rangeCount && editor.contains(selection.getRangeAt(0).commonAncestorContainer) ? selection.getRangeAt(0) : null);
+    const link = document.createElement("a");
+    link.href = href;
+    link.target = "_blank";
+    link.rel = "noopener noreferrer";
+    link.textContent = label;
+    if (range) {
+      range.deleteContents();
+      range.insertNode(link);
+      range.setStartAfter(link);
+      range.collapse(true);
+      selection.removeAllRanges();
+      selection.addRange(range);
+    } else {
+      editor.append(link);
+    }
+  }
+
+  function linkifyNotes(editor) {
+    if (!editor) return;
+    const caret = noteCaretOffset(editor);
+    const walker = document.createTreeWalker(editor, NodeFilter.SHOW_TEXT, {
+      acceptNode(node) { return node.parentElement?.closest("a") ? NodeFilter.FILTER_REJECT : NodeFilter.FILTER_ACCEPT; }
+    });
+    const nodes = [];
+    let node = walker.nextNode();
+    while (node) { if (/https?:\/\/[^\s<]+/i.test(node.textContent || "")) nodes.push(node); node = walker.nextNode(); }
+    nodes.forEach((textNode) => {
+      const fragment = document.createDocumentFragment();
+      (textNode.textContent || "").split(/(https?:\/\/[^\s<]+)/gi).forEach((part) => {
+        if (/^https?:\/\/[^\s<]+$/i.test(part)) {
+          const link = document.createElement("a");
+          link.href = part; link.target = "_blank"; link.rel = "noopener noreferrer"; link.textContent = part;
+          fragment.append(link);
+        } else fragment.append(document.createTextNode(part));
+      });
+      textNode.replaceWith(fragment);
+    });
+    restoreNoteCaret(editor, caret);
+  }
+
+  function openBasicNoteLinkDialog(modal, existingLink = null) {
+    const editor = $("[data-notes-body]", modal);
+    if (!editor) return;
+    const selection = window.getSelection();
+    const range = selection?.rangeCount && editor.contains(selection.getRangeAt(0).commonAncestorContainer) ? selection.getRangeAt(0).cloneRange() : null;
+    const selectedText = existingLink?.textContent?.trim() || range?.toString().trim() || "";
+    const dialog = document.createElement("form");
+    dialog.className = "notes-link-dialog";
+    dialog.dataset.rebuiltNotesLinkDialog = "";
+    dialog._notesRange = range;
+    dialog.innerHTML = `<strong>编辑超链接</strong><label>显示名称<input name="label" value="${escapeHtml(selectedText)}" placeholder="例如：我的网站" required></label><label>链接地址<input name="url" type="url" value="${escapeHtml(existingLink?.getAttribute("href") || "")}" placeholder="https://example.com" required></label><div><button type="button" data-rebuilt-note-link-cancel>取消</button><button class="primary-button small" type="submit">保存链接</button></div>`;
+    // Keep the link form at document level. As a child of the notes modal it
+    // can still sit inside the editor's stacking and delegated-event tree on
+    // some browsers, which makes the fields look open but not focusable.
+    document.body.append(dialog);
+    // The editor uses delegated pointer handlers. Keep the small dialog out
+    // of that event path so its native inputs retain focus on a normal click.
+    ["pointerdown", "mousedown", "click"].forEach((eventName) => dialog.addEventListener(eventName, (event) => event.stopPropagation()));
+    $("[data-rebuilt-note-link-cancel]", dialog)?.addEventListener("click", () => dialog.remove());
+    window.requestAnimationFrame(() => $("input[name='label']", dialog)?.focus({ preventScroll: true }));
+    dialog.addEventListener("submit", (event) => {
+      event.preventDefault();
+      const form = new FormData(dialog);
+      const label = String(form.get("label") || "").trim();
+      const url = String(form.get("url") || "").trim();
+      if (!label || !/^https?:\/\//i.test(url)) return;
+      if (existingLink?.isConnected) {
+        existingLink.href = url;
+        existingLink.textContent = label;
+        existingLink.title = url;
+      } else createEditableLink(editor, label, url, dialog._notesRange);
+      dialog.remove();
+      editor.focus();
+      markNotesDirty(modal);
+    });
+  }
+
+  async function saveActiveNote(modal, files = []) {
+    if (!modal?.isConnected || modal.dataset.notesOwnerId !== state.userId) return;
+    const active = data.notes.find((note) => String(note.id) === String(modal.dataset.activeNoteId));
+    if (!active) return;
+    if (modal.dataset.notesSaving === "true") { modal.dataset.notesSaveQueued = "true"; return; }
+    const titleInput = $("[data-notes-title]", modal);
+    const editor = $("[data-notes-body]", modal);
+    const changed = modal.dataset.notesDirty === "true" || files.length > 0;
+    if (!changed) return;
+    // Do not rewrite the editable DOM while the user is still typing. Replacing
+    // a URL text node during an autosave makes browsers recalculate the caret
+    // and can jump it back to the previous line. Links are normalized on blur
+    // instead, before the following save.
+    if (document.activeElement !== editor) linkifyNotes(editor);
+    const title = titleInput?.value.trim() || "未命名笔记";
+    const body = sanitizeNoteHtml(editor?.innerHTML || "");
+    const version = Number(modal.dataset.notesEditVersion || 0);
+    const noteId = active.id;
+    modal.dataset.notesSaving = "true";
+    setNotesSaveState(modal, files.length ? "正在上传附件…" : "保存中…");
+    try {
+      const uploaded = await Promise.all(files.map(async (file) => ({ name: file.name, url: await window.XiaoLuoSupabase.uploadFile(state.userId, "note-attachments", file) })));
+      const attachments = [...(active.attachments || []), ...uploaded];
+      await window.XiaoLuoSupabase.updateContent("notes", noteId, state.userId, { title, body, attachments, folder: "", is_pinned: Boolean(active.isPinned) });
+      const current = data.notes.find((note) => String(note.id) === String(noteId));
+      if (current) Object.assign(current, { title, body, attachments, updatedAt: new Date().toISOString() });
+      const changedAgain = Number(modal.dataset.notesEditVersion || 0) !== version;
+      modal.dataset.notesDirty = changedAgain ? "true" : "false";
+      setNotesSaveState(modal, changedAgain ? "未保存" : "已保存");
+      renderNotesList(modal);
+      if (uploaded.length && String(modal.dataset.activeNoteId) === String(noteId) && !changedAgain) renderNotesDesk(modal);
+    } catch (error) {
+      modal.dataset.notesDirty = "true";
+      setNotesSaveState(modal, "未保存");
+      showCloudError(error);
+    } finally {
+      modal.dataset.notesSaving = "false";
+      if (modal.dataset.notesSaveQueued === "true" || modal.dataset.notesDirty === "true") {
+        modal.dataset.notesSaveQueued = "false";
+        window.setTimeout(() => void saveActiveNote(modal), 160);
+      }
+    }
+  }
+
+  async function openNotesDesk() {
+    let modal = $("[data-notes-desk-modal]");
+    if (modal && modal.dataset.notesOwnerId !== state.userId) { modal.remove(); modal = null; }
+    if (!modal) {
+      modal = document.createElement("div");
+      modal.className = "modal notes-desk-modal";
+      modal.dataset.notesDeskModal = "";
+      modal.dataset.notesOwnerId = state.userId || "";
+      modal.innerHTML = '<button class="modal-backdrop" type="button" data-rebuilt-notes-close aria-label="关闭我的笔记"></button><section class="notes-desk glass-card" role="dialog" aria-modal="true" aria-label="我的笔记"><aside class="notes-sidebar"><div class="notes-sidebar-head"><strong>我的笔记</strong><button type="button" data-rebuilt-notes-new aria-label="新建笔记">+</button><button type="button" data-rebuilt-notes-close aria-label="关闭笔记">×</button></div><label class="notes-search"><span>⌕</span><input type="search" data-notes-search placeholder="搜索笔记"></label><div class="notes-list" data-notes-desk-list></div></aside><section class="notes-editor" data-notes-editor></section></section>';
+      document.body.append(modal);
+      bindNotesDesk(modal);
+    }
+    state.notesReturnOpen = true;
+    modal.classList.add("open");
+    const loadVersion = String(++state.notesLoadVersion);
+    modal.dataset.notesLoadVersion = loadVersion;
+    $("[data-notes-desk-list]", modal).innerHTML = '<p class="note-empty">正在加载笔记…</p>';
+    try {
+      const rows = await window.XiaoLuoSupabase.listContent("notes", state.userId);
+      if (!modal.isConnected || modal.dataset.notesLoadVersion !== loadVersion) return;
+      data.notes = rows.map((item) => ({ id: item.id, title: item.title || "", body: item.body || "", attachments: Array.isArray(item.attachments) ? item.attachments : [], isPinned: Boolean(item.is_pinned), createdAt: item.created_at || "", updatedAt: item.updated_at || item.created_at || "" }));
+      if (!data.notes.some((note) => String(note.id) === String(modal.dataset.activeNoteId))) modal.dataset.activeNoteId = String(data.notes[0]?.id || "");
+      renderNotesDesk(modal);
+    } catch (error) {
+      if (modal.isConnected && modal.dataset.notesLoadVersion === loadVersion) $("[data-notes-desk-list]", modal).innerHTML = '<p class="note-empty">笔记加载失败，请关闭后重试。</p>';
+      console.warn("Notes load failed:", error);
+    }
+  }
+
+  function showRebuiltNotesContextMenu(modal, noteId, clientX, clientY) {
+    $("[data-rebuilt-notes-menu]", modal)?.remove();
+    const note = data.notes.find((item) => String(item.id) === String(noteId));
+    if (!note) return;
+    const menu = document.createElement("div");
+    menu.className = "notes-context-menu";
+    menu.dataset.rebuiltNotesMenu = "";
+    menu.dataset.noteId = String(note.id);
+    menu.style.left = `${Math.min(clientX, window.innerWidth - 210)}px`;
+    menu.style.top = `${Math.min(clientY, window.innerHeight - 110)}px`;
+    menu.innerHTML = `<button type="button" data-rebuilt-note-pin>${note.isPinned ? "取消置顶笔记" : "置顶笔记"}</button><button type="button" data-rebuilt-note-delete>删除笔记</button>`;
+    modal.append(menu);
+  }
+
+  function bindNotesDesk(modal) {
+    $all("[data-rebuilt-notes-close]", modal).forEach((button) => {
+      button.addEventListener("click", () => {
+        state.notesReturnOpen = false;
+        modal.classList.remove("open");
+        $("[data-rebuilt-notes-link-dialog]")?.remove();
+      });
+    });
+    $("[data-notes-search]", modal).addEventListener("input", () => renderNotesList(modal));
+    modal.addEventListener("pointerdown", (event) => {
+      if (!event.target.closest("[data-rebuilt-notes-menu]")) $("[data-rebuilt-notes-menu]", modal)?.remove();
+      if (event.target.closest("[data-rebuilt-note-bold], [data-rebuilt-note-underline], [data-rebuilt-note-link]")) event.preventDefault();
+    });
+    modal.addEventListener("contextmenu", (event) => {
+      const item = event.target.closest("[data-rebuilt-note-open]");
+      if (!item) return;
+      event.preventDefault();
+      showRebuiltNotesContextMenu(modal, item.dataset.rebuiltNoteOpen, event.clientX, event.clientY);
+    });
+    modal.addEventListener("input", (event) => {
+      if (event.target.matches("[data-notes-title]") || event.target.matches("[data-notes-body]")) markNotesDirty(modal);
+    });
+    modal.addEventListener("paste", (event) => {
+      const editor = event.target.closest("[data-notes-body]");
+      if (!editor) return;
+      const pastedText = event.clipboardData?.getData("text/plain") || "";
+      if (!/https?:\/\/[^\s]+/i.test(pastedText)) return;
+      // Let the browser insert the text first, then turn pasted URLs into
+      // links while keeping the caret at the same text offset.
+      window.setTimeout(() => { if (editor.isConnected) { linkifyNotes(editor); markNotesDirty(modal); } }, 0);
+    });
+    modal.addEventListener("keydown", (event) => {
+      if (event.key === "Escape") {
+        const menu = $("[data-rebuilt-notes-menu]", modal);
+        if (menu) { menu.remove(); return; }
+      }
+      const editor = event.target.closest("[data-notes-body]");
+      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "s") { event.preventDefault(); void saveActiveNote(modal); return; }
+      if (!editor) return;
+      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "b") { event.preventDefault(); document.execCommand("bold"); markNotesDirty(modal); }
+      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "u") { event.preventDefault(); document.execCommand("underline"); markNotesDirty(modal); }
+    });
+    modal.addEventListener("blur", (event) => {
+      if (event.target.matches("[data-notes-body]")) { linkifyNotes(event.target); markNotesDirty(modal); }
+    }, true);
+    modal.addEventListener("click", async (event) => {
+      // Links live inside a contenteditable surface. Browsers treat a normal
+      // click there as caret placement instead of navigation, especially when
+      // the link has custom display text. Handle every saved note link here so
+      // both auto-detected URLs and custom-name links open consistently.
+      const noteLink = event.target.closest("[data-notes-body] a[href]");
+      if (noteLink) {
+        event.preventDefault();
+        event.stopPropagation();
+        const href = noteLink.getAttribute("href") || noteLink.href;
+        if (/^https?:\/\//i.test(href)) window.open(href, "_blank", "noopener,noreferrer");
+        return;
+      }
+      const pinButton = event.target.closest("[data-rebuilt-note-pin]");
+      if (pinButton) {
+        const note = data.notes.find((item) => String(item.id) === String(pinButton.closest("[data-rebuilt-notes-menu]")?.dataset.noteId));
+        if (!note) return;
+        try {
+          await window.XiaoLuoSupabase.updateContent("notes", note.id, state.userId, { is_pinned: !note.isPinned });
+          note.isPinned = !note.isPinned;
+          $("[data-rebuilt-notes-menu]", modal)?.remove();
+          renderNotesList(modal);
+        } catch (error) { showCloudError(error); }
+        return;
+      }
+      const deleteNoteButton = event.target.closest("[data-rebuilt-note-delete]");
+      if (deleteNoteButton) {
+        const note = data.notes.find((item) => String(item.id) === String(deleteNoteButton.closest("[data-rebuilt-notes-menu]")?.dataset.noteId));
+        $("[data-rebuilt-notes-menu]", modal)?.remove();
+        if (!note || !await confirmPublish("确认删除这条笔记？", "删除后无法恢复。", "确认删除")) return;
+        try {
+          await window.XiaoLuoSupabase.deleteContent("notes", note.id, state.userId);
+          await window.XiaoLuoSupabase.deleteFilesByPublicUrls?.((note.attachments || []).map((file) => file.url).filter(Boolean));
+          data.notes = data.notes.filter((item) => String(item.id) !== String(note.id));
+          modal.dataset.activeNoteId = String(data.notes[0]?.id || "");
+          renderNotesDesk(modal);
+        } catch (error) { showCloudError(error); }
+        return;
+      }
+      if (event.target.closest("[data-rebuilt-note-link-cancel]")) { $("[data-rebuilt-notes-link-dialog]")?.remove(); return; }
+      if (event.target.closest("[data-rebuilt-note-bold]")) { document.execCommand("bold"); $("[data-notes-body]", modal)?.focus(); markNotesDirty(modal); return; }
+      if (event.target.closest("[data-rebuilt-note-underline]")) { document.execCommand("underline"); $("[data-notes-body]", modal)?.focus(); markNotesDirty(modal); return; }
+      if (event.target.closest("[data-rebuilt-note-link]")) { openBasicNoteLinkDialog(modal); return; }
+      const open = event.target.closest("[data-rebuilt-note-open]");
+      if (open) {
+        const nextId = String(open.dataset.rebuiltNoteOpen);
+        if (nextId !== String(modal.dataset.activeNoteId)) {
+          await saveActiveNote(modal);
+          modal.dataset.activeNoteId = nextId;
+          renderNotesDesk(modal);
+        }
+        return;
+      }
+      if (event.target.closest("[data-rebuilt-notes-new]")) {
+        await saveActiveNote(modal);
+        const row = await window.XiaoLuoSupabase.addContent("notes", { user_id: state.userId, title: "未命名笔记", body: "", attachments: [], is_done: false, folder: "", is_pinned: false });
+        data.notes.unshift({ id: row.id, title: row.title || "未命名笔记", body: row.body || "", attachments: Array.isArray(row.attachments) ? row.attachments : [], isPinned: Boolean(row.is_pinned), createdAt: row.created_at || "", updatedAt: row.updated_at || row.created_at || "" });
+        modal.dataset.activeNoteId = String(row.id);
+        renderNotesDesk(modal);
+        $("[data-notes-title]", modal)?.focus();
+        return;
+      }
+      if (event.target.closest("[data-rebuilt-note-save]")) { await saveActiveNote(modal); return; }
+      const remove = event.target.closest("[data-rebuilt-note-file-delete]");
+      if (remove) {
+        const active = data.notes.find((note) => String(note.id) === String(modal.dataset.activeNoteId));
+        const index = Number(remove.dataset.rebuiltNoteFileDelete);
+        const file = active?.attachments?.[index];
+        if (!active || !file || !await confirmPublish("确认删除这个附件？", "删除后无法恢复。", "确认删除")) return;
+        const attachments = active.attachments.filter((_, itemIndex) => itemIndex !== index);
+        await window.XiaoLuoSupabase.updateContent("notes", active.id, state.userId, { attachments });
+        active.attachments = attachments;
+        await window.XiaoLuoSupabase.deleteFilesByPublicUrls?.([file.url]);
+        renderNotesDesk(modal);
+      }
+    });
+    modal.addEventListener("change", (event) => {
+      if (!event.target.matches("[data-rebuilt-note-files]")) return;
+      const files = [...event.target.files];
+      if (files.length) { modal.dataset.notesDirty = "true"; void saveActiveNote(modal, files); }
+      event.target.value = "";
     });
   }
 
@@ -4923,6 +5324,9 @@
         data.site.homeBackground.imageUrl = profile.home_background_url || "";
         data.site.contacts = profile.contacts;
         localStorage.setItem("xiaoluo-entry-loader-enabled", String(profile.contacts.entry_loader_enabled !== false));
+        // Let a changed setting take effect on the very next homepage visit,
+        // instead of being held back by this tab's previous entry marker.
+        sessionStorage.removeItem("xiaoluo-home-entry-seen");
         initBrand();
         alert("已保存，首页现在已经生效。");
       } catch (error) { showCloudError(error); }
@@ -5735,6 +6139,11 @@
     initGameDrawer();
     window.XiaoLuoMusicSyncUI?.();
     const page = pageName();
+    // Some mobile browsers report a desktop-sized layout viewport while the
+    // page is zoomed. Mark touch readers explicitly so the fixed desktop TOC
+    // can never capture the page's vertical swipe.
+    const isTouchReader = page === "article-detail" && (window.matchMedia?.("(pointer: coarse)")?.matches || window.innerWidth <= 720);
+    document.body.classList.toggle("article-touch-reading", isTouchReader);
     startWhisperUnreadPolling();
     updateWhisperUnreadBadge(page === "whispers");
     if (page === "home") renderHome();
@@ -5885,8 +6294,18 @@
   }
 
   async function navigate(url, push = true) {
-    destroyNotesDesk();
-    $all(".modal.open").forEach((modal) => modal.classList.remove("open"));
+    const navigationVersion = ++state.navigationVersion;
+    state.navigationController?.abort();
+    const navigationController = new AbortController();
+    state.navigationController = navigationController;
+    const notesModal = $("[data-notes-desk-modal]");
+    const notesWasOpen = Boolean(notesModal?.classList.contains("open"));
+    if (notesWasOpen) state.notesReturnOpen = true;
+    $("[data-notes-context-menu]", notesModal || document)?.remove();
+    notesModal?.classList.remove("open");
+    $all(".modal.open").forEach((modal) => {
+      if (!modal.matches("[data-notes-desk-modal]")) modal.classList.remove("open");
+    });
     const savingOverlay = $("[data-saving-overlay]");
     if (savingOverlay) savingOverlay.hidden = true;
     // 保存音乐状态，导航后强制恢复
@@ -5901,13 +6320,22 @@
     } : null;
     state.navigating = true;
 
-    const response = await fetch(url, { cache: "no-store" });
+    let response;
+    try {
+      response = await fetch(url, { cache: "no-store", signal: navigationController.signal });
+    } catch (error) {
+      if (error?.name === "AbortError") return;
+      state.navigating = false;
+      throw error;
+    }
+    if (navigationVersion !== state.navigationVersion) return;
     if (!response.ok) {
       state.navigating = false;
       window.location.href = url;
       return;
     }
     const html = await response.text();
+    if (navigationVersion !== state.navigationVersion) return;
     const nextDoc = new DOMParser().parseFromString(html, "text/html");
     const nextMain = nextDoc.querySelector("main");
     const currentMain = document.querySelector("main");
@@ -5951,6 +6379,7 @@
 
     // 渲染页面
     requestAnimationFrame(() => {
+      if (navigationVersion !== state.navigationVersion) return;
       renderCurrentPage();
       // The home cards are data-driven. After a PJAX main replacement, give
       // the new home container one extra frame to settle before hydrating it.
@@ -5963,7 +6392,18 @@
       setTimeout(restoreMusic, 0);
       setTimeout(restoreMusic, 100);
       setTimeout(restoreMusic, 300);
-      setTimeout(() => { restoreMusic(); state.navigating = false; }, 600);
+      setTimeout(() => {
+        if (navigationVersion !== state.navigationVersion) return;
+        restoreMusic();
+        state.navigating = false;
+        state.navigationController = null;
+      }, 600);
+      // A notes modal can only be created through the admin-only entry. Its
+      // existing owner marker is sufficient here and also makes restoration
+      // independent of a slow auth refresh after returning home.
+      if (pageName() === "home" && state.notesReturnOpen && notesModal?.isConnected) {
+        notesModal.classList.add("open");
+      }
     });
   }
 
@@ -6120,6 +6560,9 @@
   initPostDeleteActions();
   initWebSearch();
   watchAuthState();
+  // Clear bundled prototype rows once during startup. Cloud content is loaded
+  // immediately below and remains intact across later auth refresh events.
+  resetPublicView();
   const entryLoaderEnabled = localStorage.getItem("xiaoluo-entry-loader-enabled") !== "false";
   if (pageName() === "home" && entryLoaderEnabled && !sessionStorage.getItem("xiaoluo-home-entry-seen")) {
     sessionStorage.setItem("xiaoluo-home-entry-seen", "true");

@@ -41,6 +41,11 @@
   if (session && api?.getProfile) {
     try { const profile = await api.getProfile(session.user.id); isAdmin = Boolean(profile?.is_admin); } catch (e) { console.warn("Admin check failed:", e); }
   }
+  // Ignore a stale async bootstrap after PJAX has already removed this game.
+  if (!canvas.isConnected || document.querySelector("[data-jump-canvas]") !== canvas) {
+    canvas.dataset.gameBooting = "";
+    return;
+  }
   canvas.dataset.gameReady = "true";
   canvas.dataset.gameBooting = "";
   const ctx = canvas.getContext("2d");
