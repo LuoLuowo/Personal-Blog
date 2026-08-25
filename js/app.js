@@ -192,12 +192,16 @@
       }
       if (["ul", "ol", "li"].includes(tag)) {
         const element = document.createElement(tag);
+        const align = node.style.textAlign || node.getAttribute("align") || "";
+        if (["left", "center", "right"].includes(align)) element.style.textAlign = align;
         [...node.childNodes].forEach((child) => appendClean(child, element));
         parent.append(element);
         return;
       }
       if (["h1", "h2", "h3", "h4", "h5", "blockquote"].includes(tag)) {
         const element = document.createElement(tag);
+        const align = node.style.textAlign || node.getAttribute("align") || "";
+        if (["left", "center", "right"].includes(align)) element.style.textAlign = align;
         [...node.childNodes].forEach((child) => appendClean(child, element));
         parent.append(element);
         return;
@@ -252,6 +256,8 @@
         // Keep each editor block as its own block on the reading page. Flattening
         // div/p here made a heading merge into the following line after saving.
         const element = document.createElement(tag);
+        const align = node.style.textAlign || node.getAttribute("align") || "";
+        if (["left", "center", "right"].includes(align)) element.style.textAlign = align;
         [...node.childNodes].forEach((child) => appendClean(child, element));
         parent.append(element);
         return;
@@ -351,12 +357,13 @@
     heading.title = "设置标题层级";
     heading.innerHTML = '<option value="p">正文</option><option value="h1">一级标题</option><option value="h2">二级标题</option><option value="h3">三级标题</option><option value="h4">四级标题</option><option value="h5">五级标题</option>';
     group.append(heading);
-    [["orderedList", "1.", "有序列表"], ["unorderedList", "•", "无序列表"], ["quote", "❝", "插入引用"], ["codeBlock", "</>", "插入代码块"]].forEach(([action, label, title]) => {
+    [["alignLeft", "≡", "居左 Ctrl+L"], ["alignCenter", "≡", "居中 Ctrl+E"], ["alignRight", "≡", "居右 Ctrl+R"], ["orderedList", "1.", "有序列表"], ["unorderedList", "•", "无序列表"], ["quote", "❝", "插入引用"], ["codeBlock", "</>", "插入代码块"]].forEach(([action, label, title]) => {
       const button = document.createElement("button");
       button.type = "button";
       button.dataset.formatAction = action;
       button.title = title;
       button.textContent = label;
+      if (action.startsWith("align")) button.className = `format-align-button ${action}`;
       if (action === "codeBlock") button.className = "format-code-button";
       group.append(button);
     });
@@ -641,6 +648,9 @@
       '<button type="button" data-floating-action="orderedList" title="有序列表">1.</button>',
       '<button type="button" data-floating-action="unorderedList" title="无序列表">•</button>',
       '<button type="button" data-floating-action="codeBlock" title="代码块">&lt;/&gt;</button>',
+      '<button type="button" data-floating-action="alignLeft" title="居左 Ctrl+L">≡</button>',
+      '<button type="button" data-floating-action="alignCenter" title="居中 Ctrl+E">≡</button>',
+      '<button type="button" data-floating-action="alignRight" title="居右 Ctrl+R">≡</button>',
       '<button type="button" data-floating-heading="h1" title="一级标题">H1</button>',
       '<button type="button" data-floating-heading="h2" title="二级标题">H2</button>',
       '<button type="button" data-floating-heading="h3" title="三级标题">H3</button>',
@@ -730,6 +740,9 @@
             else if (action === "underline") { document.execCommand("styleWithCSS", false, false); document.execCommand("underline"); }
             else if (action === "orderedList") document.execCommand("insertOrderedList");
             else if (action === "unorderedList") document.execCommand("insertUnorderedList");
+            else if (action === "alignLeft") document.execCommand("justifyLeft");
+            else if (action === "alignCenter") document.execCommand("justifyCenter");
+            else if (action === "alignRight") document.execCommand("justifyRight");
             else if (action === "quote") {
               const quote = elementForRange(range, "blockquote");
               document.execCommand("formatBlock", false, quote ? "div" : "blockquote");
@@ -794,6 +807,15 @@
           if (event.key.toLowerCase() === "u") {
             if (!range || range.collapsed) return;
             event.preventDefault(); document.execCommand("styleWithCSS", false, false); document.execCommand("underline"); input.dispatchEvent(new Event("input", { bubbles: true })); rememberSelection();
+          }
+          if (event.key.toLowerCase() === "l") {
+            event.preventDefault(); restoreEditorSelection(input, range); document.execCommand("justifyLeft"); input.dispatchEvent(new Event("input", { bubbles: true })); rememberSelection();
+          }
+          if (event.key.toLowerCase() === "e") {
+            event.preventDefault(); restoreEditorSelection(input, range); document.execCommand("justifyCenter"); input.dispatchEvent(new Event("input", { bubbles: true })); rememberSelection();
+          }
+          if (event.key.toLowerCase() === "r") {
+            event.preventDefault(); restoreEditorSelection(input, range); document.execCommand("justifyRight"); input.dispatchEvent(new Event("input", { bubbles: true })); rememberSelection();
           }
         });
         input.addEventListener("dblclick", (event) => {
@@ -4387,7 +4409,12 @@
         node.setAttribute("target", "_blank");
         node.setAttribute("rel", "noopener noreferrer");
       } else {
-        [...node.attributes].forEach((attribute) => node.removeAttribute(attribute.name));
+        const keepDividerClass = node.tagName === "DIV" && node.classList.contains("note-divider");
+        const textAlign = ["left", "center", "right"].includes(node.style.textAlign) ? node.style.textAlign : "";
+        [...node.attributes].forEach((attribute) => {
+          if (!(keepDividerClass && attribute.name === "class")) node.removeAttribute(attribute.name);
+        });
+        if (textAlign) node.style.textAlign = textAlign;
       }
     });
     return holder.innerHTML;
@@ -4432,7 +4459,7 @@
       editor.innerHTML = '<div class="notes-empty-editor"><strong>还没有选中笔记</strong><p>点击左上角加号，新建一条笔记。</p></div>';
       return;
     }
-    editor.innerHTML = `<header class="notes-editor-head"><input data-notes-title value="${escapeHtml(active.title || "")}" placeholder="笔记标题"><span class="notes-save-state" data-notes-save-state data-state="saved">已保存</span></header><div class="notes-editor-tools" role="toolbar" aria-label="笔记编辑工具"><button class="notes-tool-button" type="button" data-rebuilt-note-bold title="加粗 Ctrl+B"><b>B</b></button><button class="notes-tool-button" type="button" data-rebuilt-note-underline title="下划线 Ctrl+U"><u>U</u></button><button class="notes-tool-button" type="button" data-rebuilt-note-link title="添加链接">链接</button></div><div class="notes-editor-body" data-notes-body contenteditable="true" role="textbox" aria-multiline="true" spellcheck="true" data-placeholder="粘贴网址会自动识别为可点击链接…">${noteEditorHtml(active.body)}</div>${noteAttachmentHtml(active)}<footer><label class="notes-attach-button">添加附件<input type="file" multiple data-rebuilt-note-files></label><button class="primary-button small" type="button" data-rebuilt-note-save>立即保存</button></footer>`;
+    editor.innerHTML = `<header class="notes-editor-head"><input data-notes-title value="${escapeHtml(active.title || "")}" placeholder="笔记标题"><span class="notes-save-state" data-notes-save-state data-state="saved">已保存</span></header><div class="notes-editor-tools" role="toolbar" aria-label="笔记编辑工具"><button class="notes-tool-button" type="button" data-rebuilt-note-bold title="加粗 Ctrl+B"><b>B</b></button><button class="notes-tool-button" type="button" data-rebuilt-note-underline title="下划线 Ctrl+U"><u>U</u></button><button class="notes-tool-button" type="button" data-rebuilt-note-align="left" title="左对齐">左</button><button class="notes-tool-button" type="button" data-rebuilt-note-align="center" title="居中">中</button><button class="notes-tool-button" type="button" data-rebuilt-note-align="right" title="右对齐">右</button><button class="notes-tool-button" type="button" data-rebuilt-note-link title="添加链接">链接</button><button class="notes-tool-button" type="button" data-rebuilt-note-divider title="插入带文字的分割线">分割线</button></div><div class="notes-editor-body" data-notes-body contenteditable="true" role="textbox" aria-multiline="true" spellcheck="true" data-placeholder="粘贴网址会自动识别为可点击链接…">${noteEditorHtml(active.body)}</div>${noteAttachmentHtml(active)}<footer><label class="notes-attach-button">添加附件<input type="file" multiple data-rebuilt-note-files></label><button class="primary-button small" type="button" data-rebuilt-note-save>立即保存</button></footer>`;
     modal.dataset.notesDirty = "false";
     setNotesSaveState(modal, "已保存");
   }
@@ -4464,6 +4491,31 @@
     } else {
       editor.append(link);
     }
+  }
+
+  function insertNoteDivider(editor) {
+    if (!editor) return;
+    const selection = window.getSelection();
+    const range = selection?.rangeCount && editor.contains(selection.getRangeAt(0).commonAncestorContainer)
+      ? selection.getRangeAt(0).cloneRange()
+      : null;
+    const divider = document.createElement("div");
+    divider.className = "note-divider";
+    divider.textContent = "分割文字";
+    const trailingLine = document.createElement("div");
+    trailingLine.append(document.createElement("br"));
+    if (range) {
+      range.deleteContents();
+      range.insertNode(trailingLine);
+      range.insertNode(divider);
+      range.setStart(trailingLine, 0);
+      range.collapse(true);
+      selection.removeAllRanges();
+      selection.addRange(range);
+    } else {
+      editor.append(divider, trailingLine);
+    }
+    editor.focus();
   }
 
   function linkifyNotes(editor) {
@@ -4624,7 +4676,16 @@
     $("[data-notes-search]", modal).addEventListener("input", () => renderNotesList(modal));
     modal.addEventListener("pointerdown", (event) => {
       if (!event.target.closest("[data-rebuilt-notes-menu]")) $("[data-rebuilt-notes-menu]", modal)?.remove();
-      if (event.target.closest("[data-rebuilt-note-bold], [data-rebuilt-note-underline], [data-rebuilt-note-link]")) event.preventDefault();
+      const divider = event.target.closest(".note-divider");
+      if (divider) {
+        const rect = divider.getBoundingClientRect();
+        // Only the last part of the right-hand line arms whole-divider
+        // deletion. Clicking the centered label remains ordinary text editing.
+        modal._notesDividerDelete = event.clientX >= rect.right - Math.min(42, rect.width * .18) ? divider : null;
+      } else {
+        modal._notesDividerDelete = null;
+      }
+      if (event.target.closest("[data-rebuilt-note-bold], [data-rebuilt-note-underline], [data-rebuilt-note-align], [data-rebuilt-note-link], [data-rebuilt-note-divider]")) event.preventDefault();
     });
     modal.addEventListener("contextmenu", (event) => {
       const item = event.target.closest("[data-rebuilt-note-open]");
@@ -4644,6 +4705,30 @@
       // links while keeping the caret at the same text offset.
       window.setTimeout(() => { if (editor.isConnected) { linkifyNotes(editor); markNotesDirty(modal); } }, 0);
     });
+    // Capture note shortcuts before the page-level handlers and browser
+    // defaults see them. The old bubbling listener below still handles the
+    // normal editor keys; handled shortcuts stop here intentionally.
+    modal.addEventListener("keydown", (event) => {
+      if (!(event.ctrlKey || event.metaKey)) return;
+      const editable = event.target.closest("[data-notes-title], [data-notes-body]");
+      if (!editable) return;
+      const key = event.key.toLowerCase();
+      if (!new Set(["s", "b", "u"]).has(key)) return;
+
+      event.preventDefault();
+      event.stopImmediatePropagation();
+
+      if (key === "s") {
+        void saveActiveNote(modal);
+        return;
+      }
+
+      // Formatting applies only to the rich-text body.
+      if (!editable.matches("[data-notes-body]")) return;
+      if (key === "b") document.execCommand("bold");
+      if (key === "u") document.execCommand("underline");
+      if (key === "b" || key === "u") markNotesDirty(modal);
+    }, true);
     modal.addEventListener("keydown", (event) => {
       if (event.key === "Escape") {
         const menu = $("[data-rebuilt-notes-menu]", modal);
@@ -4652,6 +4737,23 @@
       const editor = event.target.closest("[data-notes-body]");
       if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "s") { event.preventDefault(); void saveActiveNote(modal); return; }
       if (!editor) return;
+      const selection = window.getSelection();
+      const divider = modal._notesDividerDelete;
+      if (divider?.isConnected && (event.key === "Backspace" || event.key === "Delete")) {
+        event.preventDefault();
+        const nextLine = divider.nextElementSibling;
+        divider.remove();
+        modal._notesDividerDelete = null;
+        if (nextLine) {
+          const range = document.createRange();
+          range.selectNodeContents(nextLine);
+          range.collapse(true);
+          selection.removeAllRanges();
+          selection.addRange(range);
+        }
+        markNotesDirty(modal);
+        return;
+      }
       if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "b") { event.preventDefault(); document.execCommand("bold"); markNotesDirty(modal); }
       if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "u") { event.preventDefault(); document.execCommand("underline"); markNotesDirty(modal); }
     });
@@ -4700,7 +4802,16 @@
       if (event.target.closest("[data-rebuilt-note-link-cancel]")) { $("[data-rebuilt-notes-link-dialog]")?.remove(); return; }
       if (event.target.closest("[data-rebuilt-note-bold]")) { document.execCommand("bold"); $("[data-notes-body]", modal)?.focus(); markNotesDirty(modal); return; }
       if (event.target.closest("[data-rebuilt-note-underline]")) { document.execCommand("underline"); $("[data-notes-body]", modal)?.focus(); markNotesDirty(modal); return; }
+      const alignButton = event.target.closest("[data-rebuilt-note-align]");
+      if (alignButton) {
+        const commands = { left: "justifyLeft", center: "justifyCenter", right: "justifyRight" };
+        document.execCommand(commands[alignButton.dataset.rebuiltNoteAlign] || "justifyLeft");
+        $("[data-notes-body]", modal)?.focus();
+        markNotesDirty(modal);
+        return;
+      }
       if (event.target.closest("[data-rebuilt-note-link]")) { openBasicNoteLinkDialog(modal); return; }
+      if (event.target.closest("[data-rebuilt-note-divider]")) { insertNoteDivider($("[data-notes-body]", modal)); markNotesDirty(modal); return; }
       const open = event.target.closest("[data-rebuilt-note-open]");
       if (open) {
         const nextId = String(open.dataset.rebuiltNoteOpen);
