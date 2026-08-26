@@ -622,8 +622,23 @@ widespread = 广泛的`;
     };
     setSkin(skin); updateHud(); frame = requestAnimationFrame(loop);
     speedSelect.addEventListener("change", () => { speedKey = speedSelect.value; updateHud(); }, { signal: events.signal });
-    startButton.addEventListener("click", reset, { signal: events.signal });
-    stageAction.addEventListener("click", () => { if (ended || !words.length) return reset(); pauseButton.click(); }, { signal: events.signal });
+    // 开始/重新开始按钮使用委托，避免 SPA 重绘后按钮仍引用旧节点。
+    const startGameFromControl = (event) => {
+      const button = event.target.closest("[data-wordfall-start], [data-wordfall-stage-action]");
+      if (!button || !arena.contains(button)) return;
+      event.preventDefault();
+      event.stopPropagation();
+      if (button.matches("[data-wordfall-stage-action]") && !ended && words.length) {
+        pauseButton.click();
+        return;
+      }
+      reset();
+    };
+    arena.addEventListener("click", startGameFromControl, { signal: events.signal });
+    startButton?.addEventListener("click", (event) => {
+      event.preventDefault();
+      reset();
+    }, { signal: events.signal });
     pauseButton.addEventListener("click", () => { if (ended) return reset(); paused = !paused; pauseButton.textContent = paused ? "继续" : "暂停"; stageAction.hidden = !paused; stageAction.textContent = "继续游戏"; setMessage(paused ? "已暂停，点击继续或按空格恢复" : "继续训练"); if (!paused) input.focus(); }, { signal: events.signal });
     skinToggle.addEventListener("click", () => { skinModal.hidden = false; skinModal.classList.add("open"); }, { signal: events.signal });
     document.querySelectorAll("[data-wordfall-skin-close]").forEach((button) => button.addEventListener("click", () => { skinModal.classList.remove("open"); skinModal.hidden = true; }, { signal: events.signal }));

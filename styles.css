@@ -315,6 +315,7 @@ body:not(.dark-mode).wordfall-page .wordfall-skin-modal .wordfall-skin-picker bu
   .game-leaderboard:not(.wordfall-leaderboard) { grid-column: 3; grid-row: 1 / span 2; }
 }
 
+
 /* 单词下落进阶激光：每套皮肤都有独立光束纹理、命中光晕与粒子轨迹。 */
 .wordfall-skin-picker button.is-advanced { border-color: color-mix(in srgb, var(--skin-color) 38%, transparent); background: linear-gradient(100deg, color-mix(in srgb, var(--skin-color) 13%, transparent), transparent); }
 .wordfall-skin-picker button strong { display: inline-flex; align-items: center; gap: 7px; }.wordfall-skin-picker button em { padding: 2px 5px; border: 1px solid color-mix(in srgb, var(--skin-color) 60%, transparent); border-radius: 999px; color: var(--skin-color); font-size: 9px; font-style: normal; letter-spacing: .3px; }

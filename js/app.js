@@ -3083,6 +3083,21 @@
       </nav>
     `;
     highlightCodeBlocks(wrap);
+    // 目录使用详情容器内的直接锚点滚动，避免被站内 PJAX 导航拦截。
+    const outline = $(".article-outline", wrap);
+    outline?.addEventListener("click", (event) => {
+      const link = event.target.closest("a[href^='#']");
+      if (!link || !outline.contains(link)) return;
+      const rawId = link.getAttribute("href").slice(1);
+      const targetId = decodeURIComponent(rawId);
+      const target = document.getElementById(targetId);
+      if (!target) return;
+      event.preventDefault();
+      const headerOffset = ($(".site-header")?.getBoundingClientRect().height || 0) + 18;
+      const top = target.getBoundingClientRect().top + window.scrollY - headerOffset;
+      window.scrollTo({ top: Math.max(0, top), behavior: "smooth" });
+      history.replaceState(null, "", `${location.pathname}${location.search}#${encodeURIComponent(targetId)}`);
+    });
     if (canRead) {
       bindArticleMusic(wrap);
       loadPostEngagement(post.id);
