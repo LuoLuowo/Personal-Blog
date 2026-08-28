@@ -48,7 +48,13 @@
           <div class="editor-attachment-list" data-editor-music-list></div>
         </section>
         <label><span>分类</span><select name="category" data-category-filter></select></label>
-        <label><span>标签</span><input name="tags" type="text" placeholder="JavaScript, 生活, 复盘"></label>
+        <div class="editor-tag-field">
+          <label><span>标签</span><input name="tags" type="text" placeholder="JavaScript, 生活, 复盘"></label>
+          <div class="editor-tag-picker" data-editor-tag-picker>
+            <div class="editor-tag-suggestions" data-editor-tag-suggestions></div>
+            <button class="ghost-button editor-tag-more" type="button" data-editor-tag-modal-open hidden>选择已有标签</button>
+          </div>
+        </div>
         <label class="editor-visibility-field"><span>文章可见性</span><select name="visibility"><option value="published">公开：所有访客可见</option><option value="private">私密：仅管理员可见</option></select></label>
         <div class="editor-actions">
           <button class="ghost-button" type="button" data-editor-preview>预览</button>

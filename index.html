@@ -23,7 +23,6 @@
     <button class="nav-toggle" type="button" data-nav-toggle aria-label="打开导航">☰</button>
     <nav class="top-nav" data-nav aria-label="主导航">
       <a class="active" href="./index.html">首页</a>
-      <a href="./articles.html">所有文章</a>
       <a href="./whispers.html">碎碎念</a>
       <a href="./projects.html">个人项目</a>
       <a href="./about.html">关于我</a>
@@ -58,6 +57,7 @@
             <li class="search-engine-option" data-engine="baidu"><span class="engine-dot" style="background:#2932e1"></span>百度</li>
             <li class="search-engine-option" data-engine="google"><span class="engine-dot" style="background:#ea4335"></span>谷歌</li>
             <li class="search-engine-option" data-engine="bing"><span class="engine-dot" style="background:#008373"></span>必应</li>
+            <li class="search-engine-option" data-engine="site"><span class="engine-dot" style="background:#4f7cff"></span>本站文章</li>
           </ul>
         </div>
         <span class="search-icon">⌕</span>
@@ -122,9 +122,21 @@
 
       </aside>
 
-      <section class="home-main-column" aria-label="最新文章">
-        <div class="section-heading"><div><p class="eyebrow">LATEST POSTS</p><div class="latest-title-row"><h2>最新文章</h2><span>仅显示最新四篇！</span></div></div><a class="text-link" href="./articles.html">查看全部</a></div>
+      <section class="home-main-column" aria-label="所有文章">
+        <div class="section-heading home-articles-heading"><div><p class="eyebrow">LATEST POSTS</p><div class="latest-title-row"><h2>所有文章</h2></div></div></div>
+        <div class="home-article-toolbar glass-card">
+          <div class="home-taxonomy" data-home-taxonomy>
+            <div class="home-filter-row"><strong>分类</strong><div data-home-categories></div><button type="button" class="home-filter-more" data-home-expand="categories">展开</button></div>
+            <div class="home-filter-row"><strong>标签</strong><div data-home-tags></div><button type="button" class="home-filter-more" data-home-expand="tags">展开</button></div>
+          </div>
+          <div class="home-view-menu" data-home-view-menu>
+            <button type="button" data-home-view-toggle aria-expanded="false"><span data-home-view-label>文章视图</span><i aria-hidden="true">⌄</i></button>
+            <ul hidden role="menu" aria-label="文章视图模式"><li><button type="button" data-home-view="cards" role="menuitem">文章视图</button></li><li><button type="button" data-home-view="dates" role="menuitem">日期视图</button></li></ul>
+          </div>
+        </div>
         <div class="article-grid home-article-list" data-latest-posts></div>
+        <div class="home-date-view" data-home-date-view hidden></div>
+        <nav class="home-pagination" data-home-pagination aria-label="文章分页"></nav>
       </section>
 
       <aside class="home-column home-column-right" aria-label="站点功能与统计">

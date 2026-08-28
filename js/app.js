@@ -25,6 +25,10 @@
     mediaLastRefreshedAt: 0,
     notesLoadVersion: 0,
     notesReturnOpen: false,
+    whisperCount: null,
+    whisperCountPromise: null,
+    postEngagementCache: new Map(),
+    postEngagementPending: new Map(),
     navigationVersion: 0,
     navigationController: null
   };
@@ -1788,6 +1792,9 @@
     textHolder.innerHTML = formatRichText(rawContent);
     // Count actual visible characters, not HTML tags or the shortened card excerpt.
     const wordCount = [...(textHolder.textContent || "").replace(/\s/g, "")].length;
+    const cachedEngagement = state.postEngagementCache.get(String(post.id));
+    const likes = cachedEngagement?.likes ?? 0;
+    const views = cachedEngagement?.views ?? 0;
     return `
       <article class="article-card glass-card ${post.coverUrl ? "has-cover" : "no-cover"}" data-post-id="${escapeHtml(post.id)}">
         <a class="article-card-hit" href="./article-detail.html?id=${post.id}" aria-label="阅读 ${escapeHtml(post.title)}"></a>
@@ -1806,7 +1813,7 @@
           ${post.attachments?.length ? `<p class="article-attachment-hint">含 ${post.attachments.length} 个附件，进入详情可下载</p>` : ""}
           <div class="article-card-footer">
             <div class="article-meta"><span class="article-card-date">${formatPostDate(post.publishedAt)}</span><span class="article-card-author">${escapeHtml(post.author)}</span></div>
-            <div class="article-card-stats" data-post-card-id="${escapeHtml(post.id)}"><span data-post-card-likes>点赞 0</span><span data-post-card-views>阅读 0</span><span class="article-word-count">${wordCount}字</span></div>
+            <div class="article-card-stats" data-post-card-id="${escapeHtml(post.id)}"><span data-post-card-likes>点赞 ${likes}</span><span data-post-card-views>阅读 ${views}</span><span class="article-word-count">${wordCount}字</span></div>
           </div>
         </div>
       </article>
@@ -2308,9 +2315,72 @@
     const featured = $("[data-featured-posts]");
     const chips = $("[data-category-chips]");
     if (latest) {
-      const posts = data.posts.slice(0, 4);
-      latest.innerHTML = posts.map(postCard).join("");
-      loadPostCardEngagement(posts, latest);
+      const section = latest.closest(".home-main-column");
+      const pagination = $("[data-home-pagination]", section);
+      const dateView = $("[data-home-date-view]", section);
+      const categories = $("[data-home-categories]", section);
+      const tags = $("[data-home-tags]", section);
+      const homeDataReady = document.body.dataset.homeDataReady === "true";
+      section.classList.toggle("is-home-data-loading", !homeDataReady);
+      if (!homeDataReady) {
+        latest.hidden = false;
+        latest.innerHTML = '<div class="home-article-loader" role="status" aria-live="polite"><span class="home-article-loader-pet" aria-hidden="true"><i></i><i></i><b></b></span><strong>文章正在整理中</strong><small>正在加载文章、分类与标签…</small></div>';
+        if (dateView) { dateView.hidden = true; dateView.innerHTML = ""; }
+        if (categories) categories.innerHTML = "";
+        if (tags) tags.innerHTML = "";
+        if (pagination) pagination.innerHTML = "";
+        return;
+      }
+      if (!section.dataset.homeStateView) section.dataset.homeStateView = "cards";
+      if (!section.dataset.homeStatePage) section.dataset.homeStatePage = "1";
+      if (section.dataset.homeStateCategory == null) section.dataset.homeStateCategory = "";
+      if (section.dataset.homeStateTag == null) section.dataset.homeStateTag = "";
+      const categoryNames = [...new Set(data.posts.map((post) => post.category).filter(Boolean))];
+      const tagNames = [...new Set(data.posts.flatMap((post) => parseCommaTags(post.tags)))];
+      const activeCategory = section.dataset.homeStateCategory;
+      const activeTag = section.dataset.homeStateTag;
+      const categoryHtml = [`<button type="button" class="home-filter-chip${activeCategory ? "" : " active"}" data-home-category="">全部 <small>${data.posts.length}</small></button>`, ...categoryNames.map((name) => `<button type="button" class="home-filter-chip${activeCategory === name ? " active" : ""}" data-home-category="${escapeHtml(name)}">${escapeHtml(name)} <small>${data.posts.filter((post) => post.category === name).length}</small></button>`)].join("");
+      const tagHtml = [`<button type="button" class="home-filter-chip${activeTag ? "" : " active"}" data-home-tag="">全部 <small>${data.posts.length}</small></button>`, ...tagNames.map((name) => `<button type="button" class="home-filter-chip${activeTag === name ? " active" : ""}" data-home-tag="${escapeHtml(name)}">#${escapeHtml(name)} <small>${data.posts.filter((post) => parseCommaTags(post.tags).includes(name)).length}</small></button>`)].join("");
+      if (categories) categories.innerHTML = categoryHtml;
+      if (tags) tags.innerHTML = tagHtml;
+      const categoryMore = $("[data-home-expand='categories']", section);
+      const tagMore = $("[data-home-expand='tags']", section);
+      const syncExpandButton = (list, button) => {
+        if (!list || !button) return;
+        requestAnimationFrame(() => {
+          const row = button.closest(".home-filter-row");
+          const expanded = row.classList.contains("is-expanded");
+          const needsExpand = expanded || list.scrollHeight > list.clientHeight + 1;
+          button.hidden = !needsExpand;
+          button.textContent = expanded ? "收起" : "展开";
+        });
+      };
+      syncExpandButton(categories, categoryMore);
+      syncExpandButton(tags, tagMore);
+      const filtered = data.posts.filter((post) => (!activeCategory || post.category === activeCategory) && (!activeTag || parseCommaTags(post.tags).includes(activeTag)));
+      const pageSize = 4;
+      const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize));
+      const currentPage = Math.min(Math.max(1, Number(section.dataset.homeStatePage) || 1), totalPages);
+      section.dataset.homeStatePage = String(currentPage);
+      const view = section.dataset.homeStateView;
+      latest.hidden = view === "dates";
+      if (dateView) dateView.hidden = view !== "dates";
+      if (view === "dates") {
+        const years = [...new Set(filtered.map((post) => String(post.publishedAt || "").slice(0, 4)).filter((year) => /^\d{4}$/.test(year)))].sort((a, b) => Number(b) - Number(a));
+        dateView.innerHTML = years.map((year) => {
+          const yearPosts = filtered.filter((post) => String(post.publishedAt).startsWith(year)).sort((a, b) => new Date(b.publishedAt) - new Date(a.publishedAt));
+          return `<section class="home-date-group"><header><h3>${year}</h3><span>${yearPosts.length} 篇文章</span></header><div>${yearPosts.map((post) => `<a class="home-date-item" href="./article-detail.html?id=${post.id}"><time>${escapeHtml(String(post.publishedAt).slice(5, 10) || "--")}</time><span class="home-date-dot"></span><strong>${escapeHtml(post.title)}</strong><small>${escapeHtml(post.category || "未分类")}</small></a>`).join("")}</div></section>`;
+        }).join("") || '<p class="empty-state">暂时没有找到文章。</p>';
+      } else {
+        const pagePosts = filtered.slice((currentPage - 1) * pageSize, currentPage * pageSize);
+        latest.innerHTML = pagePosts.map(postCard).join("") || '<p class="empty-state">暂时没有找到文章。</p>';
+        loadPostCardEngagement(pagePosts, latest);
+      }
+      if (pagination) pagination.innerHTML = view === "cards" && totalPages > 1 ? Array.from({ length: totalPages }, (_, index) => `<button type="button" class="${index + 1 === currentPage ? "active" : ""}" data-home-page="${index + 1}">${index + 1}</button>`).join("") : "";
+      const viewLabel = $("[data-home-view-label]", section);
+      if (viewLabel) viewLabel.textContent = view === "dates" ? "日期视图" : "文章视图";
+      $all("[data-home-view]", section).forEach((button) => { const active = button.dataset.homeView === view; button.classList.toggle("active", active); button.setAttribute("aria-selected", String(active)); });
+      bindHomeArticleControls(section);
     }
     if (featured) featured.innerHTML = "";
     if (chips) chips.innerHTML = "";
@@ -2318,15 +2388,94 @@
     const photoCount = data.posts.filter((post) => post.coverUrl).length + data.moments.reduce((count, item) => count + (item.images?.length || 0), 0);
     $all("[data-profile-post-count]").forEach((el) => { el.textContent = data.posts.length; });
     $all("[data-profile-photo-count]").forEach((el) => { el.textContent = photoCount; });
-    $all("[data-profile-whisper-count]").forEach((el) => { el.textContent = "0"; });
-    if (window.XiaoLuoSupabase?.listWhispers) {
-      window.XiaoLuoSupabase.listWhispers("", 1000).then((items) => {
-        const count = items.filter((item) => !item.parent_id).length;
-        $all("[data-profile-whisper-count]").forEach((el) => { el.textContent = count; });
-      }).catch(() => {});
+    if (state.whisperCount != null) {
+      $all("[data-profile-whisper-count]").forEach((el) => { el.textContent = state.whisperCount; });
+    }
+    if (window.XiaoLuoSupabase?.listWhispers && state.whisperCount == null && !state.whisperCountPromise) {
+      state.whisperCountPromise = window.XiaoLuoSupabase.listWhispers("", 1000)
+        .then((items) => {
+          state.whisperCount = items.filter((item) => !item.parent_id).length;
+          $all("[data-profile-whisper-count]").forEach((el) => { el.textContent = state.whisperCount; });
+          return state.whisperCount;
+        })
+        .catch(() => state.whisperCount)
+        .finally(() => { state.whisperCountPromise = null; });
     }
     renderSiteStats();
     initGuestbook();
+  }
+
+  function bindHomeArticleControls(section) {
+    if (!section) return;
+
+    const rerender = () => renderHome();
+    $all("[data-home-category]", section).forEach((button) => {
+      button.onclick = () => {
+        section.dataset.homeStateCategory = button.dataset.homeCategory || "";
+        section.dataset.homeStatePage = "1";
+        rerender();
+      };
+    });
+    $all("[data-home-tag]", section).forEach((button) => {
+      button.onclick = () => {
+        section.dataset.homeStateTag = button.dataset.homeTag || "";
+        section.dataset.homeStatePage = "1";
+        rerender();
+      };
+    });
+    $all("[data-home-page]", section).forEach((button) => {
+      button.onclick = () => {
+        section.dataset.homeStatePage = button.dataset.homePage || "1";
+        rerender();
+        section.scrollIntoView({ block: "start", behavior: "smooth" });
+      };
+    });
+    $all("[data-home-view]", section).forEach((button) => {
+      button.onclick = () => {
+        section.dataset.homeStateView = button.dataset.homeView || "cards";
+        section.dataset.homeStatePage = "1";
+        rerender();
+      };
+    });
+    $all("[data-home-expand]", section).forEach((button) => {
+      button.onclick = () => {
+        const row = button.closest(".home-filter-row");
+        if (!row) return;
+        row.classList.toggle("is-expanded");
+        button.textContent = row.classList.contains("is-expanded") ? "收起" : "展开";
+        button.hidden = false;
+      };
+    });
+
+    const viewToggle = $("[data-home-view-toggle]", section);
+    const viewMenu = viewToggle?.closest("[data-home-view-menu]");
+    const viewList = viewMenu && $("ul", viewMenu);
+    if (viewToggle && viewList) {
+      viewToggle.onclick = () => {
+        const open = viewList.hidden;
+        viewList.hidden = !open;
+        viewToggle.setAttribute("aria-expanded", String(open));
+      };
+      $all("[data-home-view]", viewList).forEach((button) => {
+        const original = button.onclick;
+        button.onclick = () => {
+          viewList.hidden = true;
+          viewToggle.setAttribute("aria-expanded", "false");
+          original?.();
+        };
+      });
+    }
+
+    // Card and date links are recreated whenever filters or pages change.
+    // Bind the current nodes directly so PJAX navigation never depends on a
+    // stale delegated handler from a previously rendered home page.
+    $all(".article-card-hit, .home-date-item", section).forEach((link) => {
+      link.onclick = (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        navigate(link.href).catch(() => { window.location.href = link.href; });
+      };
+    });
   }
 
   function activityAvatarHtml(item, className = "activity-rank-avatar") {
@@ -2605,7 +2754,7 @@
           $all("[data-delete-whisper]", container).forEach((button) => {
             button.onclick = async () => {
               if (!await confirmPublish("确认删除这条碎碎念？", "删除后无法恢复。", "确认删除")) return;
-              try { await window.XiaoLuoSupabase.deleteWhisper(button.dataset.deleteWhisper); await draw(); } catch (error) { showCloudError(error); }
+              try { await window.XiaoLuoSupabase.deleteWhisper(button.dataset.deleteWhisper); state.whisperCount = null; await draw(); } catch (error) { showCloudError(error); }
             };
           });
         }
@@ -2645,6 +2794,7 @@
         button.textContent = "发布中…";
         try {
           await window.XiaoLuoSupabase.addWhisper(state.userId, content, replyTo);
+          state.whisperCount = null;
           await refreshAuthState();
           form.reset();
           clearReply();
@@ -3190,6 +3340,11 @@
       try { await api.recordPostView(postId, state.userId); }
       catch (viewError) { console.warn("Post view record failed:", viewError.message); }
       const engagement = await api.getPostEngagement(postId, state.userId, api.getVisitorId());
+      state.postEngagementCache.set(String(postId), {
+        likes: Number(engagement.likes) || 0,
+        views: Number(engagement.views) || 0,
+        comments: Array.isArray(engagement.comments) ? engagement.comments.length : Number(engagement.comments) || 0
+      });
       if (!isCurrentPost()) return;
       const detailRoot = $(".article-detail[data-post-id]");
       const summary = $("[data-post-engagement]", detailRoot);
@@ -3244,16 +3399,36 @@
   function loadPostCardEngagement(posts, scope) {
     const api = window.XiaoLuoSupabase;
     if (!api?.isConfigured || !posts?.length || !scope) return;
-    posts.forEach(async (post) => {
-      try {
-        const engagement = await api.getPostEngagementSummary(post.id);
-        const target = scope.querySelector(`[data-post-card-id="${post.id}"]`);
-        if (!target) return;
-        const views = $("[data-post-card-views]", target);
-        const likes = $("[data-post-card-likes]", target);
-        if (views) views.textContent = `阅读 ${engagement.views}`;
-        if (likes) likes.textContent = `点赞 ${engagement.likes}`;
-      } catch (error) { console.warn("Post card engagement load failed:", error.message); }
+    const applySummary = (postId, engagement) => {
+      const target = scope.querySelector(`[data-post-card-id="${CSS.escape(String(postId))}"]`);
+      if (!target) return;
+      const views = $("[data-post-card-views]", target);
+      const likes = $("[data-post-card-likes]", target);
+      if (views) views.textContent = `阅读 ${engagement.views}`;
+      if (likes) likes.textContent = `点赞 ${engagement.likes}`;
+    };
+    posts.forEach((post) => {
+      const key = String(post.id);
+      const cached = state.postEngagementCache.get(key);
+      if (cached) applySummary(key, cached);
+      if (state.postEngagementPending.has(key)) {
+        state.postEngagementPending.get(key).then((summary) => { if (summary) applySummary(key, summary); });
+        return;
+      }
+      const request = api.getPostEngagementSummary(post.id)
+        .then((engagement) => {
+          const summary = {
+            likes: Number(engagement.likes) || 0,
+            views: Number(engagement.views) || 0,
+            comments: Number(engagement.comments) || 0
+          };
+          state.postEngagementCache.set(key, summary);
+          return summary;
+        })
+        .catch((error) => { console.warn("Post card engagement load failed:", error.message); return null; })
+        .finally(() => { state.postEngagementPending.delete(key); });
+      state.postEngagementPending.set(key, request);
+      request.then((summary) => { if (summary) applySummary(key, summary); });
     });
   }
 
@@ -5614,6 +5789,7 @@
     const title = $("[data-preview-title]");
     const content = $("[data-preview-content]");
     prepareEditorForEdit();
+    initEditorTagPicker(form);
     $("[data-editor-preview]")?.addEventListener("click", () => {
       panel.hidden = false;
       title.textContent = form.title.value || "未命名文章";
@@ -5658,6 +5834,79 @@
         } catch (error) { showCloudError(error); }
       });
     });
+  }
+
+  function editorAvailableTagNames() {
+    return [...new Set([
+      ...data.tags.map((tag) => typeof tag === "string" ? tag : tag.name),
+      ...data.posts.flatMap((post) => parseCommaTags(post.tags))
+    ].filter(Boolean))].sort((a, b) => String(a).localeCompare(String(b), "zh-CN"));
+  }
+
+  function setEditorTags(tagsInput, tags) {
+    tagsInput.value = [...new Set(tags.map((tag) => String(tag).trim().replace(/^#/, "")).filter(Boolean))].join(", ");
+    tagsInput.dispatchEvent(new Event("input", { bubbles: true }));
+  }
+
+  function toggleEditorTag(tagsInput, name) {
+    const tags = parseCommaTags(tagsInput.value);
+    const next = tags.includes(name) ? tags.filter((tag) => tag !== name) : [...tags, name];
+    setEditorTags(tagsInput, next);
+  }
+
+  function openEditorTagPickerModal(form) {
+    const tagsInput = form.elements.tags;
+    if (!tagsInput) return;
+    let modal = $("[data-editor-tags-modal]");
+    if (!modal) {
+      modal = document.createElement("div");
+      modal.className = "modal editor-tags-modal";
+      modal.dataset.editorTagsModal = "";
+      modal.innerHTML = '<button class="modal-backdrop" type="button" data-editor-tags-close aria-label="关闭"></button><section class="modal-card glass-card" role="dialog" aria-modal="true" aria-labelledby="editor-tags-title"><button class="modal-close" type="button" data-editor-tags-close aria-label="关闭">×</button><p class="mini-title">EXISTING TAGS</p><h2 id="editor-tags-title">选择已有标签</h2><p>可多选；完成后会自动写入文章标签。</p><div class="editor-tags-modal-list" data-editor-tags-modal-list></div><div class="publish-confirm-actions"><button class="ghost-button" type="button" data-editor-tags-close>取消</button><button class="primary-button" type="button" data-editor-tags-done>完成</button></div></section>';
+      document.body.appendChild(modal);
+    }
+    const list = $("[data-editor-tags-modal-list]", modal);
+    const renderChoices = () => {
+      const selected = new Set(parseCommaTags(tagsInput.value));
+      const names = editorAvailableTagNames();
+      list.innerHTML = names.length
+        ? names.map((name) => `<button type="button" class="${selected.has(name) ? "is-selected" : ""}" data-editor-tag-choice="${escapeHtml(name)}">#${escapeHtml(name)}<i>${selected.has(name) ? "已选" : "选择"}</i></button>`).join("")
+        : '<p class="empty-state">还没有可选标签。</p>';
+    };
+    $all("[data-editor-tags-close]", modal).forEach((button) => { button.onclick = () => modal.classList.remove("open"); });
+    $("[data-editor-tags-done]", modal).onclick = () => modal.classList.remove("open");
+    list.onclick = (event) => {
+      const choice = event.target.closest("[data-editor-tag-choice]");
+      if (!choice) return;
+      toggleEditorTag(tagsInput, choice.dataset.editorTagChoice);
+      renderChoices();
+    };
+    renderChoices();
+    modal.classList.add("open");
+  }
+
+  function initEditorTagPicker(form) {
+    const picker = $("[data-editor-tag-picker]", form);
+    const tagsInput = form.elements.tags;
+    if (!picker || !tagsInput || picker.dataset.bound) return;
+    picker.dataset.bound = "true";
+    const suggestions = $("[data-editor-tag-suggestions]", picker);
+    const more = $("[data-editor-tag-modal-open]", picker);
+    const render = () => {
+      const names = editorAvailableTagNames();
+      const selected = new Set(parseCommaTags(tagsInput.value));
+      const visible = names.slice(0, 7);
+      suggestions.innerHTML = visible.map((name) => `<button type="button" class="${selected.has(name) ? "is-selected" : ""}" data-editor-tag-toggle="${escapeHtml(name)}">#${escapeHtml(name)}</button>`).join("");
+      more.hidden = names.length <= visible.length;
+    };
+    suggestions.addEventListener("click", (event) => {
+      const button = event.target.closest("[data-editor-tag-toggle]");
+      if (!button) return;
+      toggleEditorTag(tagsInput, button.dataset.editorTagToggle);
+    });
+    more.addEventListener("click", () => openEditorTagPickerModal(form));
+    tagsInput.addEventListener("input", render);
+    render();
   }
 
   function prepareEditorForEdit() {
@@ -6621,8 +6870,9 @@
   function initWebSearch() {
     if (document.body.dataset.webSearchBound) return;
     document.body.dataset.webSearchBound = "true";
-    const engineNames = { baidu: "百度", google: "谷歌", bing: "必应" };
+    const engineNames = { baidu: "百度", google: "谷歌", bing: "必应", site: "本站文章" };
     let currentEngine = localStorage.getItem("xiaoluo-search-engine") || "baidu";
+    if (!engineNames[currentEngine]) currentEngine = "baidu";
 
     // 初始化按钮显示
     document.querySelectorAll("[data-search-engine-current]").forEach((btn) => {
@@ -6673,6 +6923,12 @@
         google: `https://www.google.com/search?q=${encodeURIComponent(query)}`,
         bing: `https://www.bing.com/search?q=${encodeURIComponent(query)}`
       };
+      if (currentEngine === "site") {
+        const siteUrl = new URL("./articles.html", window.location.href);
+        siteUrl.searchParams.set("q", query);
+        navigate(siteUrl.href).catch(() => { window.location.href = siteUrl.href; });
+        return;
+      }
       window.open(urls[currentEngine] || urls.baidu, "_blank");
     });
   }
@@ -6698,11 +6954,18 @@
     .then(async () => {
       renderCurrentPage();
       await loadCloudData();
+      document.body.dataset.homeDataReady = "true";
+      if (pageName() === "home") renderHome();
       const cloudLoaderEnabled = data.site.contacts?.entry_loader_enabled !== false;
       localStorage.setItem("xiaoluo-entry-loader-enabled", String(cloudLoaderEnabled));
       const entryLoader = $("[data-entry-loader]");
       if (entryLoader && cloudLoaderEnabled) await hideEntryLoaderAfterAssets();
       else entryLoader?.remove();
     })
-    .catch(() => { renderCurrentPage(); if ($("[data-entry-loader]")) hideEntryLoaderAfterAssets(); });
+    .catch(() => {
+      document.body.dataset.homeDataReady = "true";
+      renderCurrentPage();
+      if (pageName() === "home") renderHome();
+      if ($("[data-entry-loader]")) hideEntryLoaderAfterAssets();
+    });
 })();

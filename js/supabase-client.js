@@ -812,24 +812,43 @@
     },
 
     async saveProfile(userId, profile) {
-      const payload = {
-        display_name: profile.display_name,
-        avatar_url: profile.avatar_url || null,
-        home_title: profile.home_title,
-        home_bio: profile.home_bio,
-        home_background_url: profile.home_background_url || null,
-        about_title: profile.about_title || "关于小罗",
-        about_bio: profile.about_bio || "",
-        about_side_bio: profile.about_side_bio || "",
-        announcement: profile.announcement || "",
-        contacts: profile.contacts || {},
-        updated_at: new Date().toISOString()
-      };
+      // Settings screens update different parts of a profile. Only send fields
+      // explicitly supplied by the current screen, otherwise a save in one screen
+      // could erase data owned by another screen (for example the home cover).
+      const profileFields = [
+        "display_name",
+        "avatar_url",
+        "home_title",
+        "home_bio",
+        "home_background_url",
+        "about_title",
+        "about_bio",
+        "about_side_bio",
+        "announcement",
+        "contacts"
+      ];
+      const payload = { updated_at: new Date().toISOString() };
+      profileFields.forEach((field) => {
+        if (Object.prototype.hasOwnProperty.call(profile, field)) payload[field] = profile[field];
+      });
       const { data: existing, error: readError } = await client.from("profiles").select("id").eq("id", userId).maybeSingle();
       if (readError) throw readError;
       const request = existing
         ? client.from("profiles").update(payload).eq("id", userId)
-        : client.from("profiles").insert({ id: userId, ...payload });
+        : client.from("profiles").insert({
+          id: userId,
+          display_name: profile.display_name || "普通用户",
+          avatar_url: profile.avatar_url || null,
+          home_title: profile.home_title || "XiaoLuo Blog",
+          home_bio: profile.home_bio || "Welcome to XiaoLuo Blog.",
+          home_background_url: profile.home_background_url || null,
+          about_title: profile.about_title || "关于小罗",
+          about_bio: profile.about_bio || "",
+          about_side_bio: profile.about_side_bio || "",
+          announcement: profile.announcement || "",
+          contacts: profile.contacts || {},
+          ...payload
+        });
       const { error } = await request;
       if (error) throw error;
     },
