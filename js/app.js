@@ -171,6 +171,17 @@
     return html.replace(/@@XIAOLUO_LINK_(\d+)@@/g, (_match, index) => links[Number(index)] || "");
   }
 
+  function pastedRichLinkHtml(value) {
+    const links = [];
+    const escaped = escapeHtml(String(value || ""));
+    const withLinks = escaped.replace(/https?:\/\/[^\s<]+/gi, (url) => {
+      const token = `@@XIAOLUO_PASTED_LINK_${links.length}@@`;
+      links.push(`<a href="${url}" target="_blank" rel="noopener noreferrer">${url}</a>`);
+      return token;
+    }).replace(/\r?\n/g, "<br>");
+    return withLinks.replace(/@@XIAOLUO_PASTED_LINK_(\d+)@@/g, (_match, index) => links[Number(index)] || "");
+  }
+
   function sanitizeRichHtml(value) {
     const source = document.createElement("div");
     source.innerHTML = String(value || "");
@@ -849,13 +860,22 @@
             .filter((item) => item.kind === "file" && item.type.startsWith("image/"))
             .map((item) => item.getAsFile())
             .filter(Boolean);
-          if (!images.length) return;
+          const range = getEditorSelectionRange(input) || savedRange;
+          if (!images.length) {
+            const pastedText = event.clipboardData?.getData("text/plain") || "";
+            if (!/https?:\/\/[^\s<]+/i.test(pastedText)) return;
+            event.preventDefault();
+            restoreEditorSelection(input, range);
+            document.execCommand("insertHTML", false, pastedRichLinkHtml(pastedText));
+            input.dispatchEvent(new Event("input", { bubbles: true }));
+            rememberSelection();
+            return;
+          }
           event.preventDefault();
           if (!state.userId || !window.XiaoLuoSupabase?.isConfigured) {
             alert("请登录管理员账号后再粘贴图片。");
             return;
           }
-          const range = getEditorSelectionRange(input) || savedRange;
           try {
             const urls = await runWithLoading("正在压缩图片中…", async () => uploadOptimizedImages(state.userId, "post-inline-images", images));
             restoreEditorSelection(input, range);
@@ -3215,6 +3235,7 @@
           ${canManagePosts ? `<button class="danger-button" type="button" data-delete-post="${post.id}">删除文章</button>` : ""}
           <button type="button" data-post-like="${post.id}">点赞</button>
           <button type="button" data-placeholder-action="bookmark">收藏</button>
+          <button type="button" data-post-share="${post.id}">分享</button>
           <span class="post-engagement" data-post-engagement>阅读 0 · 点赞 0 · 评论 0</span>
         </div>` : ""}
         ${canManagePosts && post.status !== "private" ? `<section class="post-access-settings"><button class="ghost-button" type="button" data-post-access-toggle aria-expanded="false">阅读权限：${requiredScore ? `${escapeHtml(requiredLevel.title)}可读` : "全站公开"}</button><div data-post-access-panel hidden><div class="post-access-track"><span>全站公开</span><input type="range" min="0" max="${ACTIVITY_LEVELS.length}" step="1" value="${requiredScore ? Math.max(0, ACTIVITY_LEVELS.findIndex((level) => level.score === requiredLevel.score) + 1) : 0}" data-post-access-range><strong data-post-access-label>${requiredScore ? `${escapeHtml(requiredLevel.title)}（${requiredLevel.score} 活跃度）` : "全站公开"}</strong></div><div class="post-access-scale" aria-hidden="true"><span>公开</span><span>初入人</span><span>罗客神</span></div><small>拖动圆点设置阅读门槛，松开后立即保存。未达到要求的用户只能看到文章标题与封面。</small></div></section>` : ""}
@@ -3252,6 +3273,7 @@
       bindArticleMusic(wrap);
       loadPostEngagement(post.id);
     }
+    $(`[data-post-share="${post.id}"]`, wrap)?.addEventListener("click", () => openPostShareDialog(post));
     $(`[data-post-access-request]`, wrap)?.addEventListener("click", () => {
       if (!state.isLoggedIn) requireActivityAccess(requiredScore, "这篇文章");
       else window.location.href = "./activity.html";
@@ -3329,6 +3351,183 @@
     audio.addEventListener("pause", sync);
     audio.addEventListener("ended", sync);
     sync();
+  }
+
+  function drawPosterWrappedText(context, text, x, y, maxWidth, lineHeight, maxLines) {
+    const characters = [...String(text || "")];
+    const lines = [];
+    let line = "";
+    characters.forEach((character) => {
+      const candidate = line + character;
+      if (context.measureText(candidate).width > maxWidth && line) {
+        lines.push(line);
+        line = character;
+      } else line = candidate;
+    });
+    if (line) lines.push(line);
+    const visible = lines.slice(0, maxLines);
+    if (lines.length > maxLines && visible.length) {
+      let finalLine = visible[visible.length - 1];
+      while (context.measureText(`${finalLine}…`).width > maxWidth && finalLine) finalLine = finalLine.slice(0, -1);
+      visible[visible.length - 1] = `${finalLine}…`;
+    }
+    visible.forEach((lineText, index) => context.fillText(lineText, x, y + index * lineHeight));
+    return y + Math.max(0, visible.length - 1) * lineHeight;
+  }
+
+  function loadPosterImage(source) {
+    return new Promise((resolve) => {
+      if (!source) { resolve(null); return; }
+      const image = new Image();
+      image.crossOrigin = "anonymous";
+      image.onload = () => resolve(image);
+      image.onerror = () => resolve(null);
+      image.src = source;
+    });
+  }
+
+  async function drawPostShareQr(context, url, x, y, size) {
+    context.save();
+    context.fillStyle = "rgba(255,255,255,.97)";
+    context.beginPath();
+    context.roundRect(x - 16, y - 16, size + 32, size + 32, 20);
+    context.fill();
+    context.restore();
+    if (!window.QRCode) {
+      context.fillStyle = "#142445";
+      context.font = "700 22px Microsoft YaHei, sans-serif";
+      context.fillText("二维码加载中", x + 20, y + size / 2);
+      return;
+    }
+    const holder = document.createElement("div");
+    holder.style.cssText = "position:fixed;left:-9999px;top:-9999px;width:1px;height:1px;overflow:hidden;";
+    document.body.appendChild(holder);
+    try {
+      new window.QRCode(holder, {
+        text: url,
+        width: size,
+        height: size,
+        colorDark: "#142445",
+        colorLight: "#ffffff",
+        correctLevel: window.QRCode.CorrectLevel.M
+      });
+      await new Promise((resolve) => window.requestAnimationFrame(resolve));
+      const source = $("canvas, img", holder);
+      if (source) {
+        context.imageSmoothingEnabled = false;
+        context.drawImage(source, x, y, size, size);
+        context.imageSmoothingEnabled = true;
+      }
+    } finally {
+      holder.remove();
+    }
+  }
+
+  async function drawPostSharePoster(canvas, post, url) {
+    const width = 1080;
+    const height = 1350;
+    canvas.width = width;
+    canvas.height = height;
+    const context = canvas.getContext("2d");
+    const gradient = context.createLinearGradient(0, 0, width, height);
+    gradient.addColorStop(0, "#142445");
+    gradient.addColorStop(.52, "#20396d");
+    gradient.addColorStop(1, "#d68772");
+    context.fillStyle = gradient;
+    context.fillRect(0, 0, width, height);
+    context.fillStyle = "rgba(255,255,255,.1)";
+    context.beginPath(); context.arc(928, 142, 280, 0, Math.PI * 2); context.fill();
+    context.beginPath(); context.arc(96, 1185, 360, 0, Math.PI * 2); context.fill();
+
+    const cover = await loadPosterImage(post.coverUrl);
+    if (cover) {
+      const coverX = 70, coverY = 74, coverW = 940, coverH = 475;
+      const ratio = Math.max(coverW / cover.width, coverH / cover.height);
+      const drawW = cover.width * ratio, drawH = cover.height * ratio;
+      const drawX = coverX + (coverW - drawW) / 2, drawY = coverY + (coverH - drawH) / 2;
+      context.save();
+      context.beginPath();
+      context.roundRect(coverX, coverY, coverW, coverH, 34);
+      context.clip();
+      context.drawImage(cover, drawX, drawY, drawW, drawH);
+      context.restore();
+      context.fillStyle = "rgba(8,17,37,.25)";
+      context.beginPath(); context.roundRect(coverX, coverY, coverW, coverH, 34); context.fill();
+    }
+
+    context.fillStyle = "#6ed9ff";
+    context.font = "700 28px Arial, Microsoft YaHei, sans-serif";
+    context.fillText("XIAOLUO LIFE · ARTICLE SHARE", 72, cover ? 620 : 150);
+    const titleY = cover ? 712 : 242;
+    context.fillStyle = "#ffffff";
+    context.font = "700 68px Noto Serif SC, Microsoft YaHei, serif";
+    const titleEndY = drawPosterWrappedText(context, post.title || "未命名文章", 70, titleY, 940, 92, 3);
+    context.fillStyle = "rgba(244,248,255,.8)";
+    context.font = "400 34px Microsoft YaHei, sans-serif";
+    const contentHolder = document.createElement("div");
+    const postBody = Array.isArray(post.content)
+      ? post.content.map((block) => typeof block === "string" ? block : (block?.text || "")).join("\n")
+      : (post.content || "");
+    contentHolder.innerHTML = formatRichText(postBody);
+    const contentText = (contentHolder.textContent || "").replace(/\s+/g, " ").trim();
+    const contentEndY = drawPosterWrappedText(context, contentText || "在小罗的 Life 里，记录一个值得分享的片刻。", 70, titleEndY + 88, 900, 54, 4);
+    context.fillStyle = "rgba(255,255,255,.18)";
+    context.fillRect(70, contentEndY + 76, 940, 2);
+    context.fillStyle = "#ffffff";
+    context.font = "600 30px Microsoft YaHei, sans-serif";
+    context.fillText(`${post.author || "小罗"} · ${formatPostDate(post.publishedAt)}`, 70, contentEndY + 140);
+    context.fillStyle = "rgba(255,255,255,.72)";
+    context.font = "400 23px Arial, Microsoft YaHei, sans-serif";
+    context.fillText("扫码阅读全文", 70, height - 126);
+    drawPosterWrappedText(context, url.replace(/^https?:\/\//, ""), 70, height - 80, 650, 31, 2);
+    await drawPostShareQr(context, url, 784, height - 268, 196);
+  }
+
+  function openPostShareDialog(post) {
+    let modal = $(`[data-post-share-modal]`);
+    if (!modal) {
+      modal = document.createElement("div");
+      modal.className = "modal post-share-modal";
+      modal.dataset.postShareModal = "";
+      modal.innerHTML = '<button class="modal-backdrop" type="button" data-post-share-close aria-label="关闭"></button><section class="modal-card glass-card" role="dialog" aria-modal="true" aria-labelledby="post-share-title"><button class="modal-close" type="button" data-post-share-close aria-label="关闭">×</button><p class="mini-title">SHARE ARTICLE</p><h2 id="post-share-title">分享文章</h2><section class="post-share-link"><span>链接分享</span><div><input data-post-share-url readonly><button class="ghost-button" type="button" data-post-share-copy>复制链接</button></div></section><section class="post-share-poster"><span>海报分享</span><canvas data-post-share-canvas width="1080" height="1350" aria-label="文章分享海报"></canvas><div><button class="ghost-button" type="button" data-post-share-download>下载海报</button><button class="primary-button" type="button" data-post-share-native>系统分享</button></div></section></section>';
+      document.body.appendChild(modal);
+    }
+    const url = window.location.href;
+    const urlInput = $(`[data-post-share-url]`, modal);
+    const canvas = $(`[data-post-share-canvas]`, modal);
+    const downloadButton = $(`[data-post-share-download]`, modal);
+    if (urlInput) urlInput.value = url;
+    downloadButton.disabled = true;
+    $all(`[data-post-share-close]`, modal).forEach((button) => { button.onclick = () => modal.classList.remove("open"); });
+    $(`[data-post-share-copy]`, modal).onclick = async () => {
+      const button = $(`[data-post-share-copy]`, modal);
+      try {
+        await copyText(url);
+        button.textContent = "已复制";
+        window.setTimeout(() => { button.textContent = "复制链接"; }, 1200);
+      } catch (_) { alert("复制失败，请手动复制链接。"); }
+    };
+    downloadButton.onclick = () => {
+      canvas.toBlob((blob) => {
+        if (!blob) return;
+        const objectUrl = URL.createObjectURL(blob);
+        const link = document.createElement("a");
+        link.href = objectUrl;
+        link.download = `${String(post.title || "小罗的文章").replace(/[\\/:*?\"<>|]/g, "_")}-分享海报.png`;
+        link.click();
+        window.setTimeout(() => URL.revokeObjectURL(objectUrl), 1200);
+      }, "image/png");
+    };
+    $(`[data-post-share-native]`, modal).onclick = async () => {
+      try {
+        if (navigator.share) await navigator.share({ title: post.title, text: "我在小罗的 Life 看到这篇文章", url });
+        else await copyText(url);
+      } catch (_) {}
+    };
+    modal.classList.add("open");
+    drawPostSharePoster(canvas, post, url)
+      .then(() => { downloadButton.disabled = false; })
+      .catch(() => { downloadButton.disabled = false; });
   }
 
   async function loadPostEngagement(postId) {

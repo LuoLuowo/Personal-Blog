@@ -1931,6 +1931,26 @@ body.dark-mode .timeline-rich-text .rich-highlight, body.dark-mode .timeline-ric
 .post-actions { display: flex; gap: 10px; margin-top: 28px; }
 .post-actions [data-post-like].is-liked { color: white; background: var(--blue); }
 .post-engagement { align-self: center; color: var(--muted); font-size: 13px; font-weight: 800; }
+.post-share-modal .modal-card { width: min(620px, calc(100% - 28px)); max-height: min(900px, calc(100vh - 28px)); overflow-y: auto; }
+.post-share-modal .modal-card > h2 { margin: 0 0 18px; }
+.post-share-link,
+.post-share-poster { display: grid; gap: 10px; padding: 15px; border: 1px solid rgba(79,124,255,.17); border-radius: 16px; background: rgba(79,124,255,.055); }
+.post-share-link > span,
+.post-share-poster > span { color: var(--blue); font-size: 13px; font-weight: 900; }
+.post-share-link > div,
+.post-share-poster > div { display: flex; align-items: center; gap: 9px; }
+.post-share-link input { min-width: 0; flex: 1; padding: 10px 12px; border: 1px solid var(--line); border-radius: 10px; outline: none; color: var(--ink); background: var(--input-bg); font: inherit; font-size: 13px; }
+.post-share-link input:focus { border-color: rgba(79,124,255,.52); box-shadow: 0 0 0 3px rgba(79,124,255,.1); }
+.post-share-poster { margin-top: 12px; }
+.post-share-poster canvas { display: block; width: 100%; max-width: 370px; justify-self: center; border: 1px solid rgba(255,255,255,.24); border-radius: 15px; background: #142445; box-shadow: 0 14px 30px rgba(20,36,69,.24); }
+.post-share-poster > div { justify-content: center; }
+@media (max-width: 560px) {
+  .post-actions { flex-wrap: wrap; }
+  .post-share-link > div { align-items: stretch; flex-direction: column; }
+  .post-share-link > div > button { width: 100%; }
+  .post-share-poster > div { flex-direction: column; }
+  .post-share-poster > div > button { width: 100%; }
+}
 .danger-button { border: 1px solid rgba(220, 78, 78, 0.34); border-radius: 999px; padding: 10px 15px; color: #b83a3a; background: rgba(220, 78, 78, 0.08); font-weight: 800; cursor: pointer; }
 .danger-button:hover { color: white; background: #c84c4c; }
 .post-attachments { display: grid; gap: 10px; margin-top: 30px; padding-top: 22px; border-top: 1px solid rgba(79, 124, 255, 0.16); }
