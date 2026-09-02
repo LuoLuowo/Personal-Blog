@@ -55,6 +55,21 @@
     const size = 720;
     const cells = 24;
     const cell = size / cells;
+    // Keep the game's logical board at 720 units, but render enough physical
+    // pixels for the larger immersive view so the canvas is never blurry.
+    const syncCanvasDensity = () => {
+      const cssSize = canvas.getBoundingClientRect().width || size;
+      const density = Math.min(3, Math.max(1, (window.devicePixelRatio || 1) * cssSize / size));
+      const pixelSize = Math.round(size * density);
+      if (canvas.width === pixelSize && canvas.height === pixelSize) return;
+      canvas.width = pixelSize;
+      canvas.height = pixelSize;
+      ctx.setTransform(density, 0, 0, density, 0, 0);
+    };
+    syncCanvasDensity();
+    const canvasResizeObserver = typeof ResizeObserver === "function" ? new ResizeObserver(syncCanvasDensity) : null;
+    canvasResizeObserver?.observe(canvas);
+    window.addEventListener("resize", syncCanvasDensity, { signal });
     const escapeHtml = (value) => String(value ?? "").replace(/[&<>"']/g, (char) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[char]));
     let snake = [];
     let previousSnake = [];
@@ -592,7 +607,7 @@
     renderRanking();
     lastFrame = performance.now();
     frame = requestAnimationFrame(loop);
-    window.destroyXiaoLuoSnakeGame = () => { cancelAnimationFrame(frame); stopMusic(); events.abort(); canvas.dataset.snakeReady = ""; window.destroyXiaoLuoSnakeGame = null; };
+    window.destroyXiaoLuoSnakeGame = () => { cancelAnimationFrame(frame); stopMusic(); canvasResizeObserver?.disconnect(); events.abort(); canvas.dataset.snakeReady = ""; window.destroyXiaoLuoSnakeGame = null; };
   }
 
   window.initXiaoLuoSnakeGame = initSnakeGame;

@@ -33,6 +33,7 @@
           <a href="./game.html"><b>跳</b><span><strong>跳一跳</strong><small>蓄力起跳</small></span></a>
           <a class="active" href="./snake.html" aria-current="page"><b>蛇</b><span><strong>贪吃蛇</strong><small>方向操控</small></span></a>
           <a href="./wordfall.html"><b>词</b><span><strong>单词下落</strong><small>输入消灭</small></span></a>
+          <div class="game-catalog-actions"><button type="button" data-game-fullscreen>全屏体验</button></div>
         </nav>
       </aside>
       <aside class="game-intro snake-intro">
@@ -52,7 +53,7 @@
           </div>
         </div>
       </aside>
-      <section class="game-stage-wrap snake-stage-wrap">
+      <section class="game-stage-wrap snake-stage-wrap" data-game-fullscreen-target>
         <div class="game-scorebar"><div><span>本局得分</span><strong data-snake-score>0</strong></div><div><span>最高记录</span><strong data-snake-best>0</strong></div><button type="button" data-snake-restart aria-label="重新开始">重开</button></div>
         <div class="snake-canvas-shell"><canvas data-snake-canvas width="720" height="720" aria-label="小罗贪吃蛇游戏画面"></canvas><button class="snake-start-button" type="button" data-snake-start>开始游戏</button></div>
         <p class="game-hint" data-snake-hint>按方向键、WASD 或滑动屏幕开始</p>

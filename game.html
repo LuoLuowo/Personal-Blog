@@ -33,6 +33,7 @@
           <a class="active" href="./game.html" aria-current="page"><b>跳</b><span><strong>跳一跳</strong><small>蓄力起跳</small></span></a>
           <a href="./snake.html"><b>蛇</b><span><strong>贪吃蛇</strong><small>方向操控</small></span></a>
           <a href="./wordfall.html"><b>词</b><span><strong>单词下落</strong><small>输入消灭</small></span></a>
+          <div class="game-catalog-actions"><button type="button" data-game-fullscreen>全屏体验</button></div>
         </nav>
       </aside>
       <aside class="game-intro">
@@ -42,7 +43,7 @@
         <p>按住蓄力，松开起跳。落在方块中央，可以得到更多分数。</p>
         <div class="game-tips"><span>鼠标或触屏</span><span>空格键</span><span>R 键重开</span></div>
       </aside>
-      <section class="game-stage-wrap">
+      <section class="game-stage-wrap" data-game-fullscreen-target>
         <div class="game-scorebar"><div><span>本局得分</span><strong data-game-score>0</strong></div><div><span>最高记录</span><strong data-game-best>0</strong></div><button type="button" data-game-restart aria-label="重新开始">重开</button></div>
         <canvas data-jump-canvas width="800" height="1120" aria-label="小罗跳一跳游戏画面"></canvas>
         <p class="game-hint" data-game-hint>按住画面开始蓄力</p>

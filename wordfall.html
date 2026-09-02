@@ -24,6 +24,7 @@
   </header>
   <main class="jump-game-shell">
     <div class="game-space-toolbar"><a class="game-back" href="./index.html">返回小罗Blog</a></div>
+    <aside class="wordfall-mobile-notice" role="status"><strong>单词下落暂仅支持电脑端体验</strong><span>请使用电脑键盘输入字母，获得更完整的激光消灭体验。</span></aside>
     <section class="game-panel wordfall-game-panel">
       <aside class="game-catalog">
         <nav class="game-side-list" aria-label="小游戏列表">
@@ -31,6 +32,7 @@
           <a href="./game.html"><b>跳</b><span><strong>跳一跳</strong><small>蓄力起跳</small></span></a>
           <a href="./snake.html"><b>蛇</b><span><strong>贪吃蛇</strong><small>方向操控</small></span></a>
           <a class="active" href="./wordfall.html" aria-current="page"><b>词</b><span><strong>单词下落</strong><small>输入消灭</small></span></a>
+          <div class="game-catalog-actions"><button type="button" data-game-fullscreen>全屏体验</button></div>
         </nav>
       </aside>
       <aside class="game-intro wordfall-intro">
@@ -47,7 +49,7 @@
           <button type="button" data-wordfall-library-toggle hidden>题库管理</button>
         </div>
       </aside>
-      <section class="wordfall-stage-wrap">
+      <section class="wordfall-stage-wrap" data-game-fullscreen-target>
         <div class="wordfall-statusbar">
           <div><span>得分</span><strong data-wordfall-score>0</strong></div>
           <div><span>生命</span><strong data-wordfall-lives>2 / 2</strong></div>

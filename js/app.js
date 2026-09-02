@@ -6750,6 +6750,7 @@
     if (page === "wordfall") {
       ensureWordfallGame();
     }
+    if (["game", "snake", "wordfall"].includes(page)) initGameFullscreen();
     if (page === "dashboard") {
       protectDashboard().then(() => {
         if (!state.isAdmin) return;
@@ -6864,7 +6865,69 @@
         document.body.appendChild(script);
       }
     };
+    // Wordfall owns keyboard and animation listeners. Start it immediately
+    // after PJAX has replaced main, then verify once more after layout settles.
+    boot();
     requestAnimationFrame(() => requestAnimationFrame(boot));
+    window.setTimeout(boot, 80);
+  }
+
+  function initGameFullscreen() {
+    const button = $("[data-game-fullscreen]");
+    if (!button) return;
+    const target = $("[data-game-fullscreen-target]");
+    let placeholder = null;
+    const syncLabel = () => {
+      const active = target?.classList.contains("is-game-immersive");
+      button.textContent = active ? "退出全屏" : "全屏体验";
+      button.setAttribute("aria-pressed", String(active));
+    };
+    if (!target) {
+      button.hidden = true;
+      return;
+    }
+    let exitButton = $("[data-game-immersive-exit]", target);
+    if (!exitButton) {
+      exitButton = document.createElement("button");
+      exitButton.type = "button";
+      exitButton.className = "game-immersive-exit";
+      exitButton.dataset.gameImmersiveExit = "";
+      exitButton.textContent = "退出全屏";
+      target.appendChild(exitButton);
+    }
+    const closeImmersive = () => {
+      if (placeholder?.parentNode) {
+        placeholder.parentNode.insertBefore(target, placeholder);
+        placeholder.remove();
+      }
+      placeholder = null;
+      target.classList.remove("is-game-immersive");
+      document.body.classList.remove("game-immersive-open");
+      syncLabel();
+    };
+    target.__closeGameImmersive = closeImmersive;
+    button.onclick = () => {
+      const willOpen = !target.classList.contains("is-game-immersive");
+      if (!willOpen) return closeImmersive();
+      placeholder = document.createComment("game-immersive-origin");
+      target.parentNode?.insertBefore(placeholder, target);
+      document.body.appendChild(target);
+      target.classList.add("is-game-immersive");
+      document.body.classList.add("game-immersive-open");
+      syncLabel();
+    };
+    exitButton.onclick = closeImmersive;
+    if (!document.body.dataset.gameFullscreenBound) {
+      document.body.dataset.gameFullscreenBound = "true";
+      document.addEventListener("keydown", (event) => {
+        if (event.key !== "Escape") return;
+        const currentTarget = $("[data-game-fullscreen-target].is-game-immersive");
+        if (!currentTarget) return;
+        event.preventDefault();
+        currentTarget.__closeGameImmersive?.();
+      });
+    }
+    syncLabel();
   }
 
   async function navigate(url, push = true) {
@@ -6892,6 +6955,8 @@
       muted: audio.muted,
       musicIndex: state.musicIndex
     } : null;
+    $("[data-game-fullscreen-target].is-game-immersive")?.__closeGameImmersive?.();
+    document.body.classList.remove("game-immersive-open");
     state.navigating = true;
 
     let response;
@@ -6989,6 +7054,9 @@
       if (url.origin !== location.origin) return;
       if (link.target || link.hasAttribute("download") || (url.hash && url.pathname === location.pathname)) return;
       if (!url.pathname.endsWith(".html") && !url.pathname.endsWith("/")) return;
+      // Wordfall installs a keyboard/audio loop. A complete document load
+      // prevents a stale loop from swallowing the first click after navigation.
+      if (url.pathname.endsWith("/wordfall.html")) return;
       // Lock restricted articles before navigation. This keeps the full article
       // content out of the detail view until the reader has earned the level.
       if (link.classList.contains("article-card-hit") && url.pathname.endsWith("article-detail.html")) {
