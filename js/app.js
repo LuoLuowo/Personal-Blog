@@ -4074,7 +4074,7 @@
     $("[data-media-editor-title]", modal).textContent = item ? "编辑片单" : "添加片单";
     $("[data-media-editor-type]", form).innerHTML = mediaTypes().map((type) => `<option value="${escapeHtml(type)}">${escapeHtml(type)}</option>`).join("");
     form.title.value = item?.title || "";
-    form.mediaType.value = item?.mediaType || mediaTypes()[0];
+    form.mediaType.value = item?.mediaType || "电影";
     form.rating.value = item?.rating || "";
     form.people.value = item?.people || "";
     form.tags.value = (item?.tags || []).join(", ");
@@ -4082,11 +4082,15 @@
     form.reviewTitle.value = item?.reviewTitle || "观后感";
     form.review.value = item?.review || "";
     form.reviewVisibility.value = item?.reviewPublic === false ? "private" : "public";
-    const currentYear = new Date().getFullYear();
-    form.watchedYear.innerHTML = mediaDateOptions(currentYear - 80, currentYear + 1, "年", item?.watchedYear);
-    form.watchedMonth.innerHTML = mediaDateOptions(1, 12, "月", item?.watchedMonth);
+    const today = new Date();
+    const currentYear = today.getFullYear();
+    const defaultWatchedYear = item ? item.watchedYear : currentYear;
+    const defaultWatchedMonth = item ? item.watchedMonth : today.getMonth() + 1;
+    const defaultWatchedDay = item ? item.watchedDay : today.getDate();
+    form.watchedYear.innerHTML = mediaDateOptions(currentYear - 80, currentYear + 1, "年", defaultWatchedYear);
+    form.watchedMonth.innerHTML = mediaDateOptions(1, 12, "月", defaultWatchedMonth);
     const refreshWatchDay = () => {
-      const previous = Number(form.watchedDay.value) || item?.watchedDay || 0;
+      const previous = Number(form.watchedDay.value) || defaultWatchedDay;
       const total = daysInMediaMonth(Number(form.watchedYear.value), Number(form.watchedMonth.value));
       form.watchedDay.innerHTML = mediaDateOptions(1, total, "日", previous);
       form.watchedDay.disabled = !total;
