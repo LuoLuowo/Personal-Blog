@@ -1658,7 +1658,7 @@
       state.mediaLastRefreshedAt = Date.now();
       data.mediaTypes = mediaTypes.map((item) => ({ id: item.id, name: item.name, isHidden: Boolean(item.is_hidden) }));
       data.notes = notes.map((item) => ({ id: item.id, title: item.title, body: item.body || "", attachments: Array.isArray(item.attachments) ? item.attachments : [], isDone: Boolean(item.is_done), folder: item.folder || "", isPinned: Boolean(item.is_pinned), createdAt: item.created_at || "", updatedAt: item.updated_at || item.created_at || "" }));
-      data.commonSites = commonSites.map((item) => ({ id: item.id, title: item.title, url: item.url, description: item.description || "", iconUrl: item.icon_url || "", createdAt: item.created_at || "" }));
+      data.commonSites = commonSites.map(mapCommonSiteRow);
       data.posts = posts.map((item) => ({ id: item.id, userId: item.user_id || ownerId, title: item.title, author: data.site.profileName, category: item.category || "未分类", tags: parseCommaTags(item.tags), attachments: item.attachments || [], musicAttachment: item.music_attachment || null, status: item.status || "published", minActivityScore: Number(item.min_activity_score) || 0, publishedAt: formatPostDate(item.created_at), coverUrl: item.cover_url || "", coverClass: "gradient-a", excerpt: (item.content || "").replace(/<[^>]+>/g, "").slice(0, 110), content: [item.content || ""], featured: false }));
       if (musicTracks.length) data.music = musicTracks.map((track) => ({ id: track.id, title: track.title, artist: track.artist || "小罗Blog", category: track.category || "", src: track.file_url }));
       state.cloudOwnerId = ownerId;
@@ -5259,6 +5259,7 @@
   const BUILT_IN_COMMON_SITES = [
     {
       id: "builtin-word-frequency",
+      toolKey: "word-frequency",
       title: "英语高频词",
       url: "./tools/word-frequency/",
       description: "1000 个高频单词与 360 个高频词组记忆卡片。",
@@ -5266,6 +5267,33 @@
       builtIn: true
     }
   ];
+
+  function mapCommonSiteRow(item) {
+    const storedDescription = String(item.description || "");
+    const marker = storedDescription.match(/^\u2063xiaoluo-tool:([^:]+):(active|hidden)\u2063/);
+    return {
+      id: item.id,
+      title: item.title,
+      url: item.url,
+      description: marker ? storedDescription.slice(marker[0].length) : storedDescription,
+      iconUrl: item.icon_url || "",
+      createdAt: item.created_at || "",
+      toolKey: marker?.[1] || "",
+      isHidden: marker?.[2] === "hidden"
+    };
+  }
+
+  function commonToolDescription(description, toolKey = "", isHidden = false) {
+    return toolKey ? `\u2063xiaoluo-tool:${toolKey}:${isHidden ? "hidden" : "active"}\u2063${description}` : description;
+  }
+
+  function commonToolEntries() {
+    const configuredKeys = new Set(data.commonSites.filter((site) => site.toolKey).map((site) => site.toolKey));
+    return [
+      ...BUILT_IN_COMMON_SITES.filter((site) => !configuredKeys.has(site.toolKey)),
+      ...data.commonSites.filter((site) => !site.isHidden)
+    ];
+  }
 
   async function openCommonSitesDesk() {
     let modal = $("[data-common-sites-modal]");
@@ -5280,7 +5308,7 @@
     if (!data.commonSites.length) {
       try {
         const rows = await window.XiaoLuoSupabase.listContent("common_sites", state.cloudOwnerId || state.adminId);
-        data.commonSites = rows.map((item) => ({ id: item.id, title: item.title, url: item.url, description: item.description || "", iconUrl: item.icon_url || "", createdAt: item.created_at || "" }));
+        data.commonSites = rows.map(mapCommonSiteRow);
       } catch (_) { /* SQL 尚未执行时显示空状态。 */ }
     }
     modal.resetCommonSiteForm?.();
@@ -5292,8 +5320,8 @@
 
   function renderCommonSitesDesk(modal) {
     const list = $("[data-common-sites-list]", modal);
-    const sites = [...BUILT_IN_COMMON_SITES, ...data.commonSites];
-    list.innerHTML = sites.map((site) => `<article class="common-site-row"><button class="common-site-open" type="button" data-common-site-open="${escapeHtml(site.id)}">${site.iconUrl ? `<img src="${escapeHtml(site.iconUrl)}" alt="">` : '<span>⌘</span>'}<div><strong>${escapeHtml(site.title)}</strong><p>${escapeHtml(site.description || site.url)}</p></div></button>${state.isAdmin && !site.builtIn ? `<div><button type="button" data-common-site-edit="${escapeHtml(site.id)}">编辑</button></div>` : ""}</article>`).join("") || '<p class="note-empty">还没有添加小工具。</p>';
+    const sites = commonToolEntries();
+    list.innerHTML = sites.map((site) => `<article class="common-site-row"><button class="common-site-open" type="button" data-common-site-open="${escapeHtml(site.id)}">${site.iconUrl ? `<img src="${escapeHtml(site.iconUrl)}" alt="">` : '<span>⌘</span>'}<div><strong>${escapeHtml(site.title)}</strong><p>${escapeHtml(site.description || site.url)}</p></div></button>${state.isAdmin ? `<div><button type="button" data-common-site-edit="${escapeHtml(site.id)}">编辑</button></div>` : ""}</article>`).join("") || '<p class="note-empty">还没有添加小工具。</p>';
   }
 
   function bindCommonSitesDesk(modal) {
@@ -5304,6 +5332,7 @@
       form.reset();
       form.removeAttribute("data-site-id");
       delete form.dataset.siteId;
+      delete form.dataset.commonToolKey;
       if (submitButton) submitButton.textContent = "添加工具";
       if (deleteButton) deleteButton.hidden = true;
     };
@@ -5312,12 +5341,24 @@
     $("[data-common-site-reset]", modal).onclick = reset;
     deleteButton.onclick = async () => {
       const siteId = form.dataset.siteId;
-      const site = data.commonSites.find((item) => item.id === siteId);
+      const site = commonToolEntries().find((item) => item.id === siteId);
       if (!site || !await confirmPublish("确认删除这个小工具？", "删除后无法恢复。", "确认删除")) return;
       try {
-        await window.XiaoLuoSupabase.deleteContent("common_sites", site.id, state.userId);
-        if (site.iconUrl) await window.XiaoLuoSupabase.deleteFilesByPublicUrls([site.iconUrl]);
-        data.commonSites = data.commonSites.filter((item) => item.id !== site.id);
+        if (site.toolKey) {
+          const storedSite = data.commonSites.find((item) => item.id === site.id);
+          const payload = { title: site.title, url: site.url, description: commonToolDescription(site.description, site.toolKey, true), icon_url: site.iconUrl || null };
+          if (storedSite) {
+            await window.XiaoLuoSupabase.updateContent("common_sites", storedSite.id, state.userId, payload);
+            Object.assign(storedSite, { isHidden: true });
+          } else {
+            const row = await window.XiaoLuoSupabase.addContent("common_sites", { user_id: state.userId, ...payload });
+            data.commonSites.unshift(mapCommonSiteRow(row));
+          }
+        } else {
+          await window.XiaoLuoSupabase.deleteContent("common_sites", site.id, state.userId);
+          if (site.iconUrl) await window.XiaoLuoSupabase.deleteFilesByPublicUrls([site.iconUrl]);
+          data.commonSites = data.commonSites.filter((item) => item.id !== site.id);
+        }
         reset();
         renderCommonSitesDesk(modal);
       } catch (error) { showCloudError(error); }
@@ -5329,20 +5370,22 @@
       if (!title || !url) return;
       const siteId = form.getAttribute("data-site-id") || null;
       const old = data.commonSites.find((site) => site.id === siteId);
+      const toolKey = form.dataset.commonToolKey || old?.toolKey || "";
       try {
         await runWithLoading("正在保存小工具…", async () => {
           let iconUrl = form.iconUrl.value.trim() || old?.iconUrl || "";
           if (form.icon.files?.[0]) iconUrl = await uploadOptimizedImage(state.userId, "common-site-icons", form.icon.files[0], { maxDimension: 512, quality: .8 });
-          const payload = { title, url, description: form.description.value.trim(), icon_url: iconUrl || null };
+          const description = form.description.value.trim();
+          const payload = { title, url, description: commonToolDescription(description, toolKey), icon_url: iconUrl || null };
           if (old) {
             state.cloudMutationVersion += 1;
             await window.XiaoLuoSupabase.updateContent("common_sites", old.id, state.userId, payload);
             if (old.iconUrl && old.iconUrl !== iconUrl) await window.XiaoLuoSupabase.deleteFilesByPublicUrls([old.iconUrl]);
-            Object.assign(old, { title, url, description: payload.description, iconUrl });
+            Object.assign(old, { title, url, description, iconUrl, toolKey, isHidden: false });
           } else {
             state.cloudMutationVersion += 1;
             const row = await window.XiaoLuoSupabase.addContent("common_sites", { user_id: state.userId, ...payload });
-            data.commonSites.unshift({ id: row.id, title: row.title, url: row.url, description: row.description || "", iconUrl: row.icon_url || "", createdAt: row.created_at || "" });
+            data.commonSites.unshift(mapCommonSiteRow(row));
           }
           reset(); renderCommonSitesDesk(modal);
         });
@@ -5352,11 +5395,12 @@
       const open = event.target.closest("[data-common-site-open]");
       const edit = event.target.closest("[data-common-site-edit]");
       const id = open?.dataset.commonSiteOpen || edit?.dataset.commonSiteEdit;
-      const site = BUILT_IN_COMMON_SITES.find((item) => item.id === id) || data.commonSites.find((item) => item.id === id);
+      const site = commonToolEntries().find((item) => item.id === id);
       if (!site) return;
       if (open) { window.open(site.url, "_blank", "noopener"); return; }
       if (edit) {
         form.dataset.siteId = site.id;
+        if (site.toolKey) form.dataset.commonToolKey = site.toolKey;
         form.title.value = site.title;
         form.url.value = site.url;
         form.description.value = site.description || "";
