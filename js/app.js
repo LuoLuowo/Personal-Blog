@@ -966,7 +966,7 @@
     if (!file?.type?.startsWith("image/") || file.type === "image/gif") return file;
     setSavingMessage("正在压缩图片中…");
     const maxSide = options.maxSide || 1600;
-    const targetBytes = options.targetBytes || 400 * 1024;
+    const targetBytes = options.targetBytes || 250 * 1024;
     let bitmap;
     try {
       bitmap = await createImageBitmap(file);
@@ -1624,7 +1624,7 @@
         api.listContent("media_types", ownerId).catch(() => []),
         api.listContent("media_reviews", ownerId).catch(() => []),
         state.isAdmin ? api.listContent("notes", state.userId).catch(() => []) : Promise.resolve([]),
-        state.isLoggedIn ? api.listContent("common_sites", ownerId).catch(() => []) : Promise.resolve([]),
+        api.listContent("common_sites", ownerId).catch(() => []),
         state.isAdmin ? api.listPosts(ownerId) : api.listPublishedPosts(ownerId),
         api.listMusicTracks(ownerId),
         api.listMomentTeasers ? api.listMomentTeasers(ownerId).catch(() => []) : Promise.resolve([])
@@ -5251,7 +5251,6 @@
     document.body.dataset.quickSitesBound = "true";
     document.addEventListener("click", (event) => {
       if (!event.target.closest("[data-open-common-sites]")) return;
-      if (!state.isLoggedIn) { requireLogin("请先登录后再查看小工具。"); return; }
       openCommonSitesDesk();
     });
   }
@@ -5902,7 +5901,7 @@
     runWithLoading("正在保存首页设置…", async () => {
       await upload;
       if (homeCoverFile) {
-        profile.home_background_url = await uploadOptimizedImage(state.userId, "home-covers", homeCoverFile, { maxSide: 2400, targetBytes: 900 * 1024 });
+        profile.home_background_url = await uploadOptimizedImage(state.userId, "home-covers", homeCoverFile, { maxSide: 1800, targetBytes: 250 * 1024 });
       }
       await finish();
       if (homeCoverFile && oldHomeCoverUrl && oldHomeCoverUrl !== profile.home_background_url) await window.XiaoLuoSupabase.deleteFilesByPublicUrls([oldHomeCoverUrl]);
@@ -6862,6 +6861,7 @@
 
   function initGameDrawer() {
     if (!document.querySelector(".site-header")) return;
+    const drawerDismissKey = `xiaoluo-game-drawer-dismissed-${state.userId || localStorage.getItem("xiaoluo-site-visitor-id") || "guest"}`;
     let drawer = document.querySelector(".blog-game-drawer");
     if (!drawer) {
       drawer = document.createElement("aside");
@@ -6874,6 +6874,7 @@
         event?.preventDefault();
         event?.stopPropagation();
         close();
+        localStorage.setItem(drawerDismissKey, "true");
         drawer.hidden = true;
         drawer.style.display = "none";
       };
@@ -6881,7 +6882,7 @@
       $("[data-game-drawer-dismiss]", drawer).onclick = dismiss;
     }
     // 游戏页面隐藏右侧抽屉
-    const shouldHide = pageName() === "game" || pageName() === "snake" || pageName() === "wordfall";
+    const shouldHide = pageName() === "game" || pageName() === "snake" || pageName() === "wordfall" || localStorage.getItem(drawerDismissKey) === "true";
     drawer.hidden = shouldHide;
     drawer.style.display = shouldHide ? "none" : "";
   }

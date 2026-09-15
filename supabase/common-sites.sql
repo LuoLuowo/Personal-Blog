@@ -11,10 +11,12 @@ create table if not exists public.common_sites (
 );
 
 alter table public.common_sites enable row level security;
-grant select, insert, update, delete on table public.common_sites to authenticated;
+grant select on table public.common_sites to anon, authenticated;
+grant insert, update, delete on table public.common_sites to authenticated;
 drop policy if exists "admins manage common sites" on public.common_sites;
 drop policy if exists "authenticated users read common sites" on public.common_sites;
-create policy "authenticated users read common sites" on public.common_sites
-  for select to authenticated using (true);
+drop policy if exists "public users read common sites" on public.common_sites;
+create policy "public users read common sites" on public.common_sites
+  for select to anon, authenticated using (true);
 create policy "admins manage common sites" on public.common_sites for all to authenticated
   using (public.is_blog_admin()) with check (public.is_blog_admin());
