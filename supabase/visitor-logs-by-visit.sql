@@ -100,6 +100,10 @@ begin
         order by visited_at desc
         limit 10
       );
+
+      -- 自动清理：删除全局10天以前的所有访问记录
+      delete from public.site_visitor_logs
+      where visited_at < now() - interval '10 days';
   end if;
 end;
 $$;
@@ -145,6 +149,10 @@ where id not in (
 );
 
 update public.site_visitors set visit_count = 1;
+
+-- 4.5 一次性清理：删除10天以前的所有访问记录（之后由函数自动清理）
+delete from public.site_visitor_logs
+where visited_at < now() - interval '10 days';
 
 -- 5. 权限
 revoke all on function public.record_site_presence(text, text, text, text, uuid, text, boolean) from public;
