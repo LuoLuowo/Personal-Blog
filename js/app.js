@@ -1825,7 +1825,7 @@
             <div class="article-card-topline">
             <p class="mini-title">${escapeHtml(post.category)}</p>
             <div class="tag-row">
-              <div class="tag-row-left">${post.minActivityScore ? `<span class="activity-read-label">${escapeHtml(activityLevelForScore(post.minActivityScore).title)}可读</span>` : ""}${post.tags.map((tag) => `<a href="./articles.html?tag=${encodeURIComponent(tag)}">#${escapeHtml(tag)}</a>`).join("")}</div>
+              <div class="tag-row-left">${post.minActivityScore ? `<span class="activity-read-label">${escapeHtml(activityLevelForScore(post.minActivityScore).title)}可读</span>` : ""}${post.tags.slice(0, 2).map((tag) => `<a href="./articles.html?tag=${encodeURIComponent(tag)}">#${escapeHtml(tag)}</a>`).join("")}</div>
             </div>
             </div>
           </div>
@@ -3386,6 +3386,19 @@
     });
   }
 
+  function waitForQrCode(timeout = 8000) {
+    if (window.QRCode) return Promise.resolve(true);
+    return new Promise((resolve) => {
+      const startedAt = Date.now();
+      const check = () => {
+        if (window.QRCode) { resolve(true); return; }
+        if (Date.now() - startedAt >= timeout) { resolve(false); return; }
+        window.requestAnimationFrame(check);
+      };
+      check();
+    });
+  }
+
   async function drawPostShareQr(context, url, x, y, size) {
     context.save();
     context.fillStyle = "rgba(255,255,255,.97)";
@@ -3393,12 +3406,7 @@
     context.roundRect(x - 16, y - 16, size + 32, size + 32, 20);
     context.fill();
     context.restore();
-    if (!window.QRCode) {
-      context.fillStyle = "#142445";
-      context.font = "700 22px Microsoft YaHei, sans-serif";
-      context.fillText("二维码加载中", x + 20, y + size / 2);
-      return;
-    }
+    if (!await waitForQrCode()) throw new Error("二维码加载失败");
     const holder = document.createElement("div");
     holder.style.cssText = "position:fixed;left:-9999px;top:-9999px;width:1px;height:1px;overflow:hidden;";
     document.body.appendChild(holder);
@@ -3411,13 +3419,15 @@
         colorLight: "#ffffff",
         correctLevel: window.QRCode.CorrectLevel.M
       });
-      await new Promise((resolve) => window.requestAnimationFrame(resolve));
+      await new Promise((resolve) => window.requestAnimationFrame(() => window.requestAnimationFrame(resolve)));
       const source = $("canvas, img", holder);
-      if (source) {
-        context.imageSmoothingEnabled = false;
-        context.drawImage(source, x, y, size, size);
-        context.imageSmoothingEnabled = true;
+      if (!source) throw new Error("二维码绘制失败");
+      if (source instanceof HTMLImageElement && !source.complete) {
+        await new Promise((resolve) => { source.addEventListener("load", resolve, { once: true }); source.addEventListener("error", resolve, { once: true }); });
       }
+      context.imageSmoothingEnabled = false;
+      context.drawImage(source, x, y, size, size);
+      context.imageSmoothingEnabled = true;
     } finally {
       holder.remove();
     }
@@ -3449,9 +3459,11 @@
       context.beginPath();
       context.roundRect(coverX, coverY, coverW, coverH, 34);
       context.clip();
+      context.filter = "contrast(1.12) saturate(1.18) brightness(.9)";
       context.drawImage(cover, drawX, drawY, drawW, drawH);
+      context.filter = "none";
       context.restore();
-      context.fillStyle = "rgba(8,17,37,.25)";
+      context.fillStyle = "rgba(8,17,37,.14)";
       context.beginPath(); context.roundRect(coverX, coverY, coverW, coverH, 34); context.fill();
     }
 
@@ -3496,8 +3508,23 @@
     const urlInput = $(`[data-post-share-url]`, modal);
     const canvas = $(`[data-post-share-canvas]`, modal);
     const downloadButton = $(`[data-post-share-download]`, modal);
+    const nativeButton = $(`[data-post-share-native]`, modal);
+    const shareCard = $(".modal-card", modal);
+    let loading = $(`[data-post-share-loading]`, modal);
+    if (!loading) {
+      loading = document.createElement("div");
+      loading.className = "post-share-loading";
+      loading.dataset.postShareLoading = "";
+      loading.innerHTML = '<i aria-hidden="true"></i><strong>正在生成分享海报</strong><span>正在加载文章封面与二维码…</span>';
+      shareCard.appendChild(loading);
+    }
+    const requestId = `${post.id}-${Date.now()}`;
+    modal.dataset.postShareRequest = requestId;
     if (urlInput) urlInput.value = url;
     downloadButton.disabled = true;
+    nativeButton.disabled = true;
+    loading.hidden = false;
+    modal.classList.add("is-generating");
     $all(`[data-post-share-close]`, modal).forEach((button) => { button.onclick = () => modal.classList.remove("open"); });
     $(`[data-post-share-copy]`, modal).onclick = async () => {
       const button = $(`[data-post-share-copy]`, modal);
@@ -3526,8 +3553,18 @@
     };
     modal.classList.add("open");
     drawPostSharePoster(canvas, post, url)
-      .then(() => { downloadButton.disabled = false; })
-      .catch(() => { downloadButton.disabled = false; });
+      .then(() => {
+        if (modal.dataset.postShareRequest !== requestId) return;
+        downloadButton.disabled = false;
+        nativeButton.disabled = false;
+        loading.hidden = true;
+        modal.classList.remove("is-generating");
+      })
+      .catch(() => {
+        if (modal.dataset.postShareRequest !== requestId) return;
+        loading.querySelector("strong").textContent = "海报生成失败";
+        loading.querySelector("span").textContent = "请关闭后重新打开分享。";
+      });
   }
 
   async function loadPostEngagement(postId) {
