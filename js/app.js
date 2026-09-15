@@ -110,6 +110,12 @@
     }[char]));
   }
 
+  // 把纯文本中的 URL 自动识别为可点击链接（先转义再包裹 <a>）
+  function linkifyText(text) {
+    const escaped = escapeHtml(text);
+    return escaped.replace(/(https?:\/\/[^\s<>"']+)/g, '<a href="$1" target="_blank" rel="noopener">$1</a>');
+  }
+
   // Supabase rows use arrays, while older/imported rows may use comma text.
   // All article UI reads this one normalized representation.
   function parseCommaTags(value, limit = 24) {
@@ -2355,8 +2361,14 @@
       if (!section.dataset.homeStatePage) section.dataset.homeStatePage = "1";
       if (section.dataset.homeStateCategory == null) section.dataset.homeStateCategory = "";
       if (section.dataset.homeStateTag == null) section.dataset.homeStateTag = "";
-      const categoryNames = [...new Set(data.posts.map((post) => post.category).filter(Boolean))];
-      const tagNames = [...new Set(data.posts.flatMap((post) => parseCommaTags(post.tags)))];
+      const categoryNames = [...new Set(data.posts.map((post) => post.category).filter(Boolean))]
+        .map((name) => ({ name, count: data.posts.filter((post) => post.category === name).length }))
+        .sort((a, b) => b.count - a.count)
+        .map((item) => item.name);
+      const tagNames = [...new Set(data.posts.flatMap((post) => parseCommaTags(post.tags)))]
+        .map((name) => ({ name, count: data.posts.filter((post) => parseCommaTags(post.tags).includes(name)).length }))
+        .sort((a, b) => b.count - a.count)
+        .map((item) => item.name);
       const activeCategory = section.dataset.homeStateCategory;
       const activeTag = section.dataset.homeStateTag;
       const categoryHtml = [`<button type="button" class="home-filter-chip${activeCategory ? "" : " active"}" data-home-category="">全部 <small>${data.posts.length}</small></button>`, ...categoryNames.map((name) => `<button type="button" class="home-filter-chip${activeCategory === name ? " active" : ""}" data-home-category="${escapeHtml(name)}">${escapeHtml(name)} <small>${data.posts.filter((post) => post.category === name).length}</small></button>`)].join("");
@@ -3279,6 +3291,58 @@
       else window.location.href = "./activity.html";
     });
     bindPostAccessSettings(wrap, post);
+    bindArticleImageLightbox(wrap);
+  }
+
+  function bindArticleImageLightbox(scope) {
+    const images = $all(".post-content img", scope);
+    if (!images.length) return;
+    images.forEach((img) => {
+      if (img.dataset.lightboxBound === "true") return;
+      img.dataset.lightboxBound = "true";
+      img.style.cursor = "zoom-in";
+      img.addEventListener("click", () => openArticleLightbox(img.src, img.alt || ""));
+    });
+  }
+
+  function openArticleLightbox(src, alt) {
+    let modal = $("[data-article-lightbox]");
+    if (!modal) {
+      modal = document.createElement("div");
+      modal.className = "modal article-lightbox";
+      modal.dataset.articleLightbox = "";
+      modal.innerHTML = `<div class="modal-backdrop" data-lightbox-close></div><div class="lightbox-stage"><button class="lightbox-btn" type="button" data-lightbox-close aria-label="关闭">×</button><button class="lightbox-btn zoom-out" type="button" data-lightbox-zoom-out aria-label="缩小">−</button><button class="lightbox-btn zoom-in" type="button" data-lightbox-zoom-in aria-label="放大">+</button><button class="lightbox-btn reset" type="button" data-lightbox-reset aria-label="重置">⟲</button><div class="lightbox-image-wrap"><img data-lightbox-img alt=""></div></div>`;
+      document.body.appendChild(modal);
+      modal.addEventListener("click", (e) => {
+        if (e.target.matches("[data-lightbox-close], .modal-backdrop")) modal.classList.remove("open");
+      });
+      $("[data-lightbox-zoom-in]", modal).addEventListener("click", () => {
+        const img = $("[data-lightbox-img]", modal);
+        img.dataset.zoom = String(Math.min(3, (Number(img.dataset.zoom) || 1) + 0.25));
+        applyLightboxZoom(img);
+      });
+      $("[data-lightbox-zoom-out]", modal).addEventListener("click", () => {
+        const img = $("[data-lightbox-img]", modal);
+        img.dataset.zoom = String(Math.max(0.3, (Number(img.dataset.zoom) || 1) - 0.25));
+        applyLightboxZoom(img);
+      });
+      $("[data-lightbox-reset]", modal).addEventListener("click", () => {
+        const img = $("[data-lightbox-img]", modal);
+        img.dataset.zoom = "1";
+        applyLightboxZoom(img);
+      });
+    }
+    const img = $("[data-lightbox-img]", modal);
+    img.src = src;
+    img.alt = alt;
+    img.dataset.zoom = "1";
+    applyLightboxZoom(img);
+    modal.classList.add("open");
+  }
+
+  function applyLightboxZoom(img) {
+    const zoom = Number(img.dataset.zoom) || 1;
+    img.style.transform = `scale(${zoom})`;
   }
 
   function bindPostAccessSettings(wrap, post) {
@@ -5337,7 +5401,7 @@
       modal = document.createElement("div");
       modal.className = "modal common-sites-modal";
       modal.dataset.commonSitesModal = "";
-      modal.innerHTML = '<button class="modal-backdrop" type="button" data-common-sites-close aria-label="关闭小工具"></button><section class="common-sites-desk glass-card" role="dialog" aria-modal="true" aria-label="小工具"><header><div><p class="mini-title">TOOLS</p><h2>小工具</h2></div><button type="button" data-common-sites-close aria-label="关闭小工具">×</button></header><div class="common-sites-layout"><form class="common-site-form" data-common-site-form><input name="title" placeholder="工具名称" required><label class="common-site-url-input"><span aria-hidden="true">↗</span><input name="url" type="url" placeholder="网址，例如 https://example.com" required></label><textarea name="description" rows="4" placeholder="一句简介（可选）"></textarea><input name="iconUrl" type="url" placeholder="图标图片 URL（可选）"><label class="upload-field"><span>或上传工具图标（可选，上传后优先使用）</span><input name="icon" type="file" accept="image/*"></label><div><button class="ghost-button" type="button" data-common-site-reset>新建</button><button class="danger-button" type="button" data-common-site-delete-current hidden>删除</button><button class="primary-button small" type="submit">保存工具</button></div></form><div class="common-sites-list" data-common-sites-list></div></div></section>';
+      modal.innerHTML = '<button class="modal-backdrop" type="button" data-common-sites-close aria-label="关闭小工具"></button><section class="common-sites-desk glass-card" role="dialog" aria-modal="true" aria-label="小工具"><header><div><p class="mini-title">TOOLS</p><h2>小工具</h2></div><div class="common-sites-header-actions"><button type="button" class="primary-button small" data-common-site-add>＋ 添加工具</button><button type="button" data-common-sites-close aria-label="关闭小工具">×</button></div></header><div class="common-sites-form-panel" data-common-site-form-panel hidden><form class="common-site-form" data-common-site-form><input name="title" placeholder="工具名称" required><label class="common-site-url-input"><span aria-hidden="true">↗</span><input name="url" type="url" placeholder="网址，例如 https://example.com" required></label><textarea name="description" rows="3" placeholder="一句简介（可选）"></textarea><input name="iconUrl" type="url" placeholder="图标图片 URL（可选）"><label class="upload-field"><span>或上传工具图标（可选，上传后优先使用）</span><input name="icon" type="file" accept="image/*"></label><div><button class="ghost-button" type="button" data-common-site-cancel>取消</button><button class="danger-button" type="button" data-common-site-delete-current hidden>删除</button><button class="primary-button small" type="submit">保存工具</button></div></form></div><div class="common-sites-list" data-common-sites-list></div></section>';
       document.body.appendChild(modal);
       bindCommonSitesDesk(modal);
     }
@@ -5348,8 +5412,8 @@
       } catch (_) { /* SQL 尚未执行时显示空状态。 */ }
     }
     modal.resetCommonSiteForm?.();
-    $("[data-common-site-form]", modal).hidden = !state.isAdmin;
-    $(".common-sites-layout", modal).classList.toggle("viewer-mode", !state.isAdmin);
+    const addBtn = $("[data-common-site-add]", modal);
+    if (addBtn) addBtn.hidden = !state.isAdmin;
     renderCommonSitesDesk(modal);
     modal.classList.add("open");
   }
@@ -5362,8 +5426,11 @@
 
   function bindCommonSitesDesk(modal) {
     const form = $("[data-common-site-form]", modal);
+    const formPanel = $("[data-common-site-form-panel]", modal);
+    const addButton = $("[data-common-site-add]", modal);
     const submitButton = $("button[type='submit']", form);
     const deleteButton = $("[data-common-site-delete-current]", form);
+    const showFormPanel = (show) => { formPanel.hidden = !show; };
     const reset = () => {
       form.reset();
       form.removeAttribute("data-site-id");
@@ -5371,10 +5438,12 @@
       delete form.dataset.commonToolKey;
       if (submitButton) submitButton.textContent = "添加工具";
       if (deleteButton) deleteButton.hidden = true;
+      showFormPanel(false);
     };
     modal.resetCommonSiteForm = reset;
     $all("[data-common-sites-close]", modal).forEach((button) => { button.onclick = () => modal.classList.remove("open"); });
-    $("[data-common-site-reset]", modal).onclick = reset;
+    if (addButton) addButton.onclick = () => { reset(); showFormPanel(true); form.title?.focus(); };
+    $("[data-common-site-cancel]", modal)?.addEventListener("click", () => showFormPanel(false));
     deleteButton.onclick = async () => {
       const siteId = form.dataset.siteId;
       const site = commonToolEntries().find((item) => item.id === siteId);
@@ -5443,6 +5512,8 @@
         form.iconUrl.value = site.iconUrl || "";
         if (submitButton) submitButton.textContent = "保存修改";
         if (deleteButton) deleteButton.hidden = false;
+        showFormPanel(true);
+        form.title?.focus();
         return;
       }
     });
@@ -5459,7 +5530,7 @@
     }
     const attachments = (project.attachments || []).map((file) => `<a href="${escapeHtml(file.url)}" data-protected-download download="${escapeHtml(file.name || "项目附件")}" class="project-attachment">下载：${escapeHtml(file.name || "项目附件")}</a>`).join("") || '<p class="comment-empty">这个项目暂时没有附件。</p>';
     const url = /^https?:\/\//i.test(project.projectUrl || "") ? `<a class="primary-button small" href="${escapeHtml(project.projectUrl)}" target="_blank" rel="noopener">访问项目网址</a>` : "";
-    $("[data-project-detail-content]", modal).innerHTML = `<div class="project-detail-cover">${projectCoverHtml(project)}</div><p class="mini-title">PERSONAL PROJECT</p><h2>${escapeHtml(project.title)}</h2><p class="project-detail-description">${escapeHtml(project.description || "暂时没有项目简介。")}</p><div class="project-detail-actions">${url}</div><section class="project-attachments"><h3>项目附件</h3>${attachments}</section>`;
+    $("[data-project-detail-content]", modal).innerHTML = `<div class="project-detail-cover">${projectCoverHtml(project)}</div><p class="mini-title">PERSONAL PROJECT</p><h2>${escapeHtml(project.title)}</h2><p class="project-detail-description">${linkifyText(project.description || "暂时没有项目简介。")}</p><div class="project-detail-actions">${url}</div><section class="project-attachments"><h3>项目附件</h3>${attachments}</section>`;
     $all("[data-project-detail-close]", modal).forEach((button) => { button.onclick = () => modal.classList.remove("open"); });
     modal.classList.add("open");
   }
