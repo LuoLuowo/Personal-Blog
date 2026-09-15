@@ -5251,10 +5251,21 @@
     document.body.dataset.quickSitesBound = "true";
     document.addEventListener("click", (event) => {
       if (!event.target.closest("[data-open-common-sites]")) return;
-      if (!state.isLoggedIn) { requireLogin("请先登录后再查看常用网站。"); return; }
+      if (!state.isLoggedIn) { requireLogin("请先登录后再查看小工具。"); return; }
       openCommonSitesDesk();
     });
   }
+
+  const BUILT_IN_COMMON_SITES = [
+    {
+      id: "builtin-word-frequency",
+      title: "英语高频词",
+      url: "./tools/word-frequency/",
+      description: "1000 个高频单词与 360 个高频词组记忆卡片。",
+      iconUrl: "",
+      builtIn: true
+    }
+  ];
 
   async function openCommonSitesDesk() {
     let modal = $("[data-common-sites-modal]");
@@ -5262,7 +5273,7 @@
       modal = document.createElement("div");
       modal.className = "modal common-sites-modal";
       modal.dataset.commonSitesModal = "";
-      modal.innerHTML = '<button class="modal-backdrop" type="button" data-common-sites-close aria-label="关闭常用网站"></button><section class="common-sites-desk glass-card" role="dialog" aria-modal="true" aria-label="常用网站"><header><div><p class="mini-title">COMMON SITES</p><h2>常用网站</h2></div><button type="button" data-common-sites-close aria-label="关闭常用网站">×</button></header><div class="common-sites-layout"><form class="common-site-form" data-common-site-form><input name="title" placeholder="网站名称" required><label class="common-site-url-input"><span aria-hidden="true">↗</span><input name="url" type="url" placeholder="网址，例如 https://example.com" required></label><textarea name="description" rows="4" placeholder="一句简介（可选）"></textarea><input name="iconUrl" type="url" placeholder="图标图片 URL（可选）"><label class="upload-field"><span>或上传网站图标（可选，上传后优先使用）</span><input name="icon" type="file" accept="image/*"></label><div><button class="ghost-button" type="button" data-common-site-reset>新建</button><button class="primary-button small" type="submit">保存网站</button></div></form><div class="common-sites-list" data-common-sites-list></div></div></section>';
+      modal.innerHTML = '<button class="modal-backdrop" type="button" data-common-sites-close aria-label="关闭小工具"></button><section class="common-sites-desk glass-card" role="dialog" aria-modal="true" aria-label="小工具"><header><div><p class="mini-title">TOOLS</p><h2>小工具</h2></div><button type="button" data-common-sites-close aria-label="关闭小工具">×</button></header><div class="common-sites-layout"><form class="common-site-form" data-common-site-form><input name="title" placeholder="工具名称" required><label class="common-site-url-input"><span aria-hidden="true">↗</span><input name="url" type="url" placeholder="网址，例如 https://example.com" required></label><textarea name="description" rows="4" placeholder="一句简介（可选）"></textarea><input name="iconUrl" type="url" placeholder="图标图片 URL（可选）"><label class="upload-field"><span>或上传工具图标（可选，上传后优先使用）</span><input name="icon" type="file" accept="image/*"></label><div><button class="ghost-button" type="button" data-common-site-reset>新建</button><button class="danger-button" type="button" data-common-site-delete-current hidden>删除</button><button class="primary-button small" type="submit">保存工具</button></div></form><div class="common-sites-list" data-common-sites-list></div></div></section>';
       document.body.appendChild(modal);
       bindCommonSitesDesk(modal);
     }
@@ -5281,21 +5292,36 @@
 
   function renderCommonSitesDesk(modal) {
     const list = $("[data-common-sites-list]", modal);
-    list.innerHTML = data.commonSites.map((site) => `<article class="common-site-row"><button class="common-site-open" type="button" data-common-site-open="${escapeHtml(site.id)}">${site.iconUrl ? `<img src="${escapeHtml(site.iconUrl)}" alt="">` : '<span>⌘</span>'}<div><strong>${escapeHtml(site.title)}</strong><p>${escapeHtml(site.description || site.url)}</p></div></button><div><button class="common-site-link-button" type="button" data-common-site-open="${escapeHtml(site.id)}" title="打开网址" aria-label="打开 ${escapeHtml(site.title)}">↗</button>${state.isAdmin ? `<button type="button" data-common-site-edit="${escapeHtml(site.id)}">编辑</button><button type="button" data-common-site-delete="${escapeHtml(site.id)}">×</button>` : ""}</div></article>`).join("") || '<p class="note-empty">还没有添加常用网站。</p>';
+    const sites = [...BUILT_IN_COMMON_SITES, ...data.commonSites];
+    list.innerHTML = sites.map((site) => `<article class="common-site-row"><button class="common-site-open" type="button" data-common-site-open="${escapeHtml(site.id)}">${site.iconUrl ? `<img src="${escapeHtml(site.iconUrl)}" alt="">` : '<span>⌘</span>'}<div><strong>${escapeHtml(site.title)}</strong><p>${escapeHtml(site.description || site.url)}</p></div></button>${state.isAdmin && !site.builtIn ? `<div><button type="button" data-common-site-edit="${escapeHtml(site.id)}">编辑</button></div>` : ""}</article>`).join("") || '<p class="note-empty">还没有添加小工具。</p>';
   }
 
   function bindCommonSitesDesk(modal) {
     const form = $("[data-common-site-form]", modal);
     const submitButton = $("button[type='submit']", form);
+    const deleteButton = $("[data-common-site-delete-current]", form);
     const reset = () => {
       form.reset();
       form.removeAttribute("data-site-id");
       delete form.dataset.siteId;
-      if (submitButton) submitButton.textContent = "添加网站";
+      if (submitButton) submitButton.textContent = "添加工具";
+      if (deleteButton) deleteButton.hidden = true;
     };
     modal.resetCommonSiteForm = reset;
     $all("[data-common-sites-close]", modal).forEach((button) => { button.onclick = () => modal.classList.remove("open"); });
     $("[data-common-site-reset]", modal).onclick = reset;
+    deleteButton.onclick = async () => {
+      const siteId = form.dataset.siteId;
+      const site = data.commonSites.find((item) => item.id === siteId);
+      if (!site || !await confirmPublish("确认删除这个小工具？", "删除后无法恢复。", "确认删除")) return;
+      try {
+        await window.XiaoLuoSupabase.deleteContent("common_sites", site.id, state.userId);
+        if (site.iconUrl) await window.XiaoLuoSupabase.deleteFilesByPublicUrls([site.iconUrl]);
+        data.commonSites = data.commonSites.filter((item) => item.id !== site.id);
+        reset();
+        renderCommonSitesDesk(modal);
+      } catch (error) { showCloudError(error); }
+    };
     form.addEventListener("submit", async (event) => {
       event.preventDefault();
       const title = form.title.value.trim();
@@ -5304,7 +5330,7 @@
       const siteId = form.getAttribute("data-site-id") || null;
       const old = data.commonSites.find((site) => site.id === siteId);
       try {
-        await runWithLoading("正在保存常用网站…", async () => {
+        await runWithLoading("正在保存小工具…", async () => {
           let iconUrl = form.iconUrl.value.trim() || old?.iconUrl || "";
           if (form.icon.files?.[0]) iconUrl = await uploadOptimizedImage(state.userId, "common-site-icons", form.icon.files[0], { maxDimension: 512, quality: .8 });
           const payload = { title, url, description: form.description.value.trim(), icon_url: iconUrl || null };
@@ -5325,9 +5351,8 @@
     modal.addEventListener("click", async (event) => {
       const open = event.target.closest("[data-common-site-open]");
       const edit = event.target.closest("[data-common-site-edit]");
-      const remove = event.target.closest("[data-common-site-delete]");
-      const id = open?.dataset.commonSiteOpen || edit?.dataset.commonSiteEdit || remove?.dataset.commonSiteDelete;
-      const site = data.commonSites.find((item) => item.id === id);
+      const id = open?.dataset.commonSiteOpen || edit?.dataset.commonSiteEdit;
+      const site = BUILT_IN_COMMON_SITES.find((item) => item.id === id) || data.commonSites.find((item) => item.id === id);
       if (!site) return;
       if (open) { window.open(site.url, "_blank", "noopener"); return; }
       if (edit) {
@@ -5337,17 +5362,8 @@
         form.description.value = site.description || "";
         form.iconUrl.value = site.iconUrl || "";
         if (submitButton) submitButton.textContent = "保存修改";
+        if (deleteButton) deleteButton.hidden = false;
         return;
-      }
-      if (remove) {
-        if (!await confirmPublish("确认删除这个常用网站？", "删除后无法恢复。", "确认删除")) return;
-        try {
-          await window.XiaoLuoSupabase.deleteContent("common_sites", site.id, state.userId);
-          if (site.iconUrl) await window.XiaoLuoSupabase.deleteFilesByPublicUrls([site.iconUrl]);
-          data.commonSites = data.commonSites.filter((item) => item.id !== site.id);
-          if (form.dataset.siteId === site.id) reset();
-          renderCommonSitesDesk(modal);
-        } catch (error) { showCloudError(error); }
       }
     });
   }
