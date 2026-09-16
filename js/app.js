@@ -2390,25 +2390,33 @@
       syncExpandButton(categories, categoryMore);
       syncExpandButton(tags, tagMore);
       const filtered = data.posts.filter((post) => (!activeCategory || post.category === activeCategory) && (!activeTag || parseCommaTags(post.tags).includes(activeTag)));
-      const pageSize = 4;
+      const view = section.dataset.homeStateView;
+      const isDatesView = view === "dates";
+      const pageSize = isDatesView ? 12 : 4;
       const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize));
       const currentPage = Math.min(Math.max(1, Number(section.dataset.homeStatePage) || 1), totalPages);
       section.dataset.homeStatePage = String(currentPage);
-      const view = section.dataset.homeStateView;
-      latest.hidden = view === "dates";
-      if (dateView) dateView.hidden = view !== "dates";
-      if (view === "dates") {
+      latest.hidden = isDatesView;
+      if (dateView) dateView.hidden = !isDatesView;
+      if (isDatesView) {
         const years = [...new Set(filtered.map((post) => String(post.publishedAt || "").slice(0, 4)).filter((year) => /^\d{4}$/.test(year)))].sort((a, b) => Number(b) - Number(a));
-        dateView.innerHTML = years.map((year) => {
+        const yearGroups = years.map((year) => {
           const yearPosts = filtered.filter((post) => String(post.publishedAt).startsWith(year)).sort((a, b) => new Date(b.publishedAt) - new Date(a.publishedAt));
-          return `<section class="home-date-group"><header><h3>${year}</h3><span>${yearPosts.length} 篇文章</span></header><div>${yearPosts.map((post) => `<a class="home-date-item" href="./article-detail.html?id=${post.id}"><time>${escapeHtml(String(post.publishedAt).slice(5, 10) || "--")}</time><span class="home-date-dot"></span><strong>${escapeHtml(post.title)}</strong><small>${escapeHtml(post.category || "未分类")}</small></a>`).join("")}</div></section>`;
-        }).join("") || '<p class="empty-state">暂时没有找到文章。</p>';
+          const months = [...new Set(yearPosts.map((post) => String(post.publishedAt).slice(5, 7)))].sort((a, b) => Number(b) - Number(a));
+          const monthHtml = months.map((month) => {
+            const monthPosts = yearPosts.filter((post) => String(post.publishedAt).slice(5, 7) === month);
+            const monthKey = `${year}-${month}`;
+            return `<div class="home-date-month" data-date-month-group="${monthKey}"><button class="home-date-month-toggle" type="button" data-date-month-toggle="${monthKey}"><span>${year}年${Number(month)}月</span><small>${monthPosts.length} 篇</small><i class="home-date-month-arrow">›</i></button><div class="home-date-month-list" data-date-month-list="${monthKey}" hidden>${monthPosts.map((post) => { const tags = parseCommaTags(post.tags); return `<a class="home-date-item" href="./article-detail.html?id=${post.id}"><time>${escapeHtml(String(post.publishedAt).slice(8, 10) || "--")}</time><span class="home-date-dot"></span><span class="home-date-cat">${escapeHtml(post.category || "未分类")}</span><strong>${escapeHtml(post.title)}</strong><span class="home-date-tags">${tags.slice(0, 3).map((tag) => `<em>#${escapeHtml(tag)}</em>`).join("")}${tags.length > 3 ? `<em class="home-date-tags-more">+${tags.length - 3}</em>` : ""}</span></a>`; }).join("")}</div></div>`;
+          }).join("");
+          return `<section class="home-date-group"><header><h3>${year}</h3><span>${yearPosts.length} 篇文章</span></header><div class="home-date-months">${monthHtml}</div></section>`;
+        });
+        dateView.innerHTML = yearGroups.join("") || '<p class="empty-state">暂时没有找到文章。</p>';
       } else {
         const pagePosts = filtered.slice((currentPage - 1) * pageSize, currentPage * pageSize);
         latest.innerHTML = pagePosts.map(postCard).join("") || '<p class="empty-state">暂时没有找到文章。</p>';
         loadPostCardEngagement(pagePosts, latest);
       }
-      if (pagination) pagination.innerHTML = view === "cards" && totalPages > 1 ? Array.from({ length: totalPages }, (_, index) => `<button type="button" class="${index + 1 === currentPage ? "active" : ""}" data-home-page="${index + 1}">${index + 1}</button>`).join("") : "";
+      if (pagination) pagination.innerHTML = !isDatesView && totalPages > 1 ? Array.from({ length: totalPages }, (_, index) => `<button type="button" class="${index + 1 === currentPage ? "active" : ""}" data-home-page="${index + 1}">${index + 1}</button>`).join("") : "";
       const viewLabel = $("[data-home-view-label]", section);
       if (viewLabel) viewLabel.textContent = view === "dates" ? "日期视图" : "文章视图";
       $all("[data-home-view]", section).forEach((button) => { const active = button.dataset.homeView === view; button.classList.toggle("active", active); button.setAttribute("aria-selected", String(active)); });
@@ -2441,6 +2449,17 @@
     if (!section) return;
 
     const rerender = () => renderHome();
+    // 月份折叠展开
+    $all("[data-date-month-toggle]", section).forEach((button) => {
+      button.onclick = () => {
+        const key = button.dataset.dateMonthToggle;
+        const list = $(`[data-date-month-list="${key}"]`, section);
+        if (!list) return;
+        const expanded = !list.hidden;
+        list.hidden = expanded;
+        button.classList.toggle("expanded", !expanded);
+      };
+    });
     $all("[data-home-category]", section).forEach((button) => {
       button.onclick = () => {
         section.dataset.homeStateCategory = button.dataset.homeCategory || "";
@@ -3246,12 +3265,15 @@
           ${canManagePosts ? `<a class="ghost-button" href="./editor.html?id=${post.id}">编辑文章</a>` : ""}
           ${canManagePosts ? `<button class="danger-button" type="button" data-delete-post="${post.id}">删除文章</button>` : ""}
           <button type="button" data-post-like="${post.id}">点赞</button>
-          <button type="button" data-placeholder-action="bookmark">收藏</button>
           <button type="button" data-post-share="${post.id}">分享</button>
           <span class="post-engagement" data-post-engagement>阅读 0 · 点赞 0 · 评论 0</span>
         </div>` : ""}
         ${canManagePosts && post.status !== "private" ? `<section class="post-access-settings"><button class="ghost-button" type="button" data-post-access-toggle aria-expanded="false">阅读权限：${requiredScore ? `${escapeHtml(requiredLevel.title)}可读` : "全站公开"}</button><div data-post-access-panel hidden><div class="post-access-track"><span>全站公开</span><input type="range" min="0" max="${ACTIVITY_LEVELS.length}" step="1" value="${requiredScore ? Math.max(0, ACTIVITY_LEVELS.findIndex((level) => level.score === requiredLevel.score) + 1) : 0}" data-post-access-range><strong data-post-access-label>${requiredScore ? `${escapeHtml(requiredLevel.title)}（${requiredLevel.score} 活跃度）` : "全站公开"}</strong></div><div class="post-access-scale" aria-hidden="true"><span>公开</span><span>初入人</span><span>罗客神</span></div><small>拖动圆点设置阅读门槛，松开后立即保存。未达到要求的用户只能看到文章标题与封面。</small></div></section>` : ""}
       </article>
+      ${canRead ? `<nav class="post-neighbor">
+        ${prev ? `<a href="./article-detail.html?id=${prev.id}">上一篇：${escapeHtml(prev.title)}</a>` : "<span>已经是最新文章</span>"}
+        ${next ? `<a href="./article-detail.html?id=${next.id}">下一篇：${escapeHtml(next.title)}</a>` : "<span>已经是最后一篇</span>"}
+      </nav>` : ""}
       ${canRead ? `<aside class="comments detail-comments-sidebar">
         <h2>评论</h2>
         <p data-comment-note>登录后可以发表评论。</p>
@@ -3260,10 +3282,6 @@
       </aside>` : ""}
       </div>
       </section>
-      <nav class="post-neighbor">
-        ${prev ? `<a href="./article-detail.html?id=${prev.id}">上一篇：${escapeHtml(prev.title)}</a>` : "<span>已经是最新文章</span>"}
-        ${next ? `<a href="./article-detail.html?id=${next.id}">下一篇：${escapeHtml(next.title)}</a>` : "<span>已经是最后一篇</span>"}
-      </nav>
     `;
     highlightCodeBlocks(wrap);
     // 目录使用详情容器内的直接锚点滚动，避免被站内 PJAX 导航拦截。
@@ -3281,6 +3299,41 @@
       window.scrollTo({ top: Math.max(0, top), behavior: "smooth" });
       history.replaceState(null, "", `${location.pathname}${location.search}#${encodeURIComponent(targetId)}`);
     });
+    // 滚动跟随：文章滚动到哪个大纲，左侧目录自动高亮并滚动到可视区
+    if (outline) {
+      const outlineLinks = Array.from(outline.querySelectorAll("a[href^='#']"));
+      const headingIds = outlineLinks.map((a) => decodeURIComponent(a.getAttribute("href").slice(1)));
+      const headings = headingIds.map((id) => document.getElementById(id)).filter(Boolean);
+      let activeLink = null;
+      const setActive = (link) => {
+        if (activeLink === link) return;
+        outlineLinks.forEach((a) => a.classList.remove("is-active"));
+        if (link) {
+          link.classList.add("is-active");
+          // 自动滚动目录使当前项可见
+          const linkRect = link.getBoundingClientRect();
+          const outlineRect = outline.getBoundingClientRect();
+          if (linkRect.top < outlineRect.top + 20 || linkRect.bottom > outlineRect.bottom - 20) {
+            link.scrollIntoView({ block: "center", behavior: "smooth" });
+          }
+        }
+        activeLink = link;
+      };
+      const updateActive = () => {
+        const headerOffset = ($(".site-header")?.getBoundingClientRect().height || 0) + 30;
+        let current = null;
+        for (const heading of headings) {
+          const rect = heading.getBoundingClientRect();
+          if (rect.top <= headerOffset) current = heading;
+          else break;
+        }
+        if (!current && headings.length) current = headings[0];
+        const link = current ? outlineLinks.find((a) => decodeURIComponent(a.getAttribute("href").slice(1)) === current.id) : null;
+        setActive(link);
+      };
+      window.addEventListener("scroll", updateActive, { passive: true });
+      updateActive();
+    }
     if (canRead) {
       bindArticleMusic(wrap);
       loadPostEngagement(post.id);
@@ -3481,7 +3534,7 @@
         height: size,
         colorDark: "#142445",
         colorLight: "#ffffff",
-        correctLevel: window.QRCode.CorrectLevel.M
+        correctLevel: window.QRCode.CorrectLevel.L
       });
       await new Promise((resolve) => window.requestAnimationFrame(() => window.requestAnimationFrame(resolve)));
       const source = $("canvas, img", holder);
@@ -3499,64 +3552,206 @@
 
   async function drawPostSharePoster(canvas, post, url) {
     const width = 1080;
-    const height = 1350;
-    canvas.width = width;
-    canvas.height = height;
     const context = canvas.getContext("2d");
-    const gradient = context.createLinearGradient(0, 0, width, height);
-    gradient.addColorStop(0, "#142445");
-    gradient.addColorStop(.52, "#20396d");
-    gradient.addColorStop(1, "#d68772");
-    context.fillStyle = gradient;
-    context.fillRect(0, 0, width, height);
-    context.fillStyle = "rgba(255,255,255,.1)";
-    context.beginPath(); context.arc(928, 142, 280, 0, Math.PI * 2); context.fill();
-    context.beginPath(); context.arc(96, 1185, 360, 0, Math.PI * 2); context.fill();
+    const padX = 80;
 
-    const cover = await loadPosterImage(post.coverUrl);
-    if (cover) {
-      const coverX = 70, coverY = 74, coverW = 940, coverH = 475;
-      const ratio = Math.max(coverW / cover.width, coverH / cover.height);
-      const drawW = cover.width * ratio, drawH = cover.height * ratio;
-      const drawX = coverX + (coverW - drawW) / 2, drawY = coverY + (coverH - drawH) / 2;
-      context.save();
-      context.beginPath();
-      context.roundRect(coverX, coverY, coverW, coverH, 34);
-      context.clip();
-      context.filter = "contrast(1.12) saturate(1.18) brightness(.9)";
-      context.drawImage(cover, drawX, drawY, drawW, drawH);
-      context.filter = "none";
-      context.restore();
-      context.fillStyle = "rgba(8,17,37,.14)";
-      context.beginPath(); context.roundRect(coverX, coverY, coverW, coverH, 34); context.fill();
+    // 加载封面图
+    const loadLocalImage = (src) => new Promise((resolve) => {
+      const img = new Image();
+      img.onload = () => resolve(img);
+      img.onerror = () => resolve(null);
+      img.src = src;
+    });
+    const coverImage = post.coverUrl ? await loadLocalImage(post.coverUrl) : null;
+    const hasCover = Boolean(coverImage);
+
+    // 计算标题字号（保证1行不换行）
+    const titleText = post.title || "未命名文章";
+    let titleFontSize = 60;
+    context.font = `700 ${titleFontSize}px Microsoft YaHei, sans-serif`;
+    while (context.measureText(titleText).width > width - padX * 2 && titleFontSize > 36) {
+      titleFontSize -= 2;
+      context.font = `700 ${titleFontSize}px Microsoft YaHei, sans-serif`;
     }
+    const titleHeight = titleFontSize + 10;
 
-    context.fillStyle = "#6ed9ff";
-    context.font = "700 28px Arial, Microsoft YaHei, sans-serif";
-    context.fillText("XIAOLUO LIFE · ARTICLE SHARE", 72, cover ? 620 : 150);
-    const titleY = cover ? 712 : 242;
-    context.fillStyle = "#ffffff";
-    context.font = "700 68px Noto Serif SC, Microsoft YaHei, serif";
-    const titleEndY = drawPosterWrappedText(context, post.title || "未命名文章", 70, titleY, 940, 92, 3);
-    context.fillStyle = "rgba(244,248,255,.8)";
-    context.font = "400 34px Microsoft YaHei, sans-serif";
+    // 摘要
     const contentHolder = document.createElement("div");
     const postBody = Array.isArray(post.content)
       ? post.content.map((block) => typeof block === "string" ? block : (block?.text || "")).join("\n")
       : (post.content || "");
     contentHolder.innerHTML = formatRichText(postBody);
-    const contentText = (contentHolder.textContent || "").replace(/\s+/g, " ").trim();
-    const contentEndY = drawPosterWrappedText(context, contentText || "在小罗的 Life 里，记录一个值得分享的片刻。", 70, titleEndY + 88, 900, 54, 4);
-    context.fillStyle = "rgba(255,255,255,.18)";
-    context.fillRect(70, contentEndY + 76, 940, 2);
+    let contentText = (contentHolder.textContent || "").replace(/\s+/g, " ").trim();
+    contentText = contentText.replace(/[\u{1F300}-\u{1F9FF}\u{2600}-\u{27BF}\u{1F000}-\u{1F02F}]/gu, "").trim();
+
+    // 布局计算
+    const cardW = width - 90;
+    let coverHeight = 0;
+    if (hasCover && coverImage) {
+      const imgRatio = coverImage.width / coverImage.height;
+      coverHeight = cardW / imgRatio;
+      if (coverHeight > 380) coverHeight = 380;
+      if (coverHeight < 160) coverHeight = 160;
+    }
+    const coverGap = hasCover ? 25 : 0;
+    const topY = hasCover ? 35 : 90;
+    const headerHeight = 60;
+    const titleBlockY = topY + coverHeight + coverGap + headerHeight + 30;
+    const summaryY = titleBlockY + titleHeight + 35;
+    const summaryHeight = 40;
+    const footerY = summaryY + summaryHeight + 40;
+    const footerHeight = 140;
+    const bottomPad = 50;
+    const height = footerY + footerHeight + bottomPad;
+
+    canvas.width = width;
+    canvas.height = height;
+
+    // 整个海报圆角
+    context.save();
+    context.beginPath();
+    context.roundRect(0, 0, width, height, 36);
+    context.clip();
+
+    // 本站蓝色系背景
+    const bgGrad = context.createLinearGradient(0, 0, width, height);
+    bgGrad.addColorStop(0, "#eef3ff");
+    bgGrad.addColorStop(1, "#dbe7ff");
+    context.fillStyle = bgGrad;
+    context.fillRect(0, 0, width, height);
+    context.fillStyle = "rgba(79,124,255,.12)";
+    context.beginPath(); context.arc(width - 50, 60, 150, 0, Math.PI * 2); context.fill();
+    context.beginPath(); context.arc(50, height - 50, 140, 0, Math.PI * 2); context.fill();
+
+    // 白色卡片
+    const cardX = 45, cardY = 45, cardH = height - 90;
     context.fillStyle = "#ffffff";
-    context.font = "600 30px Microsoft YaHei, sans-serif";
-    context.fillText(`${post.author || "小罗"} · ${formatPostDate(post.publishedAt)}`, 70, contentEndY + 140);
-    context.fillStyle = "rgba(255,255,255,.72)";
-    context.font = "400 23px Arial, Microsoft YaHei, sans-serif";
-    context.fillText("扫码阅读全文", 70, height - 126);
-    drawPosterWrappedText(context, url.replace(/^https?:\/\//, ""), 70, height - 80, 650, 31, 2);
-    await drawPostShareQr(context, url, 784, height - 268, 196);
+    context.beginPath();
+    context.roundRect(cardX, cardY, cardW, cardH, 24);
+    context.fill();
+
+    // 封面图（宽度铺满，高度按比例，尽量完整显示）
+    if (hasCover && coverImage) {
+      const coverX = cardX, coverY = cardY, coverW = cardW, coverH = coverHeight;
+      const imgRatio = coverImage.width / coverImage.height;
+      const fullH = coverW / imgRatio; // 宽度铺满时的图片高度
+      context.save();
+      context.beginPath();
+      context.roundRect(coverX, coverY, coverW, coverH, [24, 24, 0, 0]);
+      context.clip();
+      if (fullH <= coverH) {
+        // 图片完整显示，上下用模糊背景填充
+        const blurRatio = Math.max(coverW / coverImage.width, coverH / coverImage.height);
+        context.filter = "blur(20px)";
+        context.drawImage(coverImage, coverX + (coverW - coverImage.width * blurRatio) / 2, coverY + (coverH - coverImage.height * blurRatio) / 2, coverImage.width * blurRatio, coverImage.height * blurRatio);
+        context.filter = "none";
+        context.fillStyle = "rgba(255,255,255,.15)";
+        context.fillRect(coverX, coverY, coverW, coverH);
+        // 完整图片宽度铺满
+        context.drawImage(coverImage, coverX, coverY + (coverH - fullH) / 2, coverW, fullH);
+      } else {
+        // 图片太高，宽度铺满，上下裁剪居中（尽量保留中间内容）
+        const drawH = fullH;
+        const drawY = coverY + (coverH - drawH) / 2;
+        context.drawImage(coverImage, coverX, drawY, coverW, drawH);
+      }
+      context.restore();
+    }
+
+    let y = cardY + topY + coverHeight + coverGap;
+
+    // 左上角：网站logo + 网站名
+    const logoUrl = new URL("./assets/images/xiaoluo-blog-icon.jpg", window.location.href).href;
+    const siteLogo = await loadLocalImage(logoUrl);
+    if (siteLogo) {
+      context.save();
+      context.beginPath();
+      context.arc(padX + 24, y, 24, 0, Math.PI * 2);
+      context.clip();
+      context.drawImage(siteLogo, padX, y - 24, 48, 48);
+      context.restore();
+    } else {
+      context.fillStyle = "#4f7cff";
+      context.beginPath(); context.arc(padX + 24, y, 24, 0, Math.PI * 2); context.fill();
+    }
+    context.fillStyle = "#1a2a4a";
+    context.font = "700 30px Microsoft YaHei, sans-serif";
+    context.textBaseline = "middle";
+    context.fillText("小罗的Life", padX + 60, y);
+    context.textBaseline = "alphabetic";
+
+    // 右上角：日期
+    const dateStr = new Date(post.publishedAt).toLocaleDateString("zh-CN", { year: "numeric", month: "2-digit", day: "2-digit" }).replace(/\//g, ".");
+    context.fillStyle = "#8a99b8";
+    context.font = "400 24px Arial, Microsoft YaHei, sans-serif";
+    context.textAlign = "right";
+    context.fillText(dateStr, cardX + cardW - padX, y + 2);
+    context.textAlign = "left";
+
+    // 标题（动态字号，1行）
+    y = titleBlockY;
+    context.fillStyle = "#1a2a4a";
+    context.font = `700 ${titleFontSize}px Microsoft YaHei, sans-serif`;
+    context.fillText(titleText, padX, y + titleFontSize);
+
+    // 摘要：蓝色竖线（和文字对齐）+ 灰色文字
+    y = summaryY;
+    context.fillStyle = "#4f7cff";
+    context.fillRect(padX, y - 16, 4, 28);
+    context.fillStyle = "#7a8aad";
+    context.font = "400 28px Microsoft YaHei, sans-serif";
+    drawPosterWrappedText(context, (contentText || "在小罗的Life里，记录一个值得分享的片刻。").slice(0, 70), padX + 18, y + 4, cardW - padX * 2 - 18, 38, 1);
+
+    // 摘要和底部之间灰色分隔线
+    context.strokeStyle = "rgba(0,0,0,.08)";
+    context.lineWidth = 1;
+    context.beginPath();
+    context.moveTo(padX, footerY - 15);
+    context.lineTo(cardX + cardW - padX, footerY - 15);
+    context.stroke();
+
+    // 底部：作者 + 二维码
+    const authorName = data.site.profileName || data.site.avatarText || "Rowan";
+    const userAvatar = data.site.avatarDataUrl ? await loadLocalImage(data.site.avatarDataUrl) : null;
+    if (userAvatar) {
+      context.save();
+      context.beginPath();
+      context.arc(padX + 38, footerY + 38, 38, 0, Math.PI * 2);
+      context.clip();
+      const avRatio = Math.max(76 / userAvatar.width, 76 / userAvatar.height);
+      context.drawImage(userAvatar, padX + 38 - userAvatar.width * avRatio / 2, footerY + 38 - userAvatar.height * avRatio / 2, userAvatar.width * avRatio, userAvatar.height * avRatio);
+      context.restore();
+    } else {
+      context.fillStyle = "#e8eefc";
+      context.beginPath(); context.arc(padX + 38, footerY + 38, 38, 0, Math.PI * 2); context.fill();
+      context.fillStyle = "#4f7cff";
+      context.font = "700 30px Microsoft YaHei, sans-serif";
+      context.textAlign = "center";
+      context.textBaseline = "middle";
+      context.fillText(authorName.slice(0, 1), padX + 38, footerY + 39);
+      context.textAlign = "left";
+      context.textBaseline = "alphabetic";
+    }
+    context.fillStyle = "#8a99b8";
+    context.font = "400 20px Microsoft YaHei, sans-serif";
+    context.fillText("作者", padX + 96, footerY + 26);
+    context.fillStyle = "#1a2a4a";
+    context.font = "700 34px Microsoft YaHei, sans-serif";
+    context.fillText(authorName, padX + 96, footerY + 62);
+
+    // 右下角：二维码（放大更疏）
+    const qrSize = 100;
+    const qrX = cardX + cardW - padX - 5 - qrSize;
+    const qrY = footerY + 5;
+    const shortUrl = url.split('#')[0];
+    await drawPostShareQr(context, shortUrl, qrX, qrY, qrSize);
+    context.fillStyle = "#8a99b8";
+    context.font = "400 17px Microsoft YaHei, sans-serif";
+    context.textAlign = "center";
+    context.fillText("扫码阅读文章", qrX + qrSize / 2, qrY + qrSize + 24);
+    context.textAlign = "left";
+
+    context.restore();
   }
 
   function openPostShareDialog(post) {
@@ -3565,14 +3760,12 @@
       modal = document.createElement("div");
       modal.className = "modal post-share-modal";
       modal.dataset.postShareModal = "";
-      modal.innerHTML = '<button class="modal-backdrop" type="button" data-post-share-close aria-label="关闭"></button><section class="modal-card glass-card" role="dialog" aria-modal="true" aria-labelledby="post-share-title"><button class="modal-close" type="button" data-post-share-close aria-label="关闭">×</button><p class="mini-title">SHARE ARTICLE</p><h2 id="post-share-title">分享文章</h2><section class="post-share-link"><span>链接分享</span><div><input data-post-share-url readonly><button class="ghost-button" type="button" data-post-share-copy>复制链接</button></div></section><section class="post-share-poster"><span>海报分享</span><canvas data-post-share-canvas width="1080" height="1350" aria-label="文章分享海报"></canvas><div><button class="ghost-button" type="button" data-post-share-download>下载海报</button><button class="primary-button" type="button" data-post-share-native>系统分享</button></div></section></section>';
+      modal.innerHTML = '<button class="modal-backdrop" type="button" data-post-share-close aria-label="关闭"></button><section class="modal-card post-share-card" role="dialog" aria-modal="true" aria-labelledby="post-share-title"><button class="modal-close" type="button" data-post-share-close aria-label="关闭">×</button><div class="post-share-poster-wrap"><canvas data-post-share-canvas width="1080" height="700" aria-label="文章分享海报"></canvas></div><div class="post-share-actions"><button class="post-share-copy-btn" type="button" data-post-share-copy><i aria-hidden="true">⧉</i> 复制链接</button><button class="post-share-save-btn" type="button" data-post-share-download><i aria-hidden="true">⬇</i> 保存海报</button></div></section>';
       document.body.appendChild(modal);
     }
     const url = window.location.href;
-    const urlInput = $(`[data-post-share-url]`, modal);
     const canvas = $(`[data-post-share-canvas]`, modal);
     const downloadButton = $(`[data-post-share-download]`, modal);
-    const nativeButton = $(`[data-post-share-native]`, modal);
     const shareCard = $(".modal-card", modal);
     let loading = $(`[data-post-share-loading]`, modal);
     if (!loading) {
@@ -3584,9 +3777,7 @@
     }
     const requestId = `${post.id}-${Date.now()}`;
     modal.dataset.postShareRequest = requestId;
-    if (urlInput) urlInput.value = url;
     downloadButton.disabled = true;
-    nativeButton.disabled = true;
     loading.hidden = false;
     modal.classList.add("is-generating");
     $all(`[data-post-share-close]`, modal).forEach((button) => { button.onclick = () => modal.classList.remove("open"); });
@@ -3594,8 +3785,8 @@
       const button = $(`[data-post-share-copy]`, modal);
       try {
         await copyText(url);
-        button.textContent = "已复制";
-        window.setTimeout(() => { button.textContent = "复制链接"; }, 1200);
+        button.innerHTML = '<i aria-hidden="true">✓</i> 已复制';
+        window.setTimeout(() => { button.innerHTML = '<i aria-hidden="true">⧉</i> 复制链接'; }, 1200);
       } catch (_) { alert("复制失败，请手动复制链接。"); }
     };
     downloadButton.onclick = () => {
@@ -3609,18 +3800,11 @@
         window.setTimeout(() => URL.revokeObjectURL(objectUrl), 1200);
       }, "image/png");
     };
-    $(`[data-post-share-native]`, modal).onclick = async () => {
-      try {
-        if (navigator.share) await navigator.share({ title: post.title, text: "我在小罗的 Life 看到这篇文章", url });
-        else await copyText(url);
-      } catch (_) {}
-    };
     modal.classList.add("open");
     drawPostSharePoster(canvas, post, url)
       .then(() => {
         if (modal.dataset.postShareRequest !== requestId) return;
         downloadButton.disabled = false;
-        nativeButton.disabled = false;
         loading.hidden = true;
         modal.classList.remove("is-generating");
       })
