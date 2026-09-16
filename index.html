@@ -23,7 +23,7 @@
     <button class="nav-toggle" type="button" data-nav-toggle aria-label="打开导航">☰</button>
     <nav class="top-nav" data-nav aria-label="主导航">
       <a class="active" href="./index.html">首页</a>
-      <a href="./whispers.html">碎碎念</a>
+      <a href="./whispers.html">留言墙</a>
       <a href="./projects.html">个人项目</a>
       <a href="./about.html">关于我</a>
       <a href="./dashboard.html" data-admin-only hidden>后台</a>
@@ -84,7 +84,7 @@
         <div class="profile-content-stats" aria-label="内容统计">
           <span><strong data-profile-post-count>0</strong>文章</span>
           <span><strong data-profile-photo-count>0</strong>照片</span>
-          <span><strong data-profile-whisper-count>0</strong>碎碎念</span>
+          <span><strong data-profile-whisper-count>0</strong>留言墙</span>
         </div>
         <div class="profile-personal-tags" aria-label="个人标签">
           <span>注重感情</span>
@@ -96,9 +96,10 @@
         </div>
       </article>
 
-      <article class="glass-card announcement-card reveal-card">
-        <div class="announcement-heading"><div><p class="mini-title">公告栏</p><h3>公告栏</h3></div></div>
+      <article class="glass-card announcement-card reveal-card" data-announcement-card hidden>
+        <div class="announcement-heading"><div><p class="mini-title">公告栏</p><h3>公告栏</h3></div><button class="announcement-close" type="button" data-announcement-close aria-label="关闭公告">×</button></div>
         <p data-site-announcement>暂无公告。</p>
+        <time class="announcement-time" data-announcement-time hidden></time>
       </article>
 
       <article class="glass-card music-card reveal-card">
@@ -163,7 +164,7 @@
           <button class="quick-admin-link" type="button" data-open-common-sites>小工具</button>
           <a class="quick-admin-link" href="./media-list.html?add=1" data-admin-entry>添加片单</a>
           <a href="./game.html">小游戏</a>
-          <a href="./whispers.html">碎碎念</a>
+          <a href="./whispers.html">留言墙</a>
           <a href="./editor.html" data-admin-entry>写文章</a>
         </div>
       </article>

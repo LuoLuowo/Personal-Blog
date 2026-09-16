@@ -148,7 +148,7 @@
     ["注册用户", "+10", "注册后自动获得"], ["完善 MBTI", "+20", "资料填写后自动计算"],
     ["完善性别", "+10", "资料填写后自动计算"], ["完善标签", "+20", "选择至少一个标签"],
     ["每日签到", "+20", "按中国时间每日一次"], ["点赞", "+5", "每个有效点赞"],
-    ["文章/动态评论", "+5", "评论和回复均计算"], ["发布碎碎念", "+5", "每一条有效发布"]
+    ["文章/动态评论", "+5", "评论和回复均计算"], ["发布留言", "+5", "每一条有效发布"]
   ];
 
   function activityLevelForScore(score) {
@@ -1298,7 +1298,7 @@
       modal = document.createElement("div");
       modal.className = "modal whisper-login-modal";
       modal.dataset.whisperLoginModal = "";
-      modal.innerHTML = `<button class="modal-backdrop" type="button" data-whisper-login-close aria-label="关闭提示"></button><section class="modal-card glass-card" role="dialog" aria-modal="true" aria-labelledby="whisper-login-title"><button class="modal-close" type="button" data-whisper-login-close aria-label="关闭">×</button><p class="mini-title">XIAOLUO WHISPERS</p><h2 id="whisper-login-title">登录后参与碎碎念</h2><p>登录后可以发表碎碎念、查看完整内容，和大家一起吃瓜。</p><div class="publish-confirm-actions"><button class="ghost-button" type="button" data-whisper-login-close>暂不登录</button><a class="primary-button" href="./login.html">去登录</a></div></section>`;
+      modal.innerHTML = `<button class="modal-backdrop" type="button" data-whisper-login-close aria-label="关闭提示"></button><section class="modal-card glass-card" role="dialog" aria-modal="true" aria-labelledby="whisper-login-title"><button class="modal-close" type="button" data-whisper-login-close aria-label="关闭">×</button><p class="mini-title">XIAOLUO WHISPERS</p><h2 id="whisper-login-title">登录后参与留言</h2><p>登录后可以发表留言、查看完整内容，和大家一起吃瓜。</p><div class="publish-confirm-actions"><button class="ghost-button" type="button" data-whisper-login-close>暂不登录</button><a class="primary-button" href="./login.html">去登录</a></div></section>`;
       document.body.appendChild(modal);
     }
     $all("[data-whisper-login-close]", modal).forEach((button) => { button.onclick = () => modal.classList.remove("open"); });
@@ -1344,7 +1344,7 @@
         } catch (_) {}
       }
       const whisperPreviews = (whisperSummary?.previews || []).slice(0, 1).map((item) => `<article><p class="whisper-rich-text">${renderWhisperContent(item.content || "")}</p><time>${formatPostDate(item.created_at)}</time></article>`).join("");
-      const whisperSection = whisperSummary ? `<section class="profile-whisper-summary"><div class="profile-whisper-summary-heading"><strong>碎碎念</strong><span>共 ${whisperSummary.count} 条</span></div>${whisperPreviews ? `<div class="profile-whisper-previews">${whisperPreviews}</div>` : '<p class="profile-whisper-empty">还没有发布碎碎念。</p>'}<button class="profile-whisper-count" type="button" data-user-whispers="${profile.id}"><strong>${state.isLoggedIn ? "查看全部" : "登录后吃瓜"}</strong><span>${state.isLoggedIn ? "进入完整碎碎念" : "登录后才能查看详情与参与发布"}</span></button></section>` : "";
+      const whisperSection = whisperSummary ? `<section class="profile-whisper-summary"><div class="profile-whisper-summary-heading"><strong>留言</strong><span>共 ${whisperSummary.count} 条</span></div>${whisperPreviews ? `<div class="profile-whisper-previews">${whisperPreviews}</div>` : '<p class="profile-whisper-empty">还没有发布留言。</p>'}<button class="profile-whisper-count" type="button" data-user-whispers="${profile.id}"><strong>${state.isLoggedIn ? "查看全部" : "登录后吃瓜"}</strong><span>${state.isLoggedIn ? "进入完整留言" : "登录后才能查看详情与参与发布"}</span></button></section>` : "";
       content.innerHTML = `<div class="profile-detail-hero"><span class="profile-detail-avatar${avatar ? " has-image" : ""}"${avatar ? ` style="background-image:url('${avatar}')"` : ""}>${escapeHtml(name.slice(0, 1))}</span><div><p class="mini-title">${profile.is_admin ? "AUTHOR PROFILE" : "USER PROFILE"}</p><h2 id="profile-detail-name">${escapeHtml(name)}</h2>${activity ? `<span class="profile-activity-title">${escapeHtml(activity.title)} · ${activity.score} 活跃度</span>` : ""}${profile.mbti ? `<strong class="profile-mbti">${escapeHtml(profile.mbti)}</strong>` : ""}</div></div>${tags.length ? `<div class="profile-detail-tags">${profileTagsHtml(tags)}</div>` : ""}<dl class="profile-detail-fields">${profile.gender ? `<div><dt>性别</dt><dd>${escapeHtml(profile.gender)}</dd></div>` : ""}${profile.personal_bio ? `<div class="profile-detail-bio"><dt>个人介绍</dt><dd>${escapeHtml(profile.personal_bio)}</dd></div>` : ""}</dl>${whisperSection}${isOwnEditableProfile ? '<button class="primary-button small" type="button" data-user-profile-button>编辑我的资料</button>' : ""}`;
     } catch (error) {
       content.innerHTML = `<p class="empty-state">${escapeHtml(error.message || "暂时无法读取资料。")}</p>`;
@@ -1358,7 +1358,6 @@
       const whisperLink = event.target.closest("[data-user-whispers]");
       if (whisperLink) {
         event.preventDefault();
-        if (!state.isLoggedIn) { showWhisperLoginModal(); return; }
         window.location.href = `./whispers.html?user=${encodeURIComponent(whisperLink.dataset.userWhispers)}`;
         return;
       }
@@ -2424,7 +2423,36 @@
     }
     if (featured) featured.innerHTML = "";
     if (chips) chips.innerHTML = "";
-    $all("[data-site-announcement]").forEach((el) => { el.textContent = data.site.announcement || "暂无公告。"; });
+    // 公告栏：显示时间、关闭按钮、localStorage记忆
+    const announcement = data.site.announcement || "";
+    const announcementTime = data.site.updated_at || "";
+    const announcementKey = announcement ? `xiaoluo-announcement-dismissed-${btoa(unescape(encodeURIComponent(announcement + announcementTime))).slice(0, 32)}` : "";
+    $all("[data-announcement-card]").forEach((card) => {
+      const closeBtn = $("[data-announcement-close]", card);
+      const timeEl = $("[data-announcement-time]", card);
+      const textEl = $("[data-site-announcement]", card);
+      if (!announcement) {
+        card.hidden = true;
+        return;
+      }
+      // 已关闭的公告不再显示
+      if (announcementKey && localStorage.getItem(announcementKey) === "1") {
+        card.hidden = true;
+        return;
+      }
+      card.hidden = false;
+      if (textEl) textEl.textContent = announcement;
+      if (timeEl && announcementTime) {
+        timeEl.textContent = `发布于 ${formatPostDate(announcementTime)}`;
+        timeEl.hidden = false;
+      }
+      if (closeBtn && announcementKey) {
+        closeBtn.onclick = () => {
+          localStorage.setItem(announcementKey, "1");
+          card.hidden = true;
+        };
+      }
+    });
     const photoCount = data.posts.filter((post) => post.coverUrl).length + data.moments.reduce((count, item) => count + (item.images?.length || 0), 0);
     $all("[data-profile-post-count]").forEach((el) => { el.textContent = data.posts.length; });
     $all("[data-profile-photo-count]").forEach((el) => { el.textContent = photoCount; });
@@ -2665,17 +2693,24 @@
   async function renderWhispers() {
     const feed = $("[data-whisper-feed]");
     const form = $("[data-whisper-form]");
-    if (!feed || !form || !state.isLoggedIn) return;
+    const composer = $("[data-whisper-composer]");
+    if (!feed) return;
+    const isGuest = !state.isLoggedIn;
+    // 未登录用户隐藏发布表单
+    if (composer) composer.hidden = isGuest;
+    if (!form && !isGuest) return;
     const filterUserId = params().get("user") || "";
     const profile = state.currentProfile || {};
-    const ownName = profile.display_name || (state.isAdmin ? "小罗" : "普通用户");
-    const ownAvatar = profile.avatar_url || (state.isAdmin ? "./assets/images/xiaoluo-blog-icon.jpg" : "");
+    const ownName = isGuest ? "游客" : (profile.display_name || (state.isAdmin ? "小罗" : "普通用户"));
+    const ownAvatar = isGuest ? "" : (profile.avatar_url || (state.isAdmin ? "./assets/images/xiaoluo-blog-icon.jpg" : ""));
     const ownAvatarNode = $("[data-whisper-own-avatar]");
-    $("[data-whisper-own-name]").textContent = ownName;
-    ownAvatarNode.textContent = ownAvatar ? "" : ownName.slice(0, 1);
-    ownAvatarNode.classList.toggle("has-image", Boolean(ownAvatar));
-    ownAvatarNode.style.backgroundImage = ownAvatar ? `url('${ownAvatar}')` : "";
-    ownAvatarNode.dataset.profileUserId = state.userId;
+    if (ownAvatarNode && !isGuest) {
+      $("[data-whisper-own-name]").textContent = ownName;
+      ownAvatarNode.textContent = ownAvatar ? "" : ownName.slice(0, 1);
+      ownAvatarNode.classList.toggle("has-image", Boolean(ownAvatar));
+      ownAvatarNode.style.backgroundImage = ownAvatar ? `url('${ownAvatar}')` : "";
+      ownAvatarNode.dataset.profileUserId = state.userId;
+    }
 
     let replyTo = null;
     const emojiPicker = $("[data-whisper-emoji-picker]");
@@ -2715,7 +2750,7 @@
         const templates = await window.XiaoLuoSupabase.listWhisperTemplates();
         templateList.innerHTML = templates.map((item) => `<div><button type="button" data-use-whisper-template="${escapeHtml(item.id)}" data-template-content="${escapeHtml(item.content)}">${escapeHtml(item.content)}</button>${state.isAdmin ? `<button type="button" data-delete-whisper-template="${escapeHtml(item.id)}" aria-label="删除模板">×</button>` : ""}</div>`).join("") || '<p class="empty-state">暂时没有灵感模板。</p>';
         $all("[data-use-whisper-template]", templateList).forEach((button) => { button.onclick = () => { textarea.value = button.dataset.templateContent; textarea.focus(); textarea.dispatchEvent(new Event("input", { bubbles: true })); templatePanel.hidden = true; }; });
-        $all("[data-delete-whisper-template]", templateList).forEach((button) => { button.onclick = async () => { if (!await confirmPublish("删除这条灵感模板？", "删除后不会影响已经发布的碎碎念。", "确认删除")) return; await window.XiaoLuoSupabase.deleteWhisperTemplate(button.dataset.deleteWhisperTemplate); await drawTemplates(); }; });
+        $all("[data-delete-whisper-template]", templateList).forEach((button) => { button.onclick = async () => { if (!await confirmPublish("删除这条灵感模板？", "删除后不会影响已经发布的留言。", "确认删除")) return; await window.XiaoLuoSupabase.deleteWhisperTemplate(button.dataset.deleteWhisperTemplate); await drawTemplates(); }; });
       } catch (error) { templateList.innerHTML = '<p class="empty-state">请先执行最新版 activity-system.sql。</p>'; }
     };
     $("[data-add-whisper-template]").onclick = async () => {
@@ -2727,35 +2762,34 @@
     await drawTemplates();
 
     const draw = async () => {
-      feed.innerHTML = '<p class="empty-state">正在读取碎碎念…</p>';
+      feed.innerHTML = '<p class="empty-state">正在读取留言…</p>';
       try {
         const items = await window.XiaoLuoSupabase.listWhispers(filterUserId);
+        // 未登录用户只显示最新5篇
+        const visibleItems = isGuest && !filterUserId ? items.slice(0, 5) : items;
         if (filterUserId) {
-          let filteredName = items[0]?.profile?.display_name || "这位用户";
-          if (!items.length) {
+          let filteredName = visibleItems[0]?.profile?.display_name || "这位用户";
+          if (!visibleItems.length) {
             try { filteredName = (await window.XiaoLuoSupabase.getPublicProfile(filterUserId))?.display_name || filteredName; } catch (_) {}
           }
-          $("[data-whisper-feed-title]").textContent = `${filteredName}的碎碎念`;
+          $("[data-whisper-feed-title]").textContent = `${filteredName}的留言`;
           $("[data-whisper-show-all]").hidden = false;
         } else {
-          $("[data-whisper-feed-title]").textContent = "大家的碎碎念";
+          $("[data-whisper-feed-title]").textContent = isGuest ? "最新留言（登录查看全部）" : "大家的留言";
           $("[data-whisper-show-all]").hidden = true;
         }
         const repliesByParent = new Map();
-        // 构建id到item的映射，用于查找根碎碎念和被回复者
         const itemMap = new Map();
-        items.forEach((item) => itemMap.set(item.id, item));
+        visibleItems.forEach((item) => itemMap.set(item.id, item));
 
-        // 找到每条回复的根碎碎念id（递归向上找）
         const findRootId = (id) => {
           const item = itemMap.get(id);
           if (!item || !item.parent_id) return id;
           return findRootId(item.parent_id);
         };
 
-        // 按根碎碎念分组所有回复（包括回复的回复，全部平铺一层）
         const repliesByRoot = new Map();
-        items.filter((item) => item.parent_id).forEach((item) => {
+        visibleItems.filter((item) => item.parent_id).forEach((item) => {
           const rootId = findRootId(item.id);
           if (!repliesByRoot.has(rootId)) repliesByRoot.set(rootId, []);
           repliesByRoot.get(rootId).push(item);
@@ -2766,7 +2800,6 @@
           const name = itemProfile.display_name || "普通用户";
           const avatar = itemProfile.avatar_url || "";
           const canDelete = state.isAdmin || item.user_id === state.userId;
-          // 查找被回复者名字
           let replyToName = "";
           if (item.parent_id) {
             const parentItem = itemMap.get(item.parent_id);
@@ -2775,10 +2808,10 @@
             }
           }
           const replyPrefix = replyToName ? `<span class="whisper-reply-to">回复 @${escapeHtml(replyToName)}</span>` : "";
-          return `<article class="whisper-reply"><button class="whisper-avatar comment-avatar${avatar ? " has-image" : ""}" type="button" data-profile-user-id="${item.user_id}"${avatar ? ` style="background-image:url('${escapeHtml(avatar)}')"` : ""}>${avatar ? "" : escapeHtml(name.slice(0, 1))}</button><div><header><button type="button" data-profile-user-id="${item.user_id}">${escapeHtml(name)}</button>${replyPrefix}<time>${formatPostDate(item.created_at)}</time></header><p class="whisper-rich-text">${renderWhisperContent(item.content)}</p><button class="comment-reply-button whisper-reply-btn" type="button" data-reply-whisper="${item.id}" data-reply-name="${escapeHtml(name)}">回复</button></div>${canDelete ? `<button class="whisper-delete" type="button" data-delete-whisper="${item.id}">删除</button>` : ""}</article>`;
+          return `<article class="whisper-reply"><button class="whisper-avatar comment-avatar${avatar ? " has-image" : ""}" type="button" data-profile-user-id="${item.user_id || ""}"${avatar ? ` style="background-image:url('${escapeHtml(avatar)}')"` : ""}>${avatar ? "" : escapeHtml(name.slice(0, 1))}</button><div><header><button type="button" data-profile-user-id="${item.user_id || ""}">${escapeHtml(name)}</button>${replyPrefix}<time>${formatPostDate(item.created_at)}</time></header><p class="whisper-rich-text">${renderWhisperContent(item.content)}</p><button class="comment-reply-button whisper-reply-btn" type="button" data-reply-whisper="${item.id}" data-reply-name="${escapeHtml(name)}">回复</button></div>${canDelete ? `<button class="whisper-delete" type="button" data-delete-whisper="${item.id}">删除</button>` : ""}</article>`;
         };
         const PREVIEW_COUNT = 0;
-        feed.innerHTML = items.filter((item) => !item.parent_id).map((item) => {
+        feed.innerHTML = visibleItems.filter((item) => !item.parent_id).map((item) => {
           const itemProfile = item.profile || {};
           const name = itemProfile.display_name || "普通用户";
           const avatar = itemProfile.avatar_url || "";
@@ -2791,20 +2824,23 @@
               ${visibleReplies.map(renderReply).join("")}
               ${hasMore ? `<button class="whisper-expand-replies" type="button" data-expand-replies="${item.id}" data-total="${replies.length}">展开 ${replies.length - PREVIEW_COUNT} 条回复</button>` : ""}
             </div>` : "";
-          return `<article class="whisper-card glass-card${item.user_id === state.userId ? " is-own" : ""}"><button class="whisper-avatar comment-avatar${avatar ? " has-image" : ""}" type="button" data-profile-user-id="${item.user_id}" aria-label="查看${escapeHtml(name)}的资料"${avatar ? ` style="background-image:url('${escapeHtml(avatar)}')"` : ""}>${avatar ? "" : escapeHtml(name.slice(0, 1))}</button><div class="whisper-card-body"><header><button type="button" data-profile-user-id="${item.user_id}">${escapeHtml(name)}</button>${itemProfile.is_admin ? '<span class="whisper-author-badge">作者</span>' : ""}${item.user_id === state.userId ? '<span class="whisper-own-badge">我的碎碎念</span>' : ""}<time>${formatPostDate(item.created_at)}</time></header><p class="whisper-rich-text">${renderWhisperContent(item.content)}</p><button class="comment-reply-button" type="button" data-reply-whisper="${item.id}" data-reply-name="${escapeHtml(name)}">回复</button>${repliesHtml}</div>${canDelete ? `<button class="whisper-delete" type="button" data-delete-whisper="${item.id}" aria-label="删除这条碎碎念">删除</button>` : ""}</article>`;
-        }).join("") || '<p class="empty-state">这里还没有碎碎念，来写下第一条吧。</p>';
+          return `<article class="whisper-card glass-card${item.user_id === state.userId ? " is-own" : ""}"><button class="whisper-avatar comment-avatar${avatar ? " has-image" : ""}" type="button" data-profile-user-id="${item.user_id || ""}" aria-label="查看${escapeHtml(name)}的资料"${avatar ? ` style="background-image:url('${escapeHtml(avatar)}')"` : ""}>${avatar ? "" : escapeHtml(name.slice(0, 1))}</button><div class="whisper-card-body"><header><button type="button" data-profile-user-id="${item.user_id || ""}">${escapeHtml(name)}</button>${itemProfile.is_admin ? '<span class="whisper-author-badge">作者</span>' : ""}${item.user_id === state.userId ? '<span class="whisper-own-badge">我的留言</span>' : ""}<time>${formatPostDate(item.created_at)}</time></header><p class="whisper-rich-text">${renderWhisperContent(item.content)}</p><button class="comment-reply-button" type="button" data-reply-whisper="${item.id}" data-reply-name="${escapeHtml(name)}">回复</button>${repliesHtml}</div>${canDelete ? `<button class="whisper-delete" type="button" data-delete-whisper="${item.id}" aria-label="删除这条留言">删除</button>` : ""}</article>`;
+        }).join("") || '<p class="empty-state">这里还没有留言，来写下第一条吧。</p>';
         // 展开/收起回复
         const allRepliesMap = new Map();
-        items.filter((item) => item.parent_id).forEach((item) => {
+        visibleItems.filter((item) => item.parent_id).forEach((item) => {
           const rootId = findRootId(item.id);
           if (!allRepliesMap.has(rootId)) allRepliesMap.set(rootId, []);
           allRepliesMap.get(rootId).push(item);
         });
         function bindReplyEvents(container) {
-          $all("[data-reply-whisper]", container).forEach((button) => { button.onclick = () => { replyTo = button.dataset.replyWhisper; replyBar.hidden = false; replyBar.querySelector("span").textContent = `正在回复 ${button.dataset.replyName}`; textarea.focus(); textarea.scrollIntoView({ behavior: "smooth", block: "center" }); }; });
+          $all("[data-reply-whisper]", container).forEach((button) => { button.onclick = () => {
+            if (!state.isLoggedIn) { showToast("请先登录后再回复"); window.location.href = "./login.html"; return; }
+            replyTo = button.dataset.replyWhisper; replyBar.hidden = false; replyBar.querySelector("span").textContent = `正在回复 ${button.dataset.replyName}`; textarea.focus(); textarea.scrollIntoView({ behavior: "smooth", block: "center" });
+          }; });
           $all("[data-delete-whisper]", container).forEach((button) => {
             button.onclick = async () => {
-              if (!await confirmPublish("确认删除这条碎碎念？", "删除后无法恢复。", "确认删除")) return;
+              if (!await confirmPublish("确认删除这条留言？", "删除后无法恢复。", "确认删除")) return;
               try { await window.XiaoLuoSupabase.deleteWhisper(button.dataset.deleteWhisper); state.whisperCount = null; await draw(); } catch (error) { showCloudError(error); }
             };
           });
@@ -2829,7 +2865,7 @@
         bindReplyEvents(feed);
         bindExpandEvents(feed);
       } catch (error) {
-        feed.innerHTML = `<p class="empty-state">${escapeHtml(error.message || "碎碎念暂时无法加载。")}</p>`;
+        feed.innerHTML = `<p class="empty-state">${escapeHtml(error.message || "留言暂时无法加载。")}</p>`;
       }
     };
 
@@ -2837,7 +2873,8 @@
       form.dataset.bound = "true";
       form.onsubmit = async (event) => {
         event.preventDefault();
-        if (!requireActivityAccess(10, "碎碎念发布功能")) return;
+        if (!state.isLoggedIn) { showToast("请先登录后再发布留言"); window.location.href = "./login.html"; return; }
+        if (!requireActivityAccess(10, "留言发布功能")) return;
         const content = textarea.value.trim();
         if (!content) return;
         const button = $("button[type='submit']", form);
@@ -2852,7 +2889,7 @@
           $("[data-whisper-count]").textContent = "0";
           await draw();
         } catch (error) { showCloudError(error); }
-        finally { button.disabled = false; button.textContent = "发布碎碎念"; }
+        finally { button.disabled = false; button.textContent = "发布留言"; }
       };
     }
     await draw();
@@ -2880,7 +2917,7 @@
       modal = document.createElement("div");
       modal.className = "modal guestbook-modal";
       modal.dataset.guestbookModal = "";
-      modal.innerHTML = `<button class="modal-backdrop" type="button" data-guestbook-close aria-label="关闭留言墙"></button><section class="guestbook-panel" role="dialog" aria-modal="true" aria-labelledby="guestbook-title"><button class="modal-close" type="button" data-guestbook-close aria-label="关闭">×</button><div class="guestbook-orbit orbit-one"></div><div class="guestbook-orbit orbit-two"></div><header class="guestbook-heading"><p class="mini-title">ANONYMOUS MESSAGE</p><h2 id="guestbook-title">匿名留言墙</h2><p>匿名留言，在这里你可以畅心所欲的抒发你的情感、生活、碎碎念等留言！快来留言啦~</p><button class="guestbook-manage-button" type="button" data-guestbook-manage hidden>管理留言</button></header><section class="guestbook-compose"><div class="envelope-mark" aria-hidden="true"><span></span></div><form data-guestbook-form><label><span>昵称（选填）</span><input name="nickname" type="text" maxlength="20" placeholder="不填写即为匿名用户"></label><label><span>想留下的话</span><textarea name="message" maxlength="180" required placeholder="随心写下想说的话…"></textarea></label><div class="guestbook-form-footer"><small><span data-guestbook-count>0</span> / 180</small><button class="guestbook-send-button" type="submit"><span>匿名投递</span><i aria-hidden="true"></i></button></div></form></section><section class="guestbook-stream-wrap"><div class="guestbook-stream" data-guestbook-stream><p class="guestbook-empty">漂流墙正在等第一封信。</p></div></section><section class="guestbook-manage-panel" data-guestbook-manage-panel hidden><div class="guestbook-manage-head"><h3>管理留言</h3><button type="button" data-guestbook-manage-close>返回漂流墙</button></div><div data-guestbook-manage-list></div><div class="guestbook-manage-pager"><button type="button" data-guestbook-page-prev>上一页</button><span data-guestbook-page-info></span><button type="button" data-guestbook-page-next>下一页</button></div></section></section>`;
+      modal.innerHTML = `<button class="modal-backdrop" type="button" data-guestbook-close aria-label="关闭留言墙"></button><section class="guestbook-panel" role="dialog" aria-modal="true" aria-labelledby="guestbook-title"><button class="modal-close" type="button" data-guestbook-close aria-label="关闭">×</button><div class="guestbook-orbit orbit-one"></div><div class="guestbook-orbit orbit-two"></div><header class="guestbook-heading"><p class="mini-title">ANONYMOUS MESSAGE</p><h2 id="guestbook-title">匿名留言墙</h2><p>匿名留言，在这里你可以畅心所欲的抒发你的情感、生活、留言等留言！快来留言啦~</p><button class="guestbook-manage-button" type="button" data-guestbook-manage hidden>管理留言</button></header><section class="guestbook-compose"><div class="envelope-mark" aria-hidden="true"><span></span></div><form data-guestbook-form><label><span>昵称（选填）</span><input name="nickname" type="text" maxlength="20" placeholder="不填写即为匿名用户"></label><label><span>想留下的话</span><textarea name="message" maxlength="180" required placeholder="随心写下想说的话…"></textarea></label><div class="guestbook-form-footer"><small><span data-guestbook-count>0</span> / 180</small><button class="guestbook-send-button" type="submit"><span>匿名投递</span><i aria-hidden="true"></i></button></div></form></section><section class="guestbook-stream-wrap"><div class="guestbook-stream" data-guestbook-stream><p class="guestbook-empty">漂流墙正在等第一封信。</p></div></section><section class="guestbook-manage-panel" data-guestbook-manage-panel hidden><div class="guestbook-manage-head"><h3>管理留言</h3><button type="button" data-guestbook-manage-close>返回漂流墙</button></div><div data-guestbook-manage-list></div><div class="guestbook-manage-pager"><button type="button" data-guestbook-page-prev>上一页</button><span data-guestbook-page-info></span><button type="button" data-guestbook-page-next>下一页</button></div></section></section>`;
       document.body.appendChild(modal);
       $all("[data-guestbook-close]", modal).forEach((button) => { button.onclick = () => modal.classList.remove("open"); });
       const form = $("[data-guestbook-form]", modal);
@@ -3248,7 +3285,7 @@
     const articleContent = canRead ? articleContentWithOutline(post.content) : { html: "", outline: [] };
     const hasOutline = articleContent.outline.length > 0;
     const outlineHtml = hasOutline
-      ? `<aside class="article-outline glass-card"><p class="mini-title">ON THIS PAGE</p><h2>文章目录</h2><nav>${articleContent.outline.map((item) => `<a class="level-${item.level}" href="#${item.id}">${escapeHtml(item.text)}</a>`).join("")}</nav></aside>`
+      ? `<aside class="article-outline glass-card"><button class="article-outline-toggle" type="button" data-outline-toggle aria-label="展开目录">☰</button><div class="article-outline-header"><p class="mini-title">ON THIS PAGE</p><h2>文章目录</h2></div><nav>${articleContent.outline.map((item) => `<a class="level-${item.level}" href="#${item.id}">${escapeHtml(item.text)}</a>`).join("")}</nav></aside>`
       : "";
     wrap.innerHTML = `
       <section class="article-detail-layout${hasOutline ? "" : " no-outline"}">
@@ -3302,20 +3339,53 @@
     // 滚动跟随：文章滚动到哪个大纲，左侧目录自动高亮并滚动到可视区
     if (outline) {
       const outlineLinks = Array.from(outline.querySelectorAll("a[href^='#']"));
+      // 手机端悬浮目录按钮切换
+      const outlineToggle = $("[data-outline-toggle]", outline);
+      if (outlineToggle) {
+        outlineToggle.onclick = (e) => {
+          e.stopPropagation();
+          outline.classList.toggle("is-open");
+        };
+        document.addEventListener("click", (ev) => {
+          if (!outline.contains(ev.target)) outline.classList.remove("is-open");
+        });
+        outlineLinks.forEach((link) => {
+          link.addEventListener("click", () => outline.classList.remove("is-open"));
+        });
+      }
       const headingIds = outlineLinks.map((a) => decodeURIComponent(a.getAttribute("href").slice(1)));
       const headings = headingIds.map((id) => document.getElementById(id)).filter(Boolean);
       let activeLink = null;
+      // 创建高亮指示器（泡泡融合效果）
+      const nav = outline.querySelector("nav");
+      let indicator = nav ? nav.querySelector(".outline-active-indicator") : null;
+      if (nav && !indicator) {
+        indicator = document.createElement("div");
+        indicator.className = "outline-active-indicator";
+        nav.appendChild(indicator);
+      }
+      const updateIndicator = (link) => {
+        if (!indicator || !link) { if (indicator) { indicator.style.opacity = "0"; } return; }
+        const navRect = nav.getBoundingClientRect();
+        const linkRect = link.getBoundingClientRect();
+        indicator.style.opacity = "1";
+        indicator.style.top = `${linkRect.top - navRect.top + nav.scrollTop}px`;
+        indicator.style.height = `${linkRect.height}px`;
+      };
       const setActive = (link) => {
         if (activeLink === link) return;
         outlineLinks.forEach((a) => a.classList.remove("is-active"));
         if (link) {
           link.classList.add("is-active");
+          updateIndicator(link);
           // 自动滚动目录使当前项可见
           const linkRect = link.getBoundingClientRect();
           const outlineRect = outline.getBoundingClientRect();
           if (linkRect.top < outlineRect.top + 20 || linkRect.bottom > outlineRect.bottom - 20) {
             link.scrollIntoView({ block: "center", behavior: "smooth" });
           }
+        } else {
+          if (indicator) indicator.style.opacity = "0";
         }
         activeLink = link;
       };
@@ -3332,7 +3402,12 @@
         setActive(link);
       };
       window.addEventListener("scroll", updateActive, { passive: true });
+      window.addEventListener("resize", () => { if (activeLink) updateIndicator(activeLink); });
       updateActive();
+      // 字体加载完成后重新定位指示器
+      if (document.fonts && document.fonts.ready) {
+        document.fonts.ready.then(() => { if (activeLink) updateIndicator(activeLink); });
+      }
     }
     if (canRead) {
       bindArticleMusic(wrap);
@@ -3555,9 +3630,15 @@
     const context = canvas.getContext("2d");
     const padX = 80;
 
-    // 加载封面图
+    // 加载图片（跨域图片带crossOrigin防止canvas污染，同域图片不设置）
+    const isCrossOriginUrl = (src) => {
+      try { const u = new URL(src, window.location.href); return u.origin !== window.location.origin; }
+      catch (e) { return false; }
+    };
     const loadLocalImage = (src) => new Promise((resolve) => {
+      if (!src) { resolve(null); return; }
       const img = new Image();
+      if (isCrossOriginUrl(src)) img.crossOrigin = "anonymous";
       img.onload = () => resolve(img);
       img.onerror = () => resolve(null);
       img.src = src;
@@ -3607,10 +3688,10 @@
     canvas.width = width;
     canvas.height = height;
 
-    // 整个海报圆角
+    // 整个海报圆角（仅顶部）
     context.save();
     context.beginPath();
-    context.roundRect(0, 0, width, height, 36);
+    context.roundRect(0, 0, width, height, [36, 36, 0, 0]);
     context.clip();
 
     // 本站蓝色系背景
@@ -3627,7 +3708,7 @@
     const cardX = 45, cardY = 45, cardH = height - 90;
     context.fillStyle = "#ffffff";
     context.beginPath();
-    context.roundRect(cardX, cardY, cardW, cardH, 24);
+    context.roundRect(cardX, cardY, cardW, cardH, [24, 24, 0, 0]);
     context.fill();
 
     // 封面图（宽度铺满，高度按比例，尽量完整显示）
@@ -3790,15 +3871,33 @@
       } catch (_) { alert("复制失败，请手动复制链接。"); }
     };
     downloadButton.onclick = () => {
-      canvas.toBlob((blob) => {
-        if (!blob) return;
-        const objectUrl = URL.createObjectURL(blob);
+      const triggerDownload = (dataUrl, filename) => {
         const link = document.createElement("a");
-        link.href = objectUrl;
-        link.download = `${String(post.title || "小罗的文章").replace(/[\\/:*?\"<>|]/g, "_")}-分享海报.png`;
+        link.href = dataUrl;
+        link.download = filename;
+        link.style.display = "none";
+        document.body.appendChild(link);
         link.click();
-        window.setTimeout(() => URL.revokeObjectURL(objectUrl), 1200);
-      }, "image/png");
+        window.setTimeout(() => { document.body.removeChild(link); }, 300);
+      };
+      const filename = `${String(post.title || "小罗的文章").replace(/[\\/:*?"<>|]/g, "_")}-分享海报.png`;
+      try {
+        if (canvas.toBlob) {
+          canvas.toBlob((blob) => {
+            if (blob) {
+              const objectUrl = URL.createObjectURL(blob);
+              triggerDownload(objectUrl, filename);
+              window.setTimeout(() => URL.revokeObjectURL(objectUrl), 1500);
+            } else {
+              triggerDownload(canvas.toDataURL("image/png"), filename);
+            }
+          }, "image/png");
+        } else {
+          triggerDownload(canvas.toDataURL("image/png"), filename);
+        }
+      } catch (e) {
+        triggerDownload(canvas.toDataURL("image/png"), filename);
+      }
     };
     modal.classList.add("open");
     drawPostSharePoster(canvas, post, url)
@@ -4352,7 +4451,7 @@
       modal = document.createElement("div");
       modal.className = "modal media-editor-modal";
       modal.dataset.mediaEditorModal = "";
-      modal.innerHTML = '<button class="modal-backdrop" type="button" data-media-editor-close aria-label="关闭"></button><section class="modal-card glass-card media-editor-card" role="dialog" aria-modal="true"><button class="modal-close" type="button" data-media-editor-close aria-label="关闭">×</button><p class="mini-title">MY MEDIA LIST</p><h2 data-media-editor-title>添加片单</h2><form data-media-editor-form><label>名称<input name="title" required placeholder="例如：一部电影或一本书"></label><div class="form-grid"><label>片单类型<select name="mediaType" data-media-editor-type></select></label><label>评分<input name="rating" type="number" min="0" max="10" step="0.1" placeholder="0.0 - 10.0"></label></div><label>作者 / 演员<input name="people" placeholder="例如：作者、导演或主要演员"></label><label>标签 <small>多个标签用逗号分隔</small><input name="tags" placeholder="例如：治愈、经典、科幻"></label><fieldset class="media-watch-field"><legend>观看时间</legend><div><select name="watchedYear" data-media-watch-year></select><select name="watchedMonth" data-media-watch-month></select><select name="watchedDay" data-media-watch-day></select></div></fieldset><label>笔记链接 <small>可填写本站或其他网站的相关笔记</small><input name="noteUrl" type="url" placeholder="https://example.com/my-note"></label><div class="form-grid"><label>观后感标题<input name="reviewTitle" maxlength="80" placeholder="例如：写给这部作品的一点感受"></label><label>观后感可见性<select name="reviewVisibility"><option value="public">公开</option><option value="private">私密</option></select><small>私密内容仅管理员可看</small></label></div><label>观后感内容<textarea name="review" rows="8" placeholder="记录自己的完整感受"></textarea></label><label class="upload-field"><span>上传封面图片</span><input name="cover" type="file" accept="image/*"></label><label>或使用封面 URL<input name="coverUrl" type="url" placeholder="https://example.com/cover.webp"></label><div class="media-editor-existing" data-media-editor-existing></div><div class="modal-form-actions"><button class="danger-button" type="button" data-delete-media-item hidden>删除</button><button class="primary-button" type="submit">保存片单</button></div></form></section>';
+      modal.innerHTML = '<button class="modal-backdrop" type="button" data-media-editor-close aria-label="关闭"></button><section class="modal-card glass-card media-editor-card" role="dialog" aria-modal="true"><button class="modal-close" type="button" data-media-editor-close aria-label="关闭">×</button><p class="mini-title">MY MEDIA LIST</p><h2 data-media-editor-title>添加片单</h2><form data-media-editor-form><label>名称<input name="title" required placeholder="例如：一部电影或一本书"></label><div class="form-grid"><label>片单类型<select name="mediaType" data-media-editor-type></select></label><label>评分<input name="rating" type="number" min="0" max="10" step="0.1" placeholder="0.0 - 10.0"></label></div><label>作者 / 演员<input name="people" placeholder="例如：作者、导演或主要演员"></label><label>标签 <small>多个标签用逗号分隔</small><input name="tags" placeholder="例如：治愈、经典、科幻"></label><div class="editor-tag-picker" data-media-tag-picker><div class="editor-tag-suggestions" data-media-tag-suggestions></div><button class="ghost-button editor-tag-more" type="button" data-media-tag-modal-open>选择已有标签</button></div><fieldset class="media-watch-field"><legend>观看时间</legend><div><select name="watchedYear" data-media-watch-year></select><select name="watchedMonth" data-media-watch-month></select><select name="watchedDay" data-media-watch-day></select></div></fieldset><label>笔记链接 <small>可填写本站或其他网站的相关笔记</small><input name="noteUrl" type="url" placeholder="https://example.com/my-note"></label><div class="form-grid"><label>观后感标题<input name="reviewTitle" maxlength="80" placeholder="例如：写给这部作品的一点感受"></label><label>观后感可见性<select name="reviewVisibility"><option value="public">公开</option><option value="private">私密</option></select><small>私密内容仅管理员可看</small></label></div><label>观后感内容<textarea name="review" rows="8" placeholder="记录自己的完整感受"></textarea></label><label class="upload-field"><span>上传封面图片</span><input name="cover" type="file" accept="image/*"></label><label>或使用封面 URL<input name="coverUrl" type="url" placeholder="https://example.com/cover.webp"></label><div class="media-editor-existing" data-media-editor-existing></div><div class="modal-form-actions"><button class="danger-button" type="button" data-delete-media-item hidden>删除</button><button class="primary-button" type="submit">保存片单</button></div></form></section>';
       document.body.appendChild(modal);
     }
     const form = $("[data-media-editor-form]", modal);
@@ -4389,6 +4488,46 @@
     const existing = $("[data-media-editor-existing]", form);
     const drawCover = () => { existing.innerHTML = item?.coverUrl && !removeCover ? '<span>当前已有封面 <button type="button" data-remove-media-cover>删除封面</button></span>' : "<span>尚未设置封面</span>"; $("[data-remove-media-cover]", existing)?.addEventListener("click", () => { removeCover = true; drawCover(); }); };
     drawCover();
+    // 书籍影单：选择已有标签
+    const mediaTagPicker = $("[data-media-tag-picker]", form);
+    const mediaTagSuggestions = $("[data-media-tag-suggestions]", form);
+    const mediaTagOpenBtn = $("[data-media-tag-modal-open]", form);
+    if (mediaTagOpenBtn) {
+      mediaTagOpenBtn.hidden = false;
+      mediaTagOpenBtn.onclick = (e) => {
+        e.stopPropagation();
+        const allTags = [...new Set((data.mediaItems || []).flatMap((item) => Array.isArray(item.tags) ? item.tags : []))].sort((a, b) => a.localeCompare(b, "zh-CN"));
+        if (mediaTagSuggestions.style.display === "flex") {
+          mediaTagSuggestions.style.display = "";
+          return;
+        }
+        if (!allTags.length) {
+          mediaTagSuggestions.innerHTML = '<span style="color:var(--muted);font-size:12px;">暂无已有标签</span>';
+          mediaTagSuggestions.style.display = "flex";
+          return;
+        }
+        const currentTags = form.tags.value.split(",").map((t) => t.trim()).filter(Boolean);
+        mediaTagSuggestions.innerHTML = allTags.map((tag) => `<button type="button" class="${currentTags.includes(tag) ? "is-selected" : ""}" data-media-tag-add="${escapeHtml(tag)}">#${escapeHtml(tag)}</button>`).join("");
+        mediaTagSuggestions.style.display = "flex";
+        $all("[data-media-tag-add]", mediaTagSuggestions).forEach((btn) => {
+          btn.onclick = (ev) => {
+            ev.stopPropagation();
+            const tag = btn.dataset.mediaTagAdd;
+            const existing = form.tags.value.split(",").map((t) => t.trim()).filter(Boolean);
+            if (!existing.includes(tag)) {
+              existing.push(tag);
+              form.tags.value = existing.join(", ");
+            } else {
+              form.tags.value = existing.filter((t) => t !== tag).join(", ");
+            }
+            btn.classList.toggle("is-selected");
+          };
+        });
+      };
+      document.addEventListener("click", (ev) => {
+        if (!mediaTagPicker.contains(ev.target)) mediaTagSuggestions.style.display = "";
+      });
+    }
     const deleteButton = $("[data-delete-media-item]", form);
     deleteButton.hidden = !item;
     deleteButton.onclick = async () => {
@@ -4627,7 +4766,7 @@
       .filter((note) => `${note.title} ${notePlainText(note.body)}`.toLowerCase().includes(search))
       .sort((a, b) => Number(b.isPinned) - Number(a.isPinned) || new Date(b.updatedAt || b.createdAt) - new Date(a.updatedAt || a.createdAt));
     const active = data.notes.find((note) => String(note.id) === String(modal.dataset.activeNoteId)) || null;
-    $("[data-notes-desk-list]", modal).innerHTML = notes.map((note) => `<button class="notes-list-item${String(note.id) === String(active?.id) ? " active" : ""}" type="button" data-notes-open="${escapeHtml(note.id)}"><strong>${note.isPinned ? '<i aria-label="置顶">⌃</i>' : ""}${escapeHtml(note.title || "未命名笔记")}</strong><span>${escapeHtml(notePlainText(note.body) || "空白笔记")}</span><time>${new Date(note.updatedAt || note.createdAt || Date.now()).toLocaleDateString("zh-CN", { month: "numeric", day: "numeric" })}</time></button>`).join("") || '<p class="note-empty">没有找到笔记。</p>';
+    $("[data-notes-desk-list]", modal).innerHTML = notes.map((note) => `<button class="notes-list-item${String(note.id) === String(active?.id) ? " active" : ""}" type="button" data-notes-open="${escapeHtml(note.id)}"><strong>${note.isPinned ? '<i class="note-pin-badge" aria-label="置顶">置顶</i>' : ""}${escapeHtml(note.title || "未命名笔记")}</strong><span>${escapeHtml(notePlainText(note.body) || "空白笔记")}</span><time>${new Date(note.updatedAt || note.createdAt || Date.now()).toLocaleDateString("zh-CN", { month: "numeric", day: "numeric" })}</time></button>`).join("") || '<p class="note-empty">没有找到笔记。</p>';
     bindNotesListButtons(modal);
   }
 
@@ -5119,7 +5258,7 @@
     const notes = [...data.notes]
       .filter((note) => `${note.title} ${notePlainText(note.body)}`.toLowerCase().includes(search))
       .sort((a, b) => Number(Boolean(b.isPinned)) - Number(Boolean(a.isPinned)) || new Date(b.updatedAt || b.createdAt || 0) - new Date(a.updatedAt || a.createdAt || 0));
-    list.innerHTML = notes.map((note) => `<button class="notes-list-item${String(note.id) === activeId ? " active" : ""}" type="button" data-rebuilt-note-open="${escapeHtml(note.id)}"><strong>${note.isPinned ? '<i class="notes-pin-mark" title="已置顶" aria-label="已置顶">⌃</i>' : ""}${escapeHtml(note.title || "未命名笔记")}</strong><span>${escapeHtml(notePlainText(note.body) || "空白笔记")}</span><time>${new Date(note.updatedAt || note.createdAt || Date.now()).toLocaleDateString("zh-CN", { month: "numeric", day: "numeric" })}</time></button>`).join("") || '<p class="note-empty">还没有笔记，点击加号新建一条。</p>';
+    list.innerHTML = notes.map((note) => `<button class="notes-list-item${String(note.id) === activeId ? " active" : ""}" type="button" data-rebuilt-note-open="${escapeHtml(note.id)}"><strong>${note.isPinned ? '<i class="note-pin-badge" aria-label="置顶">置顶</i>' : ""}${escapeHtml(note.title || "未命名笔记")}</strong><span>${escapeHtml(notePlainText(note.body) || "空白笔记")}</span><time>${new Date(note.updatedAt || note.createdAt || Date.now()).toLocaleDateString("zh-CN", { month: "numeric", day: "numeric" })}</time></button>`).join("") || '<p class="note-empty">还没有笔记，点击加号新建一条。</p>';
   }
 
   function noteAttachmentHtml(note) {
@@ -6451,7 +6590,7 @@
       const selected = new Set(parseCommaTags(tagsInput.value));
       const visible = names.slice(0, 7);
       suggestions.innerHTML = visible.map((name) => `<button type="button" class="${selected.has(name) ? "is-selected" : ""}" data-editor-tag-toggle="${escapeHtml(name)}">#${escapeHtml(name)}</button>`).join("");
-      more.hidden = names.length <= visible.length;
+      more.hidden = false;
     };
     suggestions.addEventListener("click", (event) => {
       const button = event.target.closest("[data-editor-tag-toggle]");
@@ -7034,8 +7173,8 @@
       badges.forEach((badge) => {
         badge.hidden = count < 1;
         badge.textContent = count > 99 ? "99+" : String(count);
-        badge.setAttribute("aria-label", `有 ${count} 条未读碎碎念`);
-        badge.title = `有 ${count} 条未读碎碎念`;
+        badge.setAttribute("aria-label", `有 ${count} 条未读留言`);
+        badge.title = `有 ${count} 条未读留言`;
       });
     } catch (_) { hide(); }
   }
@@ -7093,8 +7232,7 @@
     if (page === "activity") { renderActivityLeaderboard(); renderActivityHeatmap(); renderFriendLinks(); }
     if (page === "photos") renderGallery();
     if (page === "whispers") {
-      if (!state.isLoggedIn) showWhisperLoginModal();
-      else renderWhispers();
+      renderWhispers();
     }
     if (page === "game") {
       ensureJumpGame();
@@ -7431,13 +7569,8 @@
           return;
         }
       }
-      if (url.pathname.endsWith("whispers.html") && !state.isLoggedIn) {
-        event.preventDefault();
-        showWhisperLoginModal();
-        return;
-      }
       if (url.pathname.endsWith("whispers.html") && state.isLoggedIn) {
-        // Clear the badge before navigation so the nav is immediately just "碎碎念".
+        // Clear the badge before navigation so the nav is immediately just "留言".
         updateWhisperUnreadBadge(true);
       }
       event.preventDefault();
