@@ -255,6 +255,16 @@
         if (/^https?:\/\//i.test(href)) {
           const link = document.createElement("a");
           link.href = href; link.target = "_blank"; link.rel = "noopener noreferrer";
+          const linkType = node.getAttribute("data-link-type") || node.dataset.linkType || "";
+          if (linkType) link.dataset.linkType = linkType;
+          const embedPlatform = node.getAttribute("data-embed-platform") || node.dataset.embedPlatform || "";
+          if (embedPlatform) link.dataset.embedPlatform = embedPlatform;
+          const width = node.getAttribute("data-width") || node.dataset.width || "";
+          if (width) link.dataset.width = width;
+          const height = node.getAttribute("data-height") || node.dataset.height || "";
+          if (height) link.dataset.height = height;
+          const cardTitle = node.getAttribute("data-card-title") || node.dataset.cardTitle || "";
+          if (cardTitle) link.dataset.cardTitle = cardTitle;
           [...node.childNodes].forEach((child) => appendClean(child, link));
           parent.append(link);
         } else [...node.childNodes].forEach((child) => appendClean(child, parent));
@@ -368,6 +378,27 @@
 
   function linkify(value) { return formatRichText(value); }
 
+  // 内嵌网页平台配置
+  const EMBED_PLATFORMS = [
+    { category: "视频", items: [
+      { name: "哔哩哔哩", icon: "📺", match: /bilibili\.com\/video\/(BV[\w]+|av\d+)/i, getEmbed: (m, url) => { const bv = m[1].match(/BV/i) ? m[1] : null; const aid = m[1].match(/av(\d+)/i) ? m[1].match(/av(\d+)/i)[1] : null; return bv ? `https://player.bilibili.com/player.html?bvid=${bv}&high_quality=1&autoplay=0` : `https://player.bilibili.com/player.html?aid=${aid}&high_quality=1&autoplay=0`; } },
+      { name: "YouTube", icon: "▶️", match: /(?:youtube\.com\/watch\?v=|youtu\.be\/)([\w-]+)/i, getEmbed: (m) => `https://www.youtube.com/embed/${m[1]}` },
+      { name: "抖音", icon: "🎵", match: /douyin\.com\/(video\/\d+|jingxuan\?modal_id=\d+|.*modal_id=\d+)/i, getEmbed: (m, url) => { try { const u = new URL(url); const videoMatch = u.pathname.match(/\/video\/(\d+)/); const videoId = videoMatch ? videoMatch[1] : (u.searchParams.get("modal_id") || ""); return videoId ? `https://www.iesdouyin.com/share/video/${videoId}` : url; } catch(e) { return url; } } },
+      { name: "优酷", icon: "📹", match: /youku\.com\/v_show\/id_([\w=]+)/i, getEmbed: (m) => `https://player.youku.com/embed/${m[1]}` },
+    ]},
+    { category: "设计", items: [
+      { name: "Figma", icon: "🎨", match: /figma\.com\/(?:file|proto)\/([\w-]+)/i, getEmbed: (m, url) => `https://www.figma.com/embed?embed_host=share&url=${encodeURIComponent(url)}` },
+      { name: "Canva", icon: "🖼️", match: /canva\.com\/design\/([\w-]+)/i, getEmbed: (m) => `https://www.canva.com/design/${m[1]}/view?embed` },
+    ]},
+    { category: "开发", items: [
+      { name: "CodePen", icon: "💻", match: /codepen\.io\/([\w-]+)\/(?:pen|embed)\/([\w-]+)/i, getEmbed: (m) => `https://codepen.io/${m[1]}/embed/${m[2]}?default-tab=result` },
+      { name: "码上掘金", icon: "👨‍💻", match: /code\.juejin\.cn\/pen\/([\w-]+)/i, getEmbed: (m) => `https://code.juejin.cn/pen/${m[1]}` },
+    ]},
+    { category: "音乐", items: [
+      { name: "网易云音乐", icon: "🎧", match: /music\.163\.com\/(?:#\/)?song\?id=(\d+)/i, getEmbed: (m) => `https://music.163.com/outchain/player?type=2&id=${m[1]}&auto=0&height=66` },
+    ]},
+  ];
+
   function enhanceFormatToolbar(toolbar) {
     if (toolbar.querySelector('[data-format-action="orderedList"]')) return;
     const divider = $(".format-toolbar-divider", toolbar);
@@ -388,6 +419,14 @@
       if (action === "codeBlock") button.className = "format-code-button";
       group.append(button);
     });
+    // 内嵌网页按钮
+    const embedBtn = document.createElement("button");
+    embedBtn.type = "button";
+    embedBtn.dataset.formatAction = "embed";
+    embedBtn.title = "内嵌网页";
+    embedBtn.textContent = "🌐";
+    embedBtn.className = "format-embed-button";
+    group.append(embedBtn);
     toolbar.insertBefore(group, divider || null);
   }
 
@@ -400,17 +439,26 @@
       modal = document.createElement("div");
       modal.className = "modal code-block-modal";
       modal.dataset.richLinkModal = "";
-      modal.innerHTML = '<button class="modal-backdrop" type="button" data-rich-link-close aria-label="关闭"></button><section class="modal-card glass-card" role="dialog" aria-modal="true" aria-labelledby="rich-link-title"><button class="modal-close" type="button" data-rich-link-close aria-label="关闭">×</button><p class="mini-title">INSERT LINK</p><h2 id="rich-link-title">插入超链接</h2><form data-rich-link-form><label><span>显示文字</span><input name="label" required></label><label><span>链接地址</span><input name="url" type="url" placeholder="https://" required></label><div class="publish-confirm-actions"><button class="ghost-button" type="button" data-rich-link-close>取消</button><button class="primary-button" type="submit">插入链接</button></div></form></section>';
+      modal.innerHTML = '<button class="modal-backdrop" type="button" data-rich-link-close aria-label="关闭"></button><section class="modal-card glass-card" role="dialog" aria-modal="true" aria-labelledby="rich-link-title"><button class="modal-close" type="button" data-rich-link-close aria-label="关闭">×</button><p class="mini-title">INSERT LINK</p><h2 id="rich-link-title">插入超链接</h2><form data-rich-link-form><label><span>显示文字</span><input name="label" required></label><label><span>链接地址</span><input name="url" type="url" placeholder="https://" required></label><label><span>显示方式</span><select name="linkType"><option value="name">命名视图（显示自定义文字）</option><option value="video">视频视图（嵌入播放器）</option></select></label><div class="publish-confirm-actions"><button class="ghost-button" type="button" data-rich-link-close>取消</button><button class="primary-button" type="submit">插入链接</button></div></form></section>';
       document.body.appendChild(modal);
     }
     const form = $("[data-rich-link-form]", modal);
     form.reset();
-    form.label.value = selectedText;
+    // 检查是否选中了已有链接
+    const existingLink = savedRange ? (savedRange.commonAncestorContainer.nodeType === 1 ? savedRange.commonAncestorContainer : savedRange.commonAncestorContainer.parentElement)?.closest?.("a") : null;
+    if (existingLink) {
+      form.label.value = existingLink.textContent || "";
+      form.url.value = existingLink.href || "";
+      form.linkType.value = existingLink.dataset.linkType || "name";
+    } else {
+      form.label.value = selectedText;
+    }
     $all("[data-rich-link-close]", modal).forEach((button) => { button.onclick = () => modal.classList.remove("open"); });
     form.onsubmit = (event) => {
       event.preventDefault();
       const label = form.label.value.trim();
       const url = form.url.value.trim();
+      const linkType = form.linkType.value || "name";
       if (!label || !/^https?:\/\//i.test(url)) return;
       input.focus();
       if (savedRange) {
@@ -418,7 +466,24 @@
         currentSelection.removeAllRanges();
         currentSelection.addRange(savedRange);
       }
-      document.execCommand("insertHTML", false, `<a href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(label)}</a>`);
+      let linkHtml = "";
+      if (linkType === "video") {
+        const embed = getVideoEmbedUrl(url);
+        if (embed) {
+          if (embed.noEmbed) {
+            const cardTitle = (label && label !== "视频") ? label : "";
+            const cardHtml = createVideoCardHtml(embed.url, embed.platform, cardTitle);
+            linkHtml = `<div class="video-embed-wrapper editor-video-preview video-link-card video-link-card-${embed.platform}" contenteditable="false" data-video-url="${escapeHtml(url)}">${cardHtml}</div><p><br></p>`;
+          } else {
+            linkHtml = `<div class="video-embed-wrapper editor-video-preview" contenteditable="false" data-video-url="${escapeHtml(url)}"><iframe src="${escapeHtml(embed.url)}" frameborder="0" allowfullscreen loading="lazy"></iframe></div><p><br></p>`;
+          }
+        } else {
+          linkHtml = `<div class="video-embed-wrapper editor-video-preview video-embed-error" contenteditable="false" data-video-url="${escapeHtml(url)}"><div class="video-embed-error-tip"><span>⚠️</span><p>该视频链接暂不支持嵌入</p><p class="video-embed-error-url">${escapeHtml(url)}</p><p class="video-embed-error-hint">支持 YouTube、哔哩哔哩、抖音完整链接</p></div></div><p><br></p>`;
+        }
+      } else {
+        linkHtml = `<a href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(label)}</a>`;
+      }
+      document.execCommand("insertHTML", false, linkHtml);
       input.dispatchEvent(new Event("input", { bubbles: true }));
       modal.classList.remove("open");
     };
@@ -461,6 +526,141 @@
     };
     modal.classList.add("open");
     window.setTimeout(() => form.code.focus(), 40);
+  }
+
+  // 内嵌网页平台选择弹窗
+  function openEmbedPlatformDialog(input) {
+    const selection = window.getSelection();
+    const savedRange = selection?.rangeCount && input.contains(selection.anchorNode) ? selection.getRangeAt(0).cloneRange() : null;
+    let modal = $("[data-embed-platform-modal]");
+    if (!modal) {
+      const categoriesHtml = EMBED_PLATFORMS.map((cat) => `
+        <div class="embed-platform-category">
+          <p class="embed-category-title">${cat.category}</p>
+          <div class="embed-platform-grid">
+            ${cat.items.map((item, idx) => `<button type="button" class="embed-platform-item" data-embed-platform="${cat.category}-${idx}"><span class="embed-platform-icon">${item.icon}</span><span class="embed-platform-name">${item.name}</span></button>`).join("")}
+          </div>
+        </div>
+      `).join("");
+      modal = document.createElement("div");
+      modal.className = "modal code-block-modal";
+      modal.dataset.embedPlatformModal = "";
+      modal.innerHTML = `<button class="modal-backdrop" type="button" data-embed-close aria-label="关闭"></button><section class="modal-card glass-card embed-platform-card" role="dialog" aria-modal="true"><button class="modal-close" type="button" data-embed-close aria-label="关闭">×</button><p class="mini-title">EMBED</p><h2>内嵌网页</h2><p class="embed-platform-desc">选择要嵌入的平台，粘贴对应链接即可自动识别嵌入</p><div class="embed-platform-list">${categoriesHtml}</div><form data-embed-url-form class="embed-url-form" style="display:none"><label><span>粘贴链接</span><input name="embedUrl" type="url" placeholder="https://" required></label><label data-embed-title-wrap style="display:none"><span>卡片标题（可选）</span><input name="embedTitle" type="text" placeholder="输入视频标题"></label><p class="embed-url-hint"></p><div class="publish-confirm-actions"><button class="ghost-button" type="button" data-embed-back>返回选择</button><button class="primary-button" type="submit">嵌入</button></div></form></section>`;
+      document.body.appendChild(modal);
+    }
+    let selectedPlatform = null;
+    const list = $(".embed-platform-list", modal);
+    const urlForm = $("[data-embed-url-form]", modal);
+    const urlInput = urlForm.embedUrl;
+    const urlHint = $(".embed-url-hint", urlForm);
+    $all("[data-embed-close]", modal).forEach((button) => { button.onclick = () => modal.classList.remove("open"); });
+    $all(".embed-platform-item", modal).forEach((btn) => {
+      btn.onclick = () => {
+        const key = btn.dataset.embedPlatform;
+        const [catName, idx] = key.split("-");
+        const cat = EMBED_PLATFORMS.find((c) => c.category === catName);
+        selectedPlatform = cat ? cat.items[Number(idx)] : null;
+        if (selectedPlatform) {
+          list.style.display = "none";
+          urlForm.style.display = "block";
+          const noEmbedPlatforms = ["抖音", "YouTube"];
+          const isNoEmbed = noEmbedPlatforms.includes(selectedPlatform.name);
+          const titleWrap = $("[data-embed-title-wrap]", modal);
+          if (titleWrap) titleWrap.style.display = isNoEmbed ? "block" : "none";
+          urlHint.textContent = isNoEmbed ? `该平台不支持内嵌，将生成卡片：${selectedPlatform.icon} ${selectedPlatform.name}` : `正在嵌入：${selectedPlatform.icon} ${selectedPlatform.name}`;
+          urlForm.reset();
+          window.setTimeout(() => urlInput.focus(), 40);
+        }
+      };
+    });
+    $("[data-embed-back]", modal).onclick = () => {
+      urlForm.style.display = "none";
+      list.style.display = "block";
+      selectedPlatform = null;
+    };
+    urlForm.onsubmit = (event) => {
+      event.preventDefault();
+      const url = urlInput.value.trim();
+      if (!selectedPlatform || !/^https?:\/\//i.test(url)) return;
+      const match = url.match(selectedPlatform.match);
+      if (!match) {
+        urlHint.textContent = `⚠️ 链接格式不正确，请粘贴${selectedPlatform.name}的链接`;
+        urlHint.style.color = "#ef4444";
+        return;
+      }
+      const embedUrl = selectedPlatform.getEmbed(match, url);
+      const noEmbedPlatforms = ["抖音", "YouTube"];
+      const isNoEmbed = noEmbedPlatforms.includes(selectedPlatform.name);
+      const platformKey = selectedPlatform.name === "YouTube" ? "youtube" : (selectedPlatform.name === "抖音" ? "douyin" : selectedPlatform.name);
+      const cardTitle = (urlForm.embedTitle?.value || "").trim() || "";
+      input.focus();
+      if (savedRange) {
+        const currentSelection = window.getSelection();
+        currentSelection.removeAllRanges();
+        currentSelection.addRange(savedRange);
+      }
+      let embedHtml = "";
+      if (isNoEmbed) {
+        const cardHtml = createVideoCardHtml(url, platformKey, cardTitle);
+        embedHtml = `<div class="video-embed-wrapper editor-video-preview video-link-card video-link-card-${platformKey}" contenteditable="false" data-embed-url="${escapeHtml(url)}" data-embed-platform="${escapeHtml(selectedPlatform.name)}" data-card-title="${escapeHtml(cardTitle)}">${cardHtml}</div><p><br></p>`;
+      } else {
+        embedHtml = `<div class="video-embed-wrapper editor-video-preview" contenteditable="false" data-embed-url="${escapeHtml(url)}" data-embed-platform="${escapeHtml(selectedPlatform.name)}"><iframe src="${escapeHtml(embedUrl)}" frameborder="0" allowfullscreen loading="lazy"></iframe></div><p><br></p>`;
+      }
+      document.execCommand("insertHTML", false, embedHtml);
+      input.dispatchEvent(new Event("input", { bubbles: true }));
+      modal.classList.remove("open");
+      urlHint.style.color = "";
+    };
+    list.style.display = "block";
+    urlForm.style.display = "none";
+    urlHint.style.color = "";
+    modal.classList.add("open");
+  }
+
+  // 内嵌网页/视频二次删除确认
+  function showEmbedDeleteConfirm(input, range, targetPreview) {
+    let modal = $("[data-embed-delete-modal]");
+    if (!modal) {
+      modal = document.createElement("div");
+      modal.className = "modal code-block-modal";
+      modal.dataset.embedDeleteModal = "";
+      modal.innerHTML = `<button class="modal-backdrop" type="button" data-embed-delete-close aria-label="关闭"></button><section class="modal-card glass-card" role="dialog" aria-modal="true" style="max-width:400px"><button class="modal-close" type="button" data-embed-delete-close aria-label="关闭">×</button><p class="mini-title">CONFIRM DELETE</p><h2>确认删除</h2><p style="color:var(--muted);font-size:14px;margin:0 0 20px">确定要删除这个嵌入内容吗？</p><div class="publish-confirm-actions"><button class="ghost-button" type="button" data-embed-delete-close>取消</button><button class="primary-button" type="button" data-embed-delete-confirm style="background:linear-gradient(135deg,#ef4444,#f97316)">删除</button></div></section>`;
+      document.body.appendChild(modal);
+    }
+    $all("[data-embed-delete-close]", modal).forEach((btn) => { btn.onclick = () => modal.classList.remove("open"); });
+    $("[data-embed-delete-confirm]", modal).onclick = () => {
+      modal.classList.remove("open");
+      // 直接删除目标预览
+      let preview = targetPreview;
+      // 如果没有传入目标，从选区查找最近的视频预览
+      if (!preview || !preview.parentNode) {
+        const selected = input.querySelector(".editor-video-preview.is-selected");
+        if (selected && selected.parentNode) preview = selected;
+      }
+      if (!preview || !preview.parentNode) {
+        const selection = window.getSelection();
+        if (selection.rangeCount > 0) {
+          const r = selection.getRangeAt(0);
+          let node = r.startContainer;
+          if (node.nodeType === 3) node = node.parentElement;
+          const block = node.closest("p, div, h1, h2, h3, h4, h5, li, blockquote") || node;
+          const prev = block.previousElementSibling;
+          if (prev && prev.classList && prev.classList.contains("editor-video-preview")) preview = prev;
+        }
+      }
+      if (preview && preview.parentNode) {
+        // 删除后面紧跟着的空段落，避免留下大片空白
+        const next = preview.nextElementSibling;
+        if (next && next.tagName === "P") {
+          const text = (next.textContent || "").trim();
+          const hasOnlyBr = next.children.length <= 1 && (!next.children.length || next.children[0].tagName === "BR");
+          if (!text && hasOnlyBr) next.remove();
+        }
+        preview.remove();
+      }
+      input.dispatchEvent(new Event("input", { bubbles: true }));
+    };
+    modal.classList.add("open");
   }
 
   function highlightCodeBlocks(root = document) {
@@ -654,6 +854,74 @@
     input.addEventListener("pointercancel", finish);
   }
 
+  // 视频/内嵌网页预览缩放
+  function bindEditorVideoResize(input) {
+    let activeVideo = null;
+    let startX = 0;
+    let startWidth = 0;
+    let startHeight = 0;
+    let aspectRatio = 1;
+    const finish = () => {
+      if (!activeVideo) return;
+      activeVideo.classList.remove("is-resizing");
+      activeVideo = null;
+      input.dispatchEvent(new Event("input", { bubbles: true }));
+    };
+    // 阻止编辑器中卡片内部链接的默认点击行为，防止卡片被异常替换
+    input.addEventListener("click", (event) => {
+      const preview = event.target.closest(".editor-video-preview");
+      if (preview && preview.querySelector("a")) {
+        event.preventDefault();
+        event.stopPropagation();
+      }
+    }, true);
+    input.addEventListener("pointerdown", (event) => {
+      const video = event.target.closest(".editor-video-preview");
+      if (!video || !input.contains(video)) return;
+      // 阻止默认行为，保持编辑器焦点，确保退格键能触发
+      event.preventDefault();
+      input.focus();
+      // 清除其他选中状态
+      $all(".editor-video-preview.is-selected", input).forEach((item) => item.classList.remove("is-selected"));
+      video.classList.add("is-selected");
+      // 确保有缩放手柄
+      if (!video.querySelector(".video-resize-handle")) {
+        const handle = document.createElement("div");
+        handle.className = "video-resize-handle";
+        video.appendChild(handle);
+      }
+      const handle = video.querySelector(".video-resize-handle");
+      const handleRect = handle.getBoundingClientRect();
+      const nearHandle = event.clientX >= handleRect.left - 8 && event.clientX <= handleRect.right + 8
+        && event.clientY >= handleRect.top - 8 && event.clientY <= handleRect.bottom + 8;
+      if (event.button !== 0 || !nearHandle) return;
+      event.stopPropagation();
+      activeVideo = video;
+      startX = event.clientX;
+      const rect = video.getBoundingClientRect();
+      startWidth = rect.width;
+      startHeight = rect.height;
+      aspectRatio = startWidth / Math.max(1, startHeight);
+      video.classList.add("is-resizing");
+      handle.setPointerCapture?.(event.pointerId);
+    });
+    input.addEventListener("pointermove", (event) => {
+      if (!activeVideo) return;
+      const maxWidth = Math.max(100, input.clientWidth - 28);
+      const width = Math.round(Math.min(maxWidth, Math.max(100, startWidth + event.clientX - startX)));
+      activeVideo.style.width = `${width}px`;
+      activeVideo.style.maxWidth = `${width}px`;
+    });
+    input.addEventListener("pointerup", finish);
+    input.addEventListener("pointercancel", finish);
+    // 点击空白处取消选中
+    input.addEventListener("pointerdown", (event) => {
+      if (!event.target.closest(".editor-video-preview")) {
+        $all(".editor-video-preview.is-selected", input).forEach((item) => item.classList.remove("is-selected"));
+      }
+    }, true);
+  }
+
   function bindSelectionFormatToolbar(input, toolbar, rememberSelection) {
     if (input.dataset.selectionToolbarBound) return;
     input.dataset.selectionToolbarBound = "true";
@@ -778,6 +1046,7 @@
               cleanEditorHighlights(input);
             }
             else if (action === "link") { openRichLinkDialog(input); return; }
+            else if (action === "embed") { openEmbedPlatformDialog(input); return; }
             input.dispatchEvent(new Event("input", { bubbles: true }));
             rememberSelection();
             return;
@@ -802,6 +1071,7 @@
         document.execCommand("enableObjectResizing", false, true);
         ensureCodeBlockBuffers(input);
         bindEditorImageResize(input);
+        bindEditorVideoResize(input);
         input.addEventListener("keydown", (event) => {
           const range = getEditorSelectionRange(input) || savedRange;
           if (event.key === "Enter" && range) {
@@ -815,10 +1085,52 @@
               return;
             }
           }
-          if (event.key === "Backspace" && range?.collapsed) {
+          if (event.key === "Backspace" || event.key === "Delete") {
+            // 情况1：有选中的视频预览，直接触发删除确认
+            const selectedPreview = input.querySelector(".editor-video-preview.is-selected");
+            if (selectedPreview) {
+              event.preventDefault();
+              event.stopPropagation();
+              showEmbedDeleteConfirm(input, null, selectedPreview);
+              return;
+            }
+            // 情况2：光标在预览后面的空段落开头
+            const selection = window.getSelection();
+            let aboutToDeletePreview = false;
+            let targetPreview = null;
+            if (selection.rangeCount > 0) {
+              const r = selection.getRangeAt(0);
+              if (r.collapsed) {
+                let node = r.startContainer;
+                if (node.nodeType === 3) node = node.parentElement;
+                const block = node.closest("p, div, h1, h2, h3, h4, h5, li, blockquote") || node;
+                const prev = block.previousElementSibling;
+                if (prev && prev.classList && prev.classList.contains("editor-video-preview")) {
+                  const beforeText = (block.textContent || "").slice(0, r.startOffset);
+                  if (!beforeText.trim()) {
+                    aboutToDeletePreview = true;
+                    targetPreview = prev;
+                  }
+                }
+              } else {
+                const temp = document.createElement("div");
+                temp.appendChild(r.cloneContents());
+                const found = temp.querySelector(".editor-video-preview");
+                if (found) {
+                  aboutToDeletePreview = true;
+                  const allPreviews = $all(".editor-video-preview", input);
+                  targetPreview = allPreviews.find((p) => p.textContent === found.textContent) || allPreviews[0];
+                }
+              }
+            }
+            if (aboutToDeletePreview && targetPreview) {
+              event.preventDefault();
+              event.stopPropagation();
+              showEmbedDeleteConfirm(input, null, targetPreview);
+              return;
+            }
             const block = editorBlockAt(range, input);
-            const atStart = range.startOffset === 0;
-            if (block && atStart && block.previousElementSibling?.tagName === "PRE") event.preventDefault();
+            if (block && range?.collapsed && range.startOffset === 0 && block.previousElementSibling?.tagName === "PRE") event.preventDefault();
           }
           if (!(event.ctrlKey || event.metaKey)) return;
           if (event.key.toLowerCase() === "b") {
@@ -893,8 +1205,105 @@
           }
         });
         input.addEventListener("blur", () => {
-          const normalized = normalizeRichHtml(input.innerHTML);
-          if (normalized !== input.innerHTML) input.innerHTML = normalized;
+          // 失焦规范化前，先将视频/内嵌网页预览转为链接，避免被sanitize过滤
+          const holder = document.createElement("div");
+          holder.innerHTML = input.innerHTML;
+          $all(".editor-video-preview", holder).forEach((preview) => {
+            const url = preview.dataset.videoUrl || preview.dataset.embedUrl || "";
+            const platform = preview.dataset.embedPlatform || "";
+            const width = preview.style.width || preview.getAttribute("width") || "";
+            const cardTitle = preview.dataset.cardTitle || "";
+            const link = document.createElement("a");
+            link.href = url;
+            link.target = "_blank";
+            link.rel = "noopener noreferrer";
+            if (width) link.dataset.width = width;
+            if (platform) {
+              link.dataset.embedPlatform = platform;
+              if (cardTitle) link.dataset.cardTitle = cardTitle;
+              link.textContent = cardTitle || platform;
+            } else {
+              link.dataset.linkType = "video";
+              link.textContent = "视频";
+            }
+            preview.replaceWith(link);
+          });
+          const normalized = normalizeRichHtml(holder.innerHTML);
+          // 规范化后再将链接转回预览
+          const temp = document.createElement("div");
+          temp.innerHTML = normalized;
+          // 清理连续的空段落，防止产生大片空白
+          const isEmptyBlock = (el) => {
+            if (!el || el.nodeType !== 1) return false;
+            const tag = el.tagName.toLowerCase();
+            if (tag !== "p" && tag !== "div") return false;
+            if (el.querySelector("img, iframe, video, .editor-video-preview, pre")) return false;
+            const text = (el.textContent || "").trim();
+            const brCount = el.querySelectorAll("br").length;
+            return !text && brCount <= 1;
+          };
+          let prevEmpty = false;
+          [...temp.children].forEach((child) => {
+            if (isEmptyBlock(child)) {
+              if (prevEmpty) { child.remove(); }
+              else { prevEmpty = true; }
+            } else {
+              prevEmpty = false;
+            }
+          });
+          $all("a[data-link-type='video']", temp).forEach((link) => {
+            const url = link.href || "";
+            const width = link.dataset.width || "";
+            const embed = getVideoEmbedUrl(url);
+            const preview = document.createElement("div");
+            const cardTitle = (link.textContent || "").trim() !== "视频" ? (link.textContent || "").trim() : "";
+            preview.className = "video-embed-wrapper editor-video-preview" + (embed ? (embed.noEmbed ? ` video-link-card video-link-card-${embed.platform}` : "") : " video-embed-error");
+            preview.contentEditable = "false";
+            preview.dataset.videoUrl = url;
+            if (width) { preview.style.width = width; preview.style.maxWidth = width; }
+            if (embed) {
+              if (embed.noEmbed) {
+                preview.innerHTML = createVideoCardHtml(embed.url, embed.platform, cardTitle);
+              } else {
+                preview.innerHTML = `<iframe src="${escapeHtml(embed.url)}" frameborder="0" allowfullscreen loading="lazy"></iframe>`;
+              }
+            } else {
+              preview.innerHTML = `<div class="video-embed-error-tip"><span>⚠️</span><p>该视频链接暂不支持嵌入</p><p class="video-embed-error-url">${escapeHtml(url)}</p><p class="video-embed-error-hint">支持 YouTube、哔哩哔哩、抖音完整链接</p></div>`;
+            }
+            link.replaceWith(preview);
+          });
+          $all("a[data-embed-platform]", temp).forEach((link) => {
+            const url = link.href || "";
+            const platform = link.dataset.embedPlatform || "";
+            const width = link.dataset.width || "";
+            const cardTitle = link.dataset.cardTitle || (link.textContent || "").trim() || "";
+            const noEmbedPlatforms = ["抖音", "YouTube"];
+            const isNoEmbed = noEmbedPlatforms.includes(platform);
+            const platformKey = platform === "YouTube" ? "youtube" : (platform === "抖音" ? "douyin" : platform);
+            let embedUrl = url;
+            for (const cat of EMBED_PLATFORMS) {
+              const item = cat.items.find((p) => p.name === platform);
+              if (item) {
+                const match = url.match(item.match);
+                if (match) embedUrl = item.getEmbed(match, url);
+                break;
+              }
+            }
+            const preview = document.createElement("div");
+            preview.className = "video-embed-wrapper editor-video-preview" + (isNoEmbed ? ` video-link-card video-link-card-${platformKey}` : "");
+            preview.contentEditable = "false";
+            preview.dataset.embedUrl = url;
+            preview.dataset.embedPlatform = platform;
+            if (isNoEmbed) preview.dataset.cardTitle = cardTitle;
+            if (width) { preview.style.width = width; preview.style.maxWidth = width; }
+            if (isNoEmbed) {
+              preview.innerHTML = createVideoCardHtml(url, platformKey, cardTitle);
+            } else {
+              preview.innerHTML = `<iframe src="${escapeHtml(embedUrl)}" frameborder="0" allowfullscreen loading="lazy"></iframe>`;
+            }
+            link.replaceWith(preview);
+          });
+          if (temp.innerHTML !== input.innerHTML) input.innerHTML = temp.innerHTML;
           highlightCodeBlocks(input);
         });
         input.addEventListener("input", () => {
@@ -911,13 +1320,128 @@
 
   function editorContentValue(form) {
     const input = $("[data-editor-content]", form);
-    return input ? normalizeRichHtml(input.innerHTML) : (form.content?.value || "");
+    if (!input) return form.content?.value || "";
+    // 保存前将编辑器中的视频预览和内嵌网页预览转换回链接格式
+    const holder = document.createElement("div");
+    holder.innerHTML = input.innerHTML;
+    // 视频预览
+    $all(".editor-video-preview[data-video-url]", holder).forEach((preview) => {
+      const url = preview.dataset.videoUrl || "";
+      const width = preview.style.width || preview.getAttribute("width") || "";
+      const height = preview.style.height || "";
+      const link = document.createElement("a");
+      link.href = url;
+      link.target = "_blank";
+      link.rel = "noopener noreferrer";
+      link.dataset.linkType = "video";
+      if (width) link.dataset.width = width;
+      if (height) link.dataset.height = height;
+      link.textContent = "视频";
+      preview.replaceWith(link);
+    });
+    // 内嵌网页预览
+    $all(".editor-video-preview[data-embed-url]", holder).forEach((preview) => {
+      const url = preview.dataset.embedUrl || "";
+      const platform = preview.dataset.embedPlatform || "";
+      const width = preview.style.width || preview.getAttribute("width") || "";
+      const height = preview.style.height || "";
+      const cardTitle = preview.dataset.cardTitle || "";
+      const link = document.createElement("a");
+      link.href = url;
+      link.target = "_blank";
+      link.rel = "noopener noreferrer";
+      link.dataset.embedPlatform = platform;
+      if (width) link.dataset.width = width;
+      if (height) link.dataset.height = height;
+      if (cardTitle) link.dataset.cardTitle = cardTitle;
+      link.textContent = cardTitle || platform || "内嵌网页";
+      preview.replaceWith(link);
+    });
+    // 兜底：只处理有iframe的旧格式预览（禁止访问的iframe），卡片（有a标签）保留
+    $all(".editor-video-preview", holder).forEach((preview) => {
+      const iframe = preview.querySelector("iframe");
+      if (iframe && iframe.src) {
+        // 旧格式iframe，转成普通链接
+        const link = document.createElement("a");
+        link.href = iframe.src;
+        link.target = "_blank";
+        link.rel = "noopener noreferrer";
+        link.textContent = "视频链接";
+        preview.replaceWith(link);
+      }
+      // 没有iframe的（卡片等）保留原样，不删除
+    });
+    return normalizeRichHtml(holder.innerHTML);
+  }
+
+  // 编辑器内容预处理：将视频/内嵌网页链接转换为预览HTML（在设置innerHTML前调用）
+  function editorContentWithPreviews(html) {
+    const holder = document.createElement("div");
+    holder.innerHTML = html;
+    // 视频视图链接
+    $all("a[data-link-type='video']", holder).forEach((link) => {
+      const url = link.href || "";
+      const width = link.dataset.width || "";
+      const height = link.dataset.height || "";
+      const embed = getVideoEmbedUrl(url);
+      const preview = document.createElement("div");
+      preview.className = "video-embed-wrapper editor-video-preview" + (embed ? "" : " video-embed-error");
+      preview.contentEditable = "false";
+      preview.dataset.videoUrl = url;
+      if (width) { preview.style.width = width; preview.style.maxWidth = width; }
+      if (embed) {
+        if (embed.noEmbed) {
+          const cardTitle = (link.textContent || "").trim() !== "视频" ? (link.textContent || "").trim() : "";
+          preview.className = `video-embed-wrapper editor-video-preview video-link-card video-link-card-${embed.platform}`;
+          preview.innerHTML = createVideoCardHtml(embed.url, embed.platform, cardTitle);
+        } else {
+          preview.innerHTML = `<iframe src="${escapeHtml(embed.url)}" frameborder="0" allowfullscreen loading="lazy"></iframe>`;
+        }
+      } else {
+        preview.innerHTML = `<div class="video-embed-error-tip"><span>⚠️</span><p>该视频链接暂不支持嵌入</p><p class="video-embed-error-url">${escapeHtml(url)}</p><p class="video-embed-error-hint">支持 YouTube、哔哩哔哩、抖音完整链接</p></div>`;
+      }
+      link.replaceWith(preview);
+    });
+    // 内嵌网页链接
+    $all("a[data-embed-platform]", holder).forEach((link) => {
+      const url = link.href || "";
+      const platform = link.dataset.embedPlatform || "";
+      const width = link.dataset.width || "";
+      const height = link.dataset.height || "";
+      let embedUrl = url;
+      for (const cat of EMBED_PLATFORMS) {
+        const item = cat.items.find((p) => p.name === platform);
+        if (item) {
+          const match = url.match(item.match);
+          if (match) embedUrl = item.getEmbed(match, url);
+          break;
+        }
+      }
+      const preview = document.createElement("div");
+      const noEmbedPlatforms = ["抖音", "YouTube"];
+      const isNoEmbed = noEmbedPlatforms.includes(platform);
+      const platformKey = platform === "YouTube" ? "youtube" : (platform === "抖音" ? "douyin" : platform);
+      const cardTitle = link.dataset.cardTitle || "";
+      preview.className = "video-embed-wrapper editor-video-preview" + (isNoEmbed ? ` video-link-card video-link-card-${platformKey}` : "");
+      preview.contentEditable = "false";
+      preview.dataset.embedUrl = url;
+      preview.dataset.embedPlatform = platform;
+      if (isNoEmbed) preview.dataset.cardTitle = cardTitle;
+      if (width) { preview.style.width = width; preview.style.maxWidth = width; }
+      if (isNoEmbed) {
+        preview.innerHTML = createVideoCardHtml(url, platformKey, cardTitle);
+      } else {
+        preview.innerHTML = `<iframe src="${escapeHtml(embedUrl)}" frameborder="0" allowfullscreen loading="lazy"></iframe>`;
+      }
+      link.replaceWith(preview);
+    });
+    return holder.innerHTML;
   }
 
   function setEditorContent(form, value) {
     const input = $("[data-editor-content]", form);
     if (input) {
-      input.innerHTML = formatRichText(value);
+      input.innerHTML = editorContentWithPreviews(formatRichText(value));
       window.requestAnimationFrame(() => highlightCodeBlocks(input));
     }
     else if (form.content) form.content.value = value || "";
@@ -929,7 +1453,117 @@
   }
 
   function renderPostContent(parts) {
-    return (parts || []).filter(Boolean).map((part) => `<div class="post-content-part">${formatRichText(part).replace(/\n/g, "<br>")}</div>`).join("");
+    const html = (parts || []).filter(Boolean).map((part) => `<div class="post-content-part">${formatRichText(part).replace(/\n/g, "<br>")}</div>`).join("");
+    return embedVideoLinks(html);
+  }
+
+  // 识别视频视图链接，嵌入播放器（只有明确选择视频视图的才嵌入，之前的链接保持原样）
+  function embedVideoLinks(html) {
+    const holder = document.createElement("div");
+    holder.innerHTML = html;
+    // 只处理明确标记为视频视图的<a>标签
+    $all("a[data-link-type='video']", holder).forEach((link) => {
+      const url = link.href || "";
+      const width = link.dataset.width || "";
+      const embed = getVideoEmbedUrl(url);
+      if (embed) {
+        const wrapper = document.createElement("div");
+        const cardTitle = (link.textContent || "").trim() !== "视频" ? (link.textContent || "").trim() : "";
+        wrapper.className = "video-embed-wrapper" + (embed.noEmbed ? ` video-link-card video-link-card-${embed.platform}` : "");
+        if (width) { wrapper.style.width = width; wrapper.style.maxWidth = width; }
+        if (embed.noEmbed) {
+          wrapper.innerHTML = createVideoCardHtml(embed.url, embed.platform, cardTitle);
+        } else {
+          wrapper.innerHTML = `<iframe src="${embed.url}" frameborder="0" allowfullscreen allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" loading="lazy"></iframe>`;
+        }
+        if (embed.platform) wrapper.dataset.platform = embed.platform;
+        link.replaceWith(wrapper);
+      }
+    });
+    // 处理内嵌网页链接
+    $all("a[data-embed-platform]", holder).forEach((link) => {
+      const url = link.href || "";
+      const platform = link.dataset.embedPlatform || "";
+      const width = link.dataset.width || "";
+      let embedUrl = url;
+      for (const cat of EMBED_PLATFORMS) {
+        const item = cat.items.find((p) => p.name === platform);
+        if (item) {
+          const match = url.match(item.match);
+          if (match) embedUrl = item.getEmbed(match, url);
+          break;
+        }
+      }
+      const wrapper = document.createElement("div");
+      const noEmbedPlatforms = ["抖音", "YouTube"];
+      const isNoEmbed = noEmbedPlatforms.includes(platform);
+      const cardTitle = link.dataset.cardTitle || "";
+      const platformKey = platform === "YouTube" ? "youtube" : (platform === "抖音" ? "douyin" : platform);
+      wrapper.className = "video-embed-wrapper" + (isNoEmbed ? ` video-link-card video-link-card-${platformKey}` : "");
+      wrapper.dataset.platform = platform;
+      if (width) { wrapper.style.width = width; wrapper.style.maxWidth = width; }
+      if (isNoEmbed) {
+        wrapper.innerHTML = createVideoCardHtml(url, platformKey, cardTitle);
+      } else {
+        wrapper.innerHTML = `<iframe src="${escapeHtml(embedUrl)}" frameborder="0" allowfullscreen allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" loading="lazy"></iframe>`;
+      }
+      link.replaceWith(wrapper);
+    });
+    return holder.innerHTML;
+  }
+
+  // 根据视频链接返回嵌入URL和平台名，只返回可iframe嵌入的URL
+  function getVideoEmbedUrl(url) {
+    try {
+      const u = new URL(url);
+      const host = u.hostname.replace(/^www\./, "");
+      // YouTube（改用卡片式，点击跳转）
+      if (host === "youtube.com" || host === "m.youtube.com") {
+        const videoId = u.searchParams.get("v");
+        if (videoId) return { url: `https://www.youtube.com/watch?v=${encodeURIComponent(videoId)}`, platform: "youtube", noEmbed: true };
+      }
+      if (host === "youtu.be") {
+        const videoId = u.pathname.slice(1).split("/")[0];
+        if (videoId) return { url: `https://www.youtube.com/watch?v=${encodeURIComponent(videoId)}`, platform: "youtube", noEmbed: true };
+      }
+      // 哔哩哔哩（支持BV号和AV号）
+      if (host === "bilibili.com" || host === "m.bilibili.com") {
+        const bvMatch = u.pathname.match(/\/video\/(BV[\w]+)/i);
+        if (bvMatch) return { url: `https://player.bilibili.com/player.html?bvid=${bvMatch[1]}&high_quality=1&autoplay=0`, platform: "bilibili" };
+        const avMatch = u.pathname.match(/\/video\/av(\d+)/i);
+        if (avMatch) return { url: `https://player.bilibili.com/player.html?aid=${avMatch[1]}&high_quality=1&autoplay=0`, platform: "bilibili" };
+      }
+      // 抖音（不支持iframe嵌入，返回标记，前端显示卡片式占位符）
+      if (host === "douyin.com" || host === "www.douyin.com" || host === "v.douyin.com" || host === "iesdouyin.com") {
+        let videoId = "";
+        const videoMatch = u.pathname.match(/\/video\/(\d+)/);
+        if (videoMatch) {
+          videoId = videoMatch[1];
+        } else {
+          const modalId = u.searchParams.get("modal_id");
+          if (modalId) videoId = modalId;
+        }
+        if (videoId) return { url: `https://www.douyin.com/video/${videoId}`, platform: "douyin", noEmbed: true };
+      }
+      return null;
+    } catch (e) {
+      return null;
+    }
+  }
+
+  // 视频平台官方logo SVG
+  const VIDEO_PLATFORM_LOGOS = {
+    youtube: `<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" style="width:100%;height:100%"><path d="M23.5 6.2a3 3 0 0 0-2.1-2.1C19.5 3.5 12 3.5 12 3.5s-7.5 0-9.4.6A3 3 0 0 0 .5 6.2 31 31 0 0 0 0 12a31 31 0 0 0 .5 5.8 3 3 0 0 0 2.1 2.1c1.9.6 9.4.6 9.4.6s7.5 0 9.4-.6a3 3 0 0 0 2.1-2.1A31 31 0 0 0 24 12a31 31 0 0 0-.5-5.8zM9.6 15.6V8.4l6.2 3.6-6.2 3.6z" fill="#FF0000"/></svg>`,
+    douyin: `<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" style="width:100%;height:100%"><path d="M19.3 6.5c-.8-.4-1.7-.6-2.6-.7v7.2c0 3.2-2.6 5.8-5.8 5.8s-5.8-2.6-5.8-5.8 2.6-5.8 5.8-5.8c.2 0 .4 0 .6.1v2.9c-.2-.1-.4-.1-.6-.1-1.6 0-2.9 1.3-2.9 2.9s1.3 2.9 2.9 2.9 2.9-1.3 2.9-2.9V5.5h2.7c.5 1.3 1.4 2.4 2.6 3.1v-2.1z" fill="#25F4EE"/><path d="M18 7.2c-.7-.3-1.4-.5-2.1-.5v6.6c0 2.9-2.4 5.3-5.3 5.3s-5.3-2.4-5.3-5.3 2.4-5.3 5.3-5.3c.2 0 .4 0 .5.1v2.7c-.2-.1-.3-.1-.5-.1-1.5 0-2.7 1.2-2.7 2.7s1.2 2.7 2.7 2.7 2.7-1.2 2.7-2.7V5h2.5c.5 1.2 1.3 2.2 2.4 2.8v-.6z" fill="#FE2C55"/></svg>`
+  };
+  const VIDEO_PLATFORM_NAMES = { youtube: "YouTube", douyin: "抖音" };
+
+  // 生成视频卡片HTML（统一卡片式，点击跳转）
+  function createVideoCardHtml(url, platform, title) {
+    const name = VIDEO_PLATFORM_NAMES[platform] || platform;
+    const logo = VIDEO_PLATFORM_LOGOS[platform] || "";
+    const cardTitle = title || `${name}视频`;
+    return `<a href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer" class="video-link-card-inner"><span class="video-link-card-icon video-link-card-icon-logo">${logo}</span><div class="video-link-card-info"><p class="video-link-card-title">${escapeHtml(cardTitle)}</p></div><div class="video-link-card-jump-wrap"><span class="video-link-card-jump">点击跳转${name}观看</span><span class="video-link-card-arrow"><svg viewBox="0 0 24 24"><path d="M7 17L17 7M17 7H8M17 7v9"/></svg></span></div></a>`;
   }
 
   function articleContentWithOutline(parts) {
@@ -1545,8 +2179,10 @@
       delete status.dataset.userProfileButton;
       status.removeAttribute("href");
       if (state.isAdmin) {
+        const avatar = state.currentProfile?.avatar_url || "";
+        const initial = escapeHtml((state.currentProfile?.display_name || "作").slice(0, 1));
         status.setAttribute("aria-label", "作者已登录，查看作者资料");
-        status.innerHTML = '<img src="./font_fuhbx0kh6gc/作者.svg" alt="" aria-hidden="true"><span>作者</span><em class="login-state">已登录</em>';
+        status.innerHTML = `<span class="account-avatar${avatar ? " has-image" : ""}"${avatar ? ` style="background-image:url('${avatar}')"` : ""}>${initial}</span><span>作者</span>`;
       } else {
         const name = state.currentProfile?.display_name || "普通用户";
         const avatar = state.currentProfile?.avatar_url || "";
@@ -1563,10 +2199,10 @@
         checkin.dataset.activityCheckin = "";
         actions.appendChild(checkin);
       }
-      checkin.hidden = !state.isLoggedIn;
+      checkin.hidden = !state.isLoggedIn || state.activityCheckedToday;
       checkin.disabled = state.activityCheckedToday;
       checkin.innerHTML = state.activityCheckedToday
-        ? `<i aria-hidden="true"></i><span>今日已签</span><em>${state.activityScore}</em>`
+        ? ``
         : `<i aria-hidden="true"></i><span>每日签到</span><em>+20</em>`;
       checkin.onclick = async () => {
         if (state.activityCheckedToday) return;
@@ -1578,7 +2214,7 @@
           state.activityScore = activity.score;
           state.activityTitle = activity.title;
           state.activityCheckedToday = true;
-          checkin.innerHTML = `<i aria-hidden="true"></i><span>今日已签</span><em>${state.activityScore}</em>`;
+          checkin.hidden = true;
           showActivityNotice("签到成功", `活跃度 +20，目前为 ${state.activityScore}，称号「${state.activityTitle}」。`);
           if (pageName() === "activity") { renderActivityLeaderboard(); renderActivityHeatmap(); }
         } catch (error) {
@@ -1650,7 +2286,13 @@
       const updateDates = [adminProfile.updated_at, ...posts.map((item) => item.updated_at || item.created_at), ...moments.map((item) => item.updated_at || item.created_at), ...progress.map((item) => item.updated_at || item.created_at), ...projects.map((item) => item.updated_at || item.created_at), ...mediaItems.map((item) => item.updated_at || item.created_at), ...musicTracks.map((item) => item.updated_at || item.created_at)].filter(Boolean);
       data.site.lastUpdatedAt = updateDates.sort((a, b) => new Date(b) - new Date(a))[0] || "";
       data.categories = categories.map((item) => ({ id: item.id, name: item.name, description: "" }));
-      data.tags = tags.map((item) => ({ id: item.id, name: item.name }));
+      // 合并tags表中的标签和文章中实际使用过的标签
+      const tagFromTable = tags.map((item) => ({ id: item.id, name: item.name }));
+      const postTagNames = [...new Set(posts.flatMap((post) => parseCommaTags(post.tags || "")))];
+      const tagFromPosts = postTagNames
+        .filter((name) => name && !tagFromTable.some((t) => t.name === name))
+        .map((name) => ({ id: `post-tag-${name}`, name, fromPost: true }));
+      data.tags = [...tagFromTable, ...tagFromPosts];
       const visibleMoments = moments.map((item) => ({ id: item.id, title: item.title, date: item.entry_date, text: item.body || "", images: item.image_urls || [], isPublic: Boolean(item.is_public) }));
       const lockedMoments = lockedMomentTeasers.filter((item) => !visibleMoments.some((moment) => moment.id === item.id)).map((item) => ({ id: item.id, title: "生活圈内容已锁定", date: item.entry_date, text: "登录后活跃值达到50可以解锁内容", images: [], isLocked: true, isPublic: false }));
       data.moments = sortTimelineByDate([...visibleMoments, ...lockedMoments]);
@@ -1867,8 +2509,28 @@
 
     const categoryChips = $("[data-category-chips-manager]");
     const tagChips = $("[data-tag-chips-manager]");
-    if (categoryChips) categoryChips.innerHTML = data.categories.map((category) => `<span class="taxonomy-chip">${escapeHtml(category.name)}<button type="button" data-remove-category="${escapeHtml(category.id)}" aria-label="删除分类">×</button></span>`).join("");
-    if (tagChips) tagChips.innerHTML = data.tags.map((tag) => `<span class="taxonomy-chip">#${escapeHtml(typeof tag === "string" ? tag : tag.name)}<button type="button" data-remove-tag="${escapeHtml(typeof tag === "string" ? tag : tag.id)}" aria-label="删除标签">×</button></span>`).join("");
+    if (categoryChips) {
+      const cats = data.categories.map((category) => `<span class="taxonomy-chip">${escapeHtml(category.name)}<button type="button" class="taxonomy-edit-btn" data-edit-category="${escapeHtml(category.id)}" data-category-name="${escapeHtml(category.name)}" aria-label="编辑分类">✎</button><button type="button" data-remove-category="${escapeHtml(category.id)}" aria-label="删除分类">×</button></span>`).join("");
+      categoryChips.innerHTML = cats;
+      // 分类过多时折叠
+      const chipEls = $all(".taxonomy-chip", categoryChips);
+      const maxVisible = 8;
+      if (chipEls.length > maxVisible) {
+        chipEls.forEach((chip, idx) => { if (idx >= maxVisible) chip.classList.add("taxonomy-chip-hidden"); });
+        categoryChips.insertAdjacentHTML("beforeend", `<button type="button" class="taxonomy-expand-btn" data-taxonomy-expand title="展开">⌄</button>`);
+      }
+    }
+    if (tagChips) {
+      const tags = data.tags.map((tag) => { const tagId = typeof tag === "string" ? tag : tag.id; const tagName = typeof tag === "string" ? tag : tag.name; return `<span class="taxonomy-chip">#${escapeHtml(tagName)}<button type="button" class="taxonomy-edit-btn" data-edit-tag="${escapeHtml(tagId)}" data-tag-name="${escapeHtml(tagName)}" aria-label="编辑标签">✎</button><button type="button" data-remove-tag="${escapeHtml(tagId)}" aria-label="删除标签">×</button></span>`; }).join("");
+      tagChips.innerHTML = tags;
+      // 标签过多时折叠
+      const chipEls = $all(".taxonomy-chip", tagChips);
+      const maxVisible = 8;
+      if (chipEls.length > maxVisible) {
+        chipEls.forEach((chip, idx) => { if (idx >= maxVisible) chip.classList.add("taxonomy-chip-hidden"); });
+        tagChips.insertAdjacentHTML("beforeend", `<button type="button" class="taxonomy-expand-btn" data-taxonomy-expand title="展开">⌄</button>`);
+      }
+    }
   }
 
   function fileToDataUrl(file) {
@@ -2030,12 +2692,75 @@
     });
     if (!document.body.dataset.contentManagerBound) {
       document.body.dataset.contentManagerBound = "true";
+      // 展开更多标签按钮（事件委托）
+      document.body.addEventListener("click", (event) => {
+        const expandBtn = event.target.closest("[data-taxonomy-expand]");
+        if (!expandBtn) return;
+        const chips = expandBtn.closest(".taxonomy-chips");
+        if (!chips) return;
+        const chipEls = $all(".taxonomy-chip", chips);
+        const maxVisible = 8;
+        const expanded = expandBtn.dataset.expanded === "true";
+        // expanded=当前是否展开，点击后翻转：当前展开→收起(隐藏多余)，当前收起→展开(全部显示)
+        chipEls.forEach((chip, idx) => {
+          chip.classList.toggle("taxonomy-chip-hidden", expanded && idx >= maxVisible);
+        });
+        expandBtn.dataset.expanded = expanded ? "false" : "true";
+        const hiddenCount = Math.max(0, chipEls.length - maxVisible);
+        expandBtn.textContent = expanded ? `⌄` : `⌃`;
+        expandBtn.title = expanded ? "展开" : "收起";
+      });
       document.addEventListener("click", async (event) => {
         const category = event.target.closest("[data-remove-category]");
         const tag = event.target.closest("[data-remove-tag]");
+        const editCategory = event.target.closest("[data-edit-category]");
+        const editTag = event.target.closest("[data-edit-tag]");
         const remove = event.target.closest("[data-remove-content]");
         const edit = event.target.closest("[data-edit-content]");
         try {
+        if (editCategory) {
+          const oldName = editCategory.dataset.categoryName || "";
+          const newName = prompt(`修改分类名称：`, oldName);
+          if (!newName || newName.trim() === oldName) return;
+          const trimmed = newName.trim();
+          if (data.categories.some((item) => item.name === trimmed)) { alert("该分类名称已存在。"); return; }
+          requireCloudSession();
+          await window.XiaoLuoSupabase.updateTaxonomy("categories", editCategory.dataset.editCategory, state.userId, trimmed);
+          await window.XiaoLuoSupabase.updatePostCategory(state.userId, oldName, trimmed);
+          data.categories = data.categories.map((item) => item.id === editCategory.dataset.editCategory ? { ...item, name: trimmed } : item);
+          data.posts = data.posts.map((post) => post.category === oldName ? { ...post, category: trimmed } : post);
+          populateFilters();
+        }
+        if (editTag) {
+          const oldName = editTag.dataset.tagName || "";
+          const newName = prompt(`修改标签名称：`, oldName);
+          if (!newName || newName.trim() === oldName) return;
+          const trimmed = newName.trim();
+          if (data.tags.some((item) => (typeof item === "string" ? item : item.name) === trimmed)) { alert("该标签名称已存在。"); return; }
+          requireCloudSession();
+          await window.XiaoLuoSupabase.updateTaxonomy("tags", editTag.dataset.editTag, state.userId, trimmed);
+          // 批量更新所有文章的标签
+          const allPosts = await window.XiaoLuoSupabase.getUserPosts(state.userId);
+          for (const post of allPosts) {
+            const tags = parseCommaTags(post.tags);
+            if (tags.includes(oldName)) {
+              const newTags = tags.map((t) => t === oldName ? trimmed : t).join(",");
+              await window.XiaoLuoSupabase.updatePostTags(post.id, state.userId, newTags);
+            }
+          }
+          data.tags = data.tags.map((item) => {
+            if (typeof item === "string") return item === oldName ? trimmed : item;
+            return item.id === editTag.dataset.editTag ? { ...item, name: trimmed } : item;
+          });
+          data.posts = data.posts.map((post) => {
+            const tags = parseCommaTags(post.tags);
+            if (tags.includes(oldName)) {
+              return { ...post, tags: tags.map((t) => t === oldName ? trimmed : t).join(",") };
+            }
+            return post;
+          });
+          populateFilters();
+        }
         if (category) {
           await window.XiaoLuoSupabase.deleteTaxonomy("categories", category.dataset.removeCategory, state.userId);
           data.categories = data.categories.filter((item) => item.id !== category.dataset.removeCategory);
@@ -2356,7 +3081,8 @@
         if (pagination) pagination.innerHTML = "";
         return;
       }
-      if (!section.dataset.homeStateView) section.dataset.homeStateView = "cards";
+      const savedHomeView = localStorage.getItem("home-view-mode");
+      if (!section.dataset.homeStateView) section.dataset.homeStateView = savedHomeView || "cards";
       if (!section.dataset.homeStatePage) section.dataset.homeStatePage = "1";
       if (section.dataset.homeStateCategory == null) section.dataset.homeStateCategory = "";
       if (section.dataset.homeStateTag == null) section.dataset.homeStateTag = "";
@@ -2399,13 +3125,16 @@
       if (dateView) dateView.hidden = !isDatesView;
       if (isDatesView) {
         const years = [...new Set(filtered.map((post) => String(post.publishedAt || "").slice(0, 4)).filter((year) => /^\d{4}$/.test(year)))].sort((a, b) => Number(b) - Number(a));
+        let firstMonthRendered = false;
         const yearGroups = years.map((year) => {
           const yearPosts = filtered.filter((post) => String(post.publishedAt).startsWith(year)).sort((a, b) => new Date(b.publishedAt) - new Date(a.publishedAt));
           const months = [...new Set(yearPosts.map((post) => String(post.publishedAt).slice(5, 7)))].sort((a, b) => Number(b) - Number(a));
           const monthHtml = months.map((month) => {
             const monthPosts = yearPosts.filter((post) => String(post.publishedAt).slice(5, 7) === month);
             const monthKey = `${year}-${month}`;
-            return `<div class="home-date-month" data-date-month-group="${monthKey}"><button class="home-date-month-toggle" type="button" data-date-month-toggle="${monthKey}"><span>${year}年${Number(month)}月</span><small>${monthPosts.length} 篇</small><i class="home-date-month-arrow">›</i></button><div class="home-date-month-list" data-date-month-list="${monthKey}" hidden>${monthPosts.map((post) => { const tags = parseCommaTags(post.tags); return `<a class="home-date-item" href="./article-detail.html?id=${post.id}"><time>${escapeHtml(String(post.publishedAt).slice(8, 10) || "--")}</time><span class="home-date-dot"></span><span class="home-date-cat">${escapeHtml(post.category || "未分类")}</span><strong>${escapeHtml(post.title)}</strong><span class="home-date-tags">${tags.slice(0, 3).map((tag) => `<em>#${escapeHtml(tag)}</em>`).join("")}${tags.length > 3 ? `<em class="home-date-tags-more">+${tags.length - 3}</em>` : ""}</span></a>`; }).join("")}</div></div>`;
+            const isFirst = !firstMonthRendered;
+            if (isFirst) firstMonthRendered = true;
+            return `<div class="home-date-month" data-date-month-group="${monthKey}"><button class="home-date-month-toggle${isFirst ? " expanded" : ""}" type="button" data-date-month-toggle="${monthKey}"><span>${year}年${Number(month)}月</span><small>${monthPosts.length} 篇</small><i class="home-date-month-arrow">›</i></button><div class="home-date-month-list" data-date-month-list="${monthKey}"${isFirst ? "" : " hidden"}>${monthPosts.map((post) => { const tags = parseCommaTags(post.tags); return `<a class="home-date-item" href="./article-detail.html?id=${post.id}"><time>${escapeHtml(String(post.publishedAt).slice(8, 10) || "--")}</time><span class="home-date-dot"></span><span class="home-date-cat">${escapeHtml(post.category || "未分类")}</span><strong>${escapeHtml(post.title)}</strong><span class="home-date-tags">${tags.slice(0, 3).map((tag) => `<em>#${escapeHtml(tag)}</em>`).join("")}${tags.length > 3 ? `<em class="home-date-tags-more">+${tags.length - 3}</em>` : ""}</span></a>`; }).join("")}</div></div>`;
           }).join("");
           return `<section class="home-date-group"><header><h3>${year}</h3><span>${yearPosts.length} 篇文章</span></header><div class="home-date-months">${monthHtml}</div></section>`;
         });
@@ -2512,6 +3241,7 @@
     $all("[data-home-view]", section).forEach((button) => {
       button.onclick = () => {
         section.dataset.homeStateView = button.dataset.homeView || "cards";
+        localStorage.setItem("home-view-mode", section.dataset.homeStateView);
         section.dataset.homeStatePage = "1";
         rerender();
       };
@@ -7726,3 +8456,5 @@
       if ($("[data-entry-loader]")) hideEntryLoaderAfterAssets();
     });
 })();
+
+

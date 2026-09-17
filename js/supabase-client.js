@@ -1203,6 +1203,28 @@
       return data;
     },
 
+    async updateTaxonomy(table, id, userId, name) {
+      const { data, error } = await client.from(table).update({ name }).eq("id", id).eq("user_id", userId).select().single();
+      if (error) throw error;
+      return data;
+    },
+
+    async updatePostCategory(userId, oldCategory, newCategory) {
+      const { error } = await client.from("posts").update({ category: newCategory }).eq("user_id", userId).eq("category", oldCategory);
+      if (error) throw error;
+    },
+
+    async getUserPosts(userId) {
+      const { data, error } = await client.from("posts").select("id,tags").eq("user_id", userId);
+      if (error) throw error;
+      return data || [];
+    },
+
+    async updatePostTags(postId, userId, tags) {
+      const { error } = await client.from("posts").update({ tags }).eq("id", postId).eq("user_id", userId);
+      if (error) throw error;
+    },
+
     async deleteTaxonomy(table, id, userId) {
       const { error } = await client.from(table).delete().eq("id", id).eq("user_id", userId);
       if (error) throw error;
