@@ -1001,7 +1001,7 @@
       const [likes, views, comments, ownLike] = await Promise.all([
         client.from("post_likes").select("id", { count: "exact", head: true }).eq("post_id", postId),
         client.from("post_views").select("id", { count: "exact", head: true }).eq("post_id", postId),
-        client.from("post_comments").select("id, content, created_at, user_id, parent_id").eq("post_id", postId).order("created_at", { ascending: true }),
+        client.from("post_comments").select("id, content, created_at, user_id, parent_id, device_info").eq("post_id", postId).order("created_at", { ascending: true }),
         ownLikeQuery
       ]);
       if (likes.error || views.error) throw likes.error || views.error;
@@ -1058,8 +1058,10 @@
       return true;
     },
 
-    async addPostComment(postId, userId, content, parentId = null) {
-      const { data, error } = await client.from("post_comments").insert({ post_id: postId, user_id: userId, content, parent_id: parentId }).select().single();
+    async addPostComment(postId, userId, content, parentId = null, deviceInfo = null) {
+      const insertData = { post_id: postId, user_id: userId, content, parent_id: parentId };
+      if (deviceInfo) insertData.device_info = deviceInfo;
+      const { data, error } = await client.from("post_comments").insert(insertData).select().single();
       if (error) throw error;
       return data;
     },

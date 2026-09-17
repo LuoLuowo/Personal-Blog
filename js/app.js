@@ -265,6 +265,8 @@
           if (height) link.dataset.height = height;
           const cardTitle = node.getAttribute("data-card-title") || node.dataset.cardTitle || "";
           if (cardTitle) link.dataset.cardTitle = cardTitle;
+          const align = node.getAttribute("data-align") || node.dataset.align || "";
+          if (align) link.dataset.align = align;
           [...node.childNodes].forEach((child) => appendClean(child, link));
           parent.append(link);
         } else [...node.childNodes].forEach((child) => appendClean(child, parent));
@@ -289,6 +291,20 @@
         const element = document.createElement(tag);
         const align = node.style.textAlign || node.getAttribute("align") || "";
         if (["left", "center", "right"].includes(align)) element.style.textAlign = align;
+        // 保留视频卡片等特殊div的类名
+        const classList = [...node.classList];
+        const keepClasses = classList.filter((cls) =>
+          cls.startsWith("video-") ||
+          cls === "align-left" || cls === "align-center" || cls === "align-right" ||
+          cls.startsWith("rich-") ||
+          cls.startsWith("language-")
+        );
+        if (keepClasses.length) element.className = keepClasses.join(" ");
+        // 保留视频卡片相关数据属性
+        ["data-video-url", "data-embed-url", "data-embed-platform", "data-platform", "data-width", "data-height"].forEach((attr) => {
+          const val = node.getAttribute(attr);
+          if (val) element.setAttribute(attr, val);
+        });
         [...node.childNodes].forEach((child) => appendClean(child, element));
         parent.append(element);
         return;
@@ -1029,9 +1045,21 @@
             else if (action === "underline") { document.execCommand("styleWithCSS", false, false); document.execCommand("underline"); }
             else if (action === "orderedList") document.execCommand("insertOrderedList");
             else if (action === "unorderedList") document.execCommand("insertUnorderedList");
-            else if (action === "alignLeft") document.execCommand("justifyLeft");
-            else if (action === "alignCenter") document.execCommand("justifyCenter");
-            else if (action === "alignRight") document.execCommand("justifyRight");
+            else if (action === "alignLeft") {
+              const selectedCard = input.querySelector(".editor-video-preview.is-selected");
+              if (selectedCard) { selectedCard.classList.remove("align-center", "align-right"); selectedCard.classList.add("align-left"); }
+              else document.execCommand("justifyLeft");
+            }
+            else if (action === "alignCenter") {
+              const selectedCard = input.querySelector(".editor-video-preview.is-selected");
+              if (selectedCard) { selectedCard.classList.remove("align-left", "align-right"); selectedCard.classList.add("align-center"); }
+              else document.execCommand("justifyCenter");
+            }
+            else if (action === "alignRight") {
+              const selectedCard = input.querySelector(".editor-video-preview.is-selected");
+              if (selectedCard) { selectedCard.classList.remove("align-left", "align-center"); selectedCard.classList.add("align-right"); }
+              else document.execCommand("justifyRight");
+            }
             else if (action === "quote") {
               const quote = elementForRange(range, "blockquote");
               document.execCommand("formatBlock", false, quote ? "div" : "blockquote");
@@ -1334,6 +1362,9 @@
       link.target = "_blank";
       link.rel = "noopener noreferrer";
       link.dataset.linkType = "video";
+      if (preview.classList.contains("align-left")) link.dataset.align = "left";
+      if (preview.classList.contains("align-center")) link.dataset.align = "center";
+      if (preview.classList.contains("align-right")) link.dataset.align = "right";
       if (width) link.dataset.width = width;
       if (height) link.dataset.height = height;
       link.textContent = "视频";
@@ -1351,6 +1382,9 @@
       link.target = "_blank";
       link.rel = "noopener noreferrer";
       link.dataset.embedPlatform = platform;
+      if (preview.classList.contains("align-left")) link.dataset.align = "left";
+      if (preview.classList.contains("align-center")) link.dataset.align = "center";
+      if (preview.classList.contains("align-right")) link.dataset.align = "right";
       if (width) link.dataset.width = width;
       if (height) link.dataset.height = height;
       if (cardTitle) link.dataset.cardTitle = cardTitle;
@@ -1469,7 +1503,12 @@
       if (embed) {
         const wrapper = document.createElement("div");
         const cardTitle = (link.textContent || "").trim() !== "视频" ? (link.textContent || "").trim() : "";
-        wrapper.className = "video-embed-wrapper" + (embed.noEmbed ? ` video-link-card video-link-card-${embed.platform}` : "");
+        // 应用对齐
+        const align = link.dataset.align || "";
+        wrapper.className = "video-embed-wrapper" + (embed.noEmbed ? ` video-link-card video-link-card-${embed.platform}` : "") + (align ? ` align-${align}` : "");
+        if (align === "center") { wrapper.style.marginLeft = "auto"; wrapper.style.marginRight = "auto"; wrapper.style.maxWidth = "600px"; }
+        if (align === "left") { wrapper.style.marginRight = "auto"; wrapper.style.maxWidth = "600px"; }
+        if (align === "right") { wrapper.style.marginLeft = "auto"; wrapper.style.maxWidth = "600px"; }
         if (width) { wrapper.style.width = width; wrapper.style.maxWidth = width; }
         if (embed.noEmbed) {
           wrapper.innerHTML = createVideoCardHtml(embed.url, embed.platform, cardTitle);
@@ -1499,8 +1538,13 @@
       const isNoEmbed = noEmbedPlatforms.includes(platform);
       const cardTitle = link.dataset.cardTitle || "";
       const platformKey = platform === "YouTube" ? "youtube" : (platform === "抖音" ? "douyin" : platform);
-      wrapper.className = "video-embed-wrapper" + (isNoEmbed ? ` video-link-card video-link-card-${platformKey}` : "");
+      // 应用对齐
+      const align = link.dataset.align || "";
+      wrapper.className = "video-embed-wrapper" + (isNoEmbed ? ` video-link-card video-link-card-${platformKey}` : "") + (align ? ` align-${align}` : "");
       wrapper.dataset.platform = platform;
+      if (align === "center") { wrapper.style.marginLeft = "auto"; wrapper.style.marginRight = "auto"; wrapper.style.maxWidth = "600px"; }
+      if (align === "left") { wrapper.style.marginRight = "auto"; wrapper.style.maxWidth = "600px"; }
+      if (align === "right") { wrapper.style.marginLeft = "auto"; wrapper.style.maxWidth = "600px"; }
       if (width) { wrapper.style.width = width; wrapper.style.maxWidth = width; }
       if (isNoEmbed) {
         wrapper.innerHTML = createVideoCardHtml(url, platformKey, cardTitle);
@@ -1652,6 +1696,86 @@
     return urls;
   }
 
+  // 解析用户设备信息（系统、浏览器、设备类型）
+  async function parseDeviceInfo() {
+    const ua = navigator.userAgent;
+    let os = "未知系统";
+    let browser = "未知浏览器";
+    let device = "电脑";
+    // 操作系统 - 用高熵值API准确区分Win10/11
+    if (/Windows NT 10/.test(ua)) {
+      try {
+        if (navigator.userAgentData?.getHighEntropyValues) {
+          const hv = await navigator.userAgentData.getHighEntropyValues(["platformVersion"]);
+          const pv = parseInt(hv.platformVersion || "0", 10);
+          os = pv >= 13 ? "Windows 11" : "Windows 10";
+        } else {
+          os = "Windows 10";
+        }
+      } catch (e) { os = "Windows 10"; }
+    }
+    else if (/Windows NT 6.3/.test(ua)) os = "Windows 8.1";
+    else if (/Windows NT 6.2/.test(ua)) os = "Windows 8";
+    else if (/Windows NT 6.1/.test(ua)) os = "Windows 7";
+    else if (/Mac OS X/.test(ua)) os = "macOS";
+    else if (/Android/.test(ua)) { os = "Android"; device = "手机"; }
+    else if (/iPhone|iPad|iPod/.test(ua)) { os = "iOS"; device = /iPad/.test(ua) ? "平板" : "手机"; }
+    else if (/Linux/.test(ua)) os = "Linux";
+    // 浏览器
+    if (/Edg\//.test(ua)) browser = "Edge";
+    else if (/Chrome\//.test(ua) && !/Chromium/.test(ua)) browser = "Chrome";
+    else if (/Firefox\//.test(ua)) browser = "Firefox";
+    else if (/Safari\//.test(ua) && !/Chrome/.test(ua)) browser = "Safari";
+    else if (/Opera|OPR\//.test(ua)) browser = "Opera";
+    else if (/MSIE|Trident\//.test(ua)) browser = "IE";
+    return { os, browser, device };
+  }
+
+  // 英文省份名转中文
+  const provinceNameMap = {
+    "Henan": "河南", "Guangdong": "广东", "Beijing": "北京", "Shanghai": "上海",
+    "Zhejiang": "浙江", "Jiangsu": "江苏", "Shandong": "山东", "Sichuan": "四川",
+    "Hubei": "湖北", "Hunan": "湖南", "Fujian": "福建", "Hebei": "河北",
+    "Anhui": "安徽", "Liaoning": "辽宁", "Jilin": "吉林", "Heilongjiang": "黑龙江",
+    "Shanxi": "山西", "Shaanxi": "陕西", "Gansu": "甘肃", "Qinghai": "青海",
+    "Yunnan": "云南", "Guizhou": "贵州", "Hainan": "海南", "Jiangxi": "江西",
+    "Guangxi": "广西", "Inner Mongolia": "内蒙古", "Xinjiang": "新疆", "Tibet": "西藏",
+    "Ningxia": "宁夏", "Hong Kong": "香港", "Macau": "澳门", "Taiwan": "台湾",
+    "Chongqing": "重庆", "Tianjin": "天津", "China": "中国"
+  };
+  function toChineseProvince(name) {
+    if (!name) return "未知";
+    const trimmed = name.trim();
+    return provinceNameMap[trimmed] || provinceNameMap[trimmed.charAt(0).toUpperCase() + trimmed.slice(1).toLowerCase()] || trimmed;
+  }
+
+  // 获取IP省份（多源备用，缓存5分钟）
+  let cachedIpInfo = null;
+  let cachedIpTime = 0;
+  async function getIpProvince() {
+    const now = Date.now();
+    if (cachedIpInfo && now - cachedIpTime < 5 * 60 * 1000) return cachedIpInfo;
+    const apis = [
+      { url: "https://api.ip.sb/geoip", parse: (d) => toChineseProvince(d.region || d.country) },
+      { url: "https://ipapi.co/json/", parse: (d) => toChineseProvince(d.region || d.country_name) },
+      { url: "https://ipwho.is/", parse: (d) => toChineseProvince(d.region || d.country) },
+    ];
+    for (const api of apis) {
+      try {
+        const res = await fetch(api.url, { signal: AbortSignal.timeout(4000) });
+        if (!res.ok) continue;
+        const data = await res.json();
+        const province = api.parse(data);
+        if (province && province !== "未知") {
+          cachedIpInfo = province;
+          cachedIpTime = now;
+          return province;
+        }
+      } catch (e) { continue; }
+    }
+    return "未知";
+  }
+
   function commentThreadHtml(comments, deleteAttribute) {
     const byParent = new Map();
     comments.forEach((comment) => {
@@ -1664,7 +1788,29 @@
       const avatar = comment.profile?.avatar_url || "";
       const replies = byParent.get(comment.id) || [];
       const replyBlock = replies.length ? `<button class="comment-toggle-replies" type="button" data-toggle-comment-replies aria-expanded="false">查看 ${replies.length} 条回复</button><div class="comment-replies" data-comment-replies hidden>${draw(comment.id, depth + 1)}</div>` : "";
-      return `<article class="comment-item${depth ? " comment-reply" : ""}"><button class="comment-avatar${avatar ? " has-image" : ""}" type="button" data-profile-user-id="${escapeHtml(comment.user_id)}" aria-label="查看${escapeHtml(name)}的资料"${avatar ? ` style="background-image:url('${avatar}')"` : ""}>${escapeHtml(name.slice(0, 1) || "普")}</button><div class="comment-content"><div><strong>${escapeHtml(name)}</strong><time>${formatPostDate(comment.created_at)}</time></div><p>${escapeHtml(comment.content)}</p><button class="comment-reply-button" type="button" data-reply-comment="${comment.id}" data-reply-name="${escapeHtml(name)}">回复</button>${replyBlock}</div>${state.isAdmin ? `<button class="comment-delete" type="button" ${deleteAttribute}="${comment.id}">删除</button>` : ""}</article>`;
+      let deviceTag = "";
+      const isMobile = window.innerWidth <= 720;
+      if (comment.device_info) {
+        try {
+          const di = typeof comment.device_info === "string" ? JSON.parse(comment.device_info) : comment.device_info;
+          const icon = di.device === "手机" ? "📱" : (di.device === "平板" ? "📱" : "💻");
+          const fullInfo = `${escapeHtml(di.os || "")} ${escapeHtml(di.browser || "")}`;
+          if (isMobile) {
+            deviceTag = `<span class="comment-device-tag" title="${fullInfo}">${icon} ${escapeHtml(di.province || "未知")}</span>`;
+          } else {
+            deviceTag = `<span class="comment-device-tag" title="${fullInfo}">${icon} ${escapeHtml(di.province || "未知")} · ${escapeHtml(di.os || "未知")} · ${escapeHtml(di.browser || "未知")}</span>`;
+          }
+        } catch (e) { deviceTag = ""; }
+      }
+      // 手机端简化日期：只显示月-日
+      let dateText = formatPostDate(comment.created_at);
+      if (isMobile) {
+        try {
+          const d = new Date(comment.created_at);
+          dateText = `${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+        } catch (e) {}
+      }
+      return `<article class="comment-item${depth ? " comment-reply" : ""}" data-comment-id="${comment.id}" title="${state.isAdmin ? "右键可删除评论" : ""}"><button class="comment-avatar${avatar ? " has-image" : ""}" type="button" data-profile-user-id="${escapeHtml(comment.user_id)}" aria-label="查看${escapeHtml(name)}的资料"${avatar ? ` style="background-image:url('${avatar}')"` : ""}>${escapeHtml(name.slice(0, 1) || "普")}</button><div class="comment-content"><div><strong>${escapeHtml(name)}</strong>${deviceTag}<time>${dateText}</time></div><p>${escapeHtml(comment.content)}</p><button class="comment-reply-button" type="button" data-reply-comment="${comment.id}" data-reply-name="${escapeHtml(name)}">回复</button>${replyBlock}</div></article>`;
     }).join("");
     return draw() || '<p class="comment-empty">还没有评论。</p>';
   }
@@ -4015,15 +4161,46 @@
     const articleContent = canRead ? articleContentWithOutline(post.content) : { html: "", outline: [] };
     const hasOutline = articleContent.outline.length > 0;
     const outlineHtml = hasOutline
-      ? `<aside class="article-outline glass-card"><button class="article-outline-toggle" type="button" data-outline-toggle aria-label="展开目录">☰</button><div class="article-outline-header"><p class="mini-title">ON THIS PAGE</p><h2>文章目录</h2></div><nav>${articleContent.outline.map((item) => `<a class="level-${item.level}" href="#${item.id}">${escapeHtml(item.text)}</a>`).join("")}</nav></aside>`
+      ? `<button class="article-outline-toggle" type="button" data-outline-toggle aria-label="展开目录">☰</button><aside class="article-outline glass-card toc-container"><div class="article-outline-header toc-header"><h2>文章目录</h2></div><nav class="toc-body">${articleContent.outline.map((item) => `<a class="level-${item.level}" href="#${item.id}">${escapeHtml(item.text)}</a>`).join("")}</nav></aside>`
+      : "";
+    const activeTrack = data.music[state.musicIndex] || data.music[0] || { title: "我的歌单", artist: "小罗Blog" };
+    const trackArtist = activeTrack.artist || "小罗Blog";
+    const activeArtist = activeTrack.category ? `${trackArtist} · ${activeTrack.category}` : trackArtist;
+    const musicHtml = `<section class="glass-card music-card article-sidebar-music">
+      <p class="mini-title">音乐</p>
+      <div class="music-main">
+        <div class="record" data-record></div>
+        <div><h3 data-track-title>${escapeHtml(activeTrack.title || "我的歌单")}</h3><p data-track-artist>${escapeHtml(activeArtist || "小罗Blog")}</p></div>
+        <div class="music-actions">
+          <button type="button" data-music-prev aria-label="上一首"><span class="player-icon player-icon-previous" aria-hidden="true"></span></button>
+          <button type="button" data-music-toggle aria-label="播放或暂停"><span class="player-icon player-icon-play" aria-hidden="true"></span></button>
+          <button type="button" data-music-next aria-label="下一首"><span class="player-icon player-icon-next" aria-hidden="true"></span></button>
+        </div>
+      </div>
+      <input class="music-range" data-music-seek type="range" min="0" max="100" value="0" aria-label="拖动音乐进度">
+      <div class="music-time"><span data-current-time>00:00</span><span data-duration>00:00</span></div>
+      <button class="music-library-button" type="button" data-music-library aria-label="打开歌单">歌单</button>
+    </section>`;
+    const randomPosts = data.posts
+      .filter((item) => item.id !== post.id && item.status === "published" && (!Number(item.minActivityScore) || hasActivityAccess(Number(item.minActivityScore))))
+      .sort(() => Math.random() - 0.5)
+      .slice(0, 4);
+    const randomPostsHtml = canRead && randomPosts.length
+      ? `<aside class="article-random-posts glass-card"><p class="mini-title">DISCOVER</p><h2>随机文章</h2><nav>${randomPosts.map((item) => `<a href="./article-detail.html?id=${encodeURIComponent(item.id)}"><span>${escapeHtml(item.category || "未分类")}</span><strong>${escapeHtml(item.title)}</strong></a>`).join("")}</nav></aside>`
+      : "";
+    const neighborHtml = canRead
+      ? `<nav class="post-neighbor article-side-neighbor">
+          ${prev ? `<a href="./article-detail.html?id=${prev.id}"><small>上一篇</small><strong>${escapeHtml(prev.title)}</strong></a>` : "<span><small>上一篇</small><strong>已经是最新文章</strong></span>"}
+          ${next ? `<a href="./article-detail.html?id=${next.id}"><small>下一篇</small><strong>${escapeHtml(next.title)}</strong></a>` : "<span><small>下一篇</small><strong>已经是最后一篇</strong></span>"}
+        </nav>`
       : "";
     wrap.innerHTML = `
       <section class="article-detail-layout${hasOutline ? "" : " no-outline"}">
-      ${outlineHtml}
+      <aside class="article-detail-left">${musicHtml}${outlineHtml}</aside>
       <div class="article-reading-column">
       <article class="article-detail" data-post-id="${post.id}">
         <p class="eyebrow">${escapeHtml(post.category)}${post.status === "private" ? " · 私密" : ""}</p>
-        <div class="article-title-row"><h1>${escapeHtml(post.title)}</h1>${canRead && post.musicAttachment?.url ? `<div class="article-music" data-article-music><p>搭配音乐会更沉浸式</p><div><button type="button" data-article-music-toggle aria-label="播放文章配乐">▶</button><strong title="${escapeHtml(post.musicAttachment.name || "文章配乐")}">${escapeHtml(post.musicAttachment.name || "文章配乐")}</strong></div><audio data-article-music-audio preload="metadata" src="${escapeHtml(post.musicAttachment.url)}"></audio></div>` : ""}</div>
+        <div class="article-title-row"><h1>${escapeHtml(post.title)}</h1></div>
         <div class="article-meta detail-meta"><span>${escapeHtml(post.author)}</span><span>${formatPostDate(post.publishedAt)}</span><span>${escapeHtml(post.category)}</span></div>
         <div class="tag-row">${requiredScore ? `<span class="activity-read-label">${escapeHtml(requiredLevel.title)}可读</span>` : ""}${post.tags.map((tag) => `<a href="./articles.html?tag=${encodeURIComponent(tag)}">#${escapeHtml(tag)}</a>`).join("")}</div>
         ${post.coverUrl ? `<div class="detail-cover"><img src="${post.coverUrl}" alt="${escapeHtml(post.title)} 封面"></div>` : ""}
@@ -4037,10 +4214,6 @@
         </div>` : ""}
         ${canManagePosts && post.status !== "private" ? `<section class="post-access-settings"><button class="ghost-button" type="button" data-post-access-toggle aria-expanded="false">阅读权限：${requiredScore ? `${escapeHtml(requiredLevel.title)}可读` : "全站公开"}</button><div data-post-access-panel hidden><div class="post-access-track"><span>全站公开</span><input type="range" min="0" max="${ACTIVITY_LEVELS.length}" step="1" value="${requiredScore ? Math.max(0, ACTIVITY_LEVELS.findIndex((level) => level.score === requiredLevel.score) + 1) : 0}" data-post-access-range><strong data-post-access-label>${requiredScore ? `${escapeHtml(requiredLevel.title)}（${requiredLevel.score} 活跃度）` : "全站公开"}</strong></div><div class="post-access-scale" aria-hidden="true"><span>公开</span><span>初入人</span><span>罗客神</span></div><small>拖动圆点设置阅读门槛，松开后立即保存。未达到要求的用户只能看到文章标题与封面。</small></div></section>` : ""}
       </article>
-      ${canRead ? `<nav class="post-neighbor">
-        ${prev ? `<a href="./article-detail.html?id=${prev.id}">上一篇：${escapeHtml(prev.title)}</a>` : "<span>已经是最新文章</span>"}
-        ${next ? `<a href="./article-detail.html?id=${next.id}">下一篇：${escapeHtml(next.title)}</a>` : "<span>已经是最后一篇</span>"}
-      </nav>` : ""}
       ${canRead ? `<aside class="comments detail-comments-sidebar">
         <h2>评论</h2>
         <p data-comment-note>登录后可以发表评论。</p>
@@ -4048,6 +4221,7 @@
         <div class="comment-list" data-comment-list></div>
       </aside>` : ""}
       </div>
+      <aside class="article-detail-right">${randomPostsHtml}${neighborHtml}</aside>
       </section>
     `;
     highlightCodeBlocks(wrap);
@@ -4070,14 +4244,14 @@
     if (outline) {
       const outlineLinks = Array.from(outline.querySelectorAll("a[href^='#']"));
       // 手机端悬浮目录按钮切换
-      const outlineToggle = $("[data-outline-toggle]", outline);
+      const outlineToggle = $("[data-outline-toggle]", wrap);
       if (outlineToggle) {
         outlineToggle.onclick = (e) => {
           e.stopPropagation();
           outline.classList.toggle("is-open");
         };
         document.addEventListener("click", (ev) => {
-          if (!outline.contains(ev.target)) outline.classList.remove("is-open");
+          if (!outline.contains(ev.target) && !outlineToggle.contains(ev.target)) outline.classList.remove("is-open");
         });
         outlineLinks.forEach((link) => {
           link.addEventListener("click", () => outline.classList.remove("is-open"));
@@ -4108,11 +4282,14 @@
         if (link) {
           link.classList.add("is-active");
           updateIndicator(link);
-          // 自动滚动目录使当前项可见
-          const linkRect = link.getBoundingClientRect();
-          const outlineRect = outline.getBoundingClientRect();
-          if (linkRect.top < outlineRect.top + 20 || linkRect.bottom > outlineRect.bottom - 20) {
-            link.scrollIntoView({ block: "center", behavior: "smooth" });
+          // 只滚动目录自身。scrollIntoView 会连带滚动整页，导致阅读到中段时页面被拉回。
+          if (nav && nav.scrollHeight > nav.clientHeight) {
+            const linkTop = link.offsetTop;
+            const visibleTop = nav.scrollTop;
+            const visibleBottom = visibleTop + nav.clientHeight;
+            if (linkTop < visibleTop + 20 || linkTop + link.offsetHeight > visibleBottom - 20) {
+              nav.scrollTo({ top: Math.max(0, linkTop - nav.clientHeight / 2 + link.offsetHeight / 2), behavior: "smooth" });
+            }
           }
         } else {
           if (indicator) indicator.style.opacity = "0";
@@ -4674,12 +4851,16 @@
       if (note) note.textContent = state.isLoggedIn ? "评论会保存到文章下方。" : "请先登录后发表评论。";
       const commentList = $("[data-comment-list]", detailRoot?.parentElement || document);
       if (commentList) commentList.innerHTML = commentThreadHtml(engagement.comments, "data-delete-post-comment");
+      // 管理员右键评论删除
       if (state.isAdmin && commentList) {
-        $all("[data-delete-post-comment]", commentList).forEach((button) => {
-          button.onclick = async () => {
+        $all(".comment-item", commentList).forEach((item) => {
+          item.oncontextmenu = async (e) => {
+            e.preventDefault();
+            const commentId = item.dataset.commentId;
+            if (!commentId) return;
             if (!await confirmPublish("确认删除这条评论？", "删除后无法恢复。", "确认删除")) return;
             try {
-              await api.deletePostComment(button.dataset.deletePostComment);
+              await api.deletePostComment(commentId);
               await loadPostEngagement(postId);
             } catch (error) { showCloudError(error); }
           };
@@ -4694,7 +4875,17 @@
           if (!requireActivityAccess(10, "评论功能")) return;
           const content = form.content.value.trim();
           if (!content) return;
-          try { await api.addPostComment(postId, state.userId, content, replyTo); replyTo = null; form.reset(); form.content.placeholder = "写下你的评论"; await refreshAuthState(); await loadPostEngagement(postId); } catch (error) { showCloudError(error); }
+          const submitBtn = form.querySelector("button[type='submit']");
+          const originalText = submitBtn ? submitBtn.textContent : "";
+          if (submitBtn) { submitBtn.textContent = "发布中…"; submitBtn.disabled = true; }
+          try {
+            const dev = await parseDeviceInfo();
+            const province = await getIpProvince();
+            const deviceInfo = JSON.stringify({ ...dev, province });
+            await api.addPostComment(postId, state.userId, content, replyTo, deviceInfo);
+            replyTo = null; form.reset(); form.content.placeholder = "写下你的评论"; await refreshAuthState(); await loadPostEngagement(postId);
+          } catch (error) { showCloudError(error); }
+          finally { if (submitBtn) { submitBtn.textContent = originalText; submitBtn.disabled = false; } }
         };
       }
     } catch (error) {
