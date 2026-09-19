@@ -1,4 +1,4 @@
-(function () {
+﻿(function () {
   const data = window.NeverBlogData;
   const defaultData = JSON.parse(JSON.stringify(data));
   const state = {
@@ -196,6 +196,10 @@
       if (node.nodeType === Node.TEXT_NODE) { parent.append(document.createTextNode(node.nodeValue || "")); return; }
       if (node.nodeType !== Node.ELEMENT_NODE) return;
       const tag = node.tagName.toLowerCase();
+      // 丢弃代码块复制按钮等UI元素，防止被保存进内容
+      if (node.classList && (node.classList.contains("code-block-header") || node.classList.contains("code-copy-btn") || node.classList.contains("code-block-dots") || node.classList.contains("code-block-lang"))) return;
+      // code-block-wrapper只提取内部pre，不保留wrapper
+      if (node.classList && node.classList.contains("code-block-wrapper")) { [...node.childNodes].forEach((child) => appendClean(child, parent)); return; }
       if (tag === "br") { parent.append(document.createElement("br")); return; }
       if (tag === "pre") {
         const sourceCode = node.querySelector("code") || node;
@@ -682,7 +686,38 @@
   function highlightCodeBlocks(root = document) {
     const blocks = $all("pre code", root).filter((block) => !block.dataset.highlighted);
     if (!blocks.length) return;
-    const run = () => blocks.forEach((block) => { try { window.hljs.highlightElement(block); } catch (_) {} });
+    const run = () => blocks.forEach((block) => {
+      try { window.hljs.highlightElement(block); } catch (_) {}
+      const pre = block.parentElement;
+      const inEditor = pre.closest("[contenteditable=true], .rich-text-input");
+      if (pre && pre.tagName === "PRE" && !inEditor && !pre.parentElement.classList.contains("code-block-wrapper")) {
+        const lang = pre.getAttribute("data-language") || "code";
+        const wrapper = document.createElement("div");
+        wrapper.className = "code-block-wrapper";
+        const header = document.createElement("div");
+        header.className = "code-block-header";
+        header.innerHTML = `<div class="code-block-dots"><span></span><span></span><span></span></div><span class="code-block-lang">${lang}</span>`;
+        const btn = document.createElement("button");
+        btn.type = "button";
+        btn.className = "code-copy-btn";
+        btn.textContent = "复制";
+        btn.onclick = async () => {
+          const code = block.innerText;
+          try { await navigator.clipboard.writeText(code); btn.textContent = "已复制"; }
+          catch (_) {
+            const ta = document.createElement("textarea");
+            ta.value = code; document.body.appendChild(ta); ta.select();
+            document.execCommand("copy"); document.body.removeChild(ta);
+            btn.textContent = "已复制";
+          }
+          setTimeout(() => btn.textContent = "复制", 1500);
+        };
+        header.appendChild(btn);
+        pre.parentNode.insertBefore(wrapper, pre);
+        wrapper.appendChild(header);
+        wrapper.appendChild(pre);
+      }
+    });
     if (window.hljs) { run(); return; }
     if (!window.__xiaoluoHighlightPromise) {
       window.__xiaoluoHighlightPromise = new Promise((resolve) => {
@@ -1487,10 +1522,34 @@
   }
 
   function renderPostContent(parts) {
-    const html = (parts || []).filter(Boolean).map((part) => `<div class="post-content-part">${formatRichText(part).replace(/\n/g, "<br>")}</div>`).join("");
+    const html = (parts || []).filter(Boolean).map((part) => {
+      const formatted = formatRichText(part);
+      const holder = document.createElement("div");
+      holder.innerHTML = formatted;
+      const walk = document.createTreeWalker(holder, NodeFilter.SHOW_TEXT, null);
+      // 清理可能被误保存进内容的代码块UI元素
+      holder.querySelectorAll(".code-copy-btn, .code-block-header, .code-block-dots, .code-block-lang").forEach((el) => el.remove());
+      holder.querySelectorAll(".code-block-wrapper").forEach((wrapper) => {
+        const pre = wrapper.querySelector("pre");
+        if (pre) wrapper.parentNode.replaceChild(pre, wrapper);
+      });
+      const textNodes = [];
+      while (walk.nextNode()) textNodes.push(walk.currentNode);
+      textNodes.forEach((node) => {
+        let parent = node.parentElement;
+        let inPre = false;
+        while (parent) { if (parent.tagName === "PRE" || parent.tagName === "CODE") { inPre = true; break; } parent = parent.parentElement; }
+        if (!inPre && node.textContent.includes("\n")) {
+          const lines = node.textContent.split("\n");
+          const frag = document.createDocumentFragment();
+          lines.forEach((line, i) => { if (i > 0) frag.appendChild(document.createElement("br")); frag.appendChild(document.createTextNode(line)); });
+          node.parentNode.replaceChild(frag, node);
+        }
+      });
+      return `<div class="post-content-part">${holder.innerHTML}</div>`;
+    }).join("");
     return embedVideoLinks(html);
   }
-
   // 识别视频视图链接，嵌入播放器（只有明确选择视频视图的才嵌入，之前的链接保持原样）
   function embedVideoLinks(html) {
     const holder = document.createElement("div");
