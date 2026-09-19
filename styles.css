@@ -4851,8 +4851,8 @@ body.article-touch-reading .article-outline a {
 .media-total-card:active { transform: scale(.98); }
 
 /* 后台导航：仅手机端显示右侧抽屉，电脑端不显示 */
-.admin-fab, .admin-nav-drawer { display: none; }
-@media (max-width: 768px) {
+.admin-fab { display: none !important; }
+.admin-nav-drawer { display: none; }
   .admin-fab { display: grid; place-items: center; position: fixed; right: 14px; bottom: 90px; z-index: 1100; width: 48px; height: 48px; border-radius: 50%; border: 0; background: var(--blue); color: #fff; font-size: 20px; box-shadow: 0 4px 14px rgba(0,0,0,.3); }
   .admin-nav-drawer { display: block; position: fixed; inset: 0; z-index: 1200; }
   .admin-nav-drawer[hidden] { display: none; }
@@ -4877,3 +4877,7 @@ body.article-touch-reading .article-outline a {
   .device-session-row { flex-direction: column; align-items: stretch; }
   .device-session-row .danger-button { align-self: flex-end; }
 }
+
+.device-actions { display: flex; gap: 10px; align-items: center; }
+.ghost-button.small { padding: 6px 14px; border-radius: 10px; border: 1px solid var(--line); background: transparent; color: var(--text); font-size: 13px; cursor: pointer; }
+.ghost-button.small:hover { background: rgba(0,0,0,.06); }

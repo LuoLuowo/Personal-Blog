@@ -7827,7 +7827,6 @@
     window.addEventListener("scroll", onScroll, { passive: true });
     onScroll();
   }
-    const sections = links.map((a) => document.querySelector(a.getAttribute("href"))).filter(Boolean);
 
   async function ensureCurrentDeviceRegistered(api) {
     try {
@@ -7935,6 +7934,12 @@
       } catch (error) { showCloudError(error); }
     });
     const others = $("[data-device-revoke-others]");
+    const refreshBtn = $("[data-device-refresh]");
+    if (refreshBtn && !refreshBtn.dataset.bound) {
+      refreshBtn.dataset.bound = "true";
+      refreshBtn.addEventListener("click", () => renderDeviceSessions());
+    }
+
     if (others && !others.dataset.bound) {
       others.dataset.bound = "true";
       others.addEventListener("click", async () => {
