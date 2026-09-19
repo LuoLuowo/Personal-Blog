@@ -1926,9 +1926,9 @@ textarea { resize: vertical; line-height: 1.75; }
   -webkit-user-select: text;
 }
 .rich-text-input p { margin: 0 0 .5em; line-height: 1.7; }
-.rich-text-input p:has(> br:only-child) { margin: 0; min-height: .3em; height: .3em; }
+.rich-text-input p:has(> br:only-child) { margin: 0; min-height: 1.7em; height: 1.7em; }
 .rich-text-input p:has(> br:only-child) br { display: none; }
-.rich-text-input div:has(> br:only-child) { margin: 0; min-height: .3em; height: .3em; }
+.rich-text-input div:has(> br:only-child) { margin: 0; min-height: 1.7em; height: 1.7em; }
 .rich-text-input div:has(> br:only-child) br { display: none; }
 .article-card-topline { display: flex; align-items: center; justify-content: space-between; min-width: 0; gap: 10px; }
 .article-card-topline .mini-title { margin: 0; }
