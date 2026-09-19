@@ -7860,7 +7860,7 @@
       api.heartbeatPresence(location.pathname + location.search).catch(() => {});
       checkDeviceRevoked();
       if (pageName() === "dashboard" && state.isAdmin) renderDashboardStats();
-    }, 30000);
+    }, 8000);
   }
 
   function renderRegisteredUsers() {

@@ -1,4 +1,4 @@
--- ============================================================
+﻿-- ============================================================
 -- 设备登录管理：记录每个账号在各设备上的登录会话，支持远程下线
 -- 在 Supabase SQL Editor 中运行一次即可。
 -- 说明：
@@ -60,6 +60,26 @@ begin
   end if;
   if p_device_key is null or length(trim(p_device_key)) < 8 then
     raise exception 'invalid device key';
+  end if;
+
+  -- 同一 IP 视为同一设备：先合并同 IP 的有效记录
+  if p_ip is not null and length(trim(p_ip)) > 0 then
+    update public.auth_device_sessions s
+      set device_key = p_device_key,
+          device_name = p_device_name,
+          device_type = p_device_type,
+          os = p_os,
+          browser = p_browser,
+          location = p_location,
+          user_agent = left(p_user_agent, 500),
+          logged_in_at = case when p_reset_login then now() else s.logged_in_at end,
+          last_active_at = now(),
+          revoked = false
+    where s.user_id = v_user and s.ip = p_ip and s.revoked = false
+    returning s.id into v_id;
+    if v_id is not null then
+      return v_id;
+    end if;
   end if;
 
   insert into public.auth_device_sessions
