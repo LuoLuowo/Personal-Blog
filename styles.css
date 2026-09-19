@@ -3632,6 +3632,7 @@ body.dark-mode .about-contact-link.instagram > i, body.dark-mode .about-contact-
   .profile-avatar-upload { grid-template-columns: 58px minmax(0, 1fr); }
   .profile-avatar-preview { width: 56px; height: 56px; border-radius: 15px; }
   .code-block-modal textarea { min-height: 190px; }
+  .editor-main.glass-card { backdrop-filter: none; -webkit-backdrop-filter: none; }
   .text-format-editor { position: relative; }
   .text-format-toolbar { position: fixed; left: 0; right: 0; bottom: 0; z-index: 900; display: flex; flex-wrap: nowrap; gap: 6px; padding: 9px 10px; padding-bottom: calc(9px + env(safe-area-inset-bottom)); overflow-x: auto; overflow-y: hidden; -webkit-overflow-scrolling: touch; background: var(--card); border-top: 1px solid var(--line); box-shadow: 0 -4px 16px rgba(0,0,0,.08); }
   .dark-mode .text-format-toolbar { background: #0f172a; border-top-color: rgba(132,93,255,.3); }
