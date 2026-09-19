@@ -1151,7 +1151,6 @@
         ensureCodeBlockBuffers(input);
         bindEditorImageResize(input);
         bindEditorVideoResize(input);
-        input.addEventListener("keydown", (event) => {
         if (!toolbar.querySelector("[data-format-action=imageUpload]")) {
           const imgBtn = document.createElement("button");
           imgBtn.type = "button";
@@ -1178,6 +1177,7 @@
           };
           toolbar.appendChild(imgBtn);
         }
+        input.addEventListener("keydown", (event) => {
           const range = getEditorSelectionRange(input) || savedRange;
           if (event.key === "Enter" && range) {
             const heading = editorBlockAt(range, input)?.closest("h1, h2, h3, h4, h5");
