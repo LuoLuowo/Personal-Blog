@@ -1047,7 +1047,12 @@
       if (toolbar.dataset.bound) return;
       enhanceFormatToolbar(toolbar);
       toolbar.dataset.bound = "true";
-      const input = toolbar.parentElement?.querySelector("[data-format-input]");
+      let input = toolbar._linkedInput || toolbar.parentElement?.querySelector("[data-format-input]");
+      if (!input) input = document.querySelector("[data-editor-content]");
+      if (input) toolbar._linkedInput = input;
+      if (window.matchMedia("(max-width: 720px)").matches && toolbar.parentElement !== document.body) {
+        document.body.appendChild(toolbar);
+      }
       if (!input) return;
       let savedRange = null;
       const rememberSelection = () => {
@@ -1136,6 +1141,32 @@
         bindEditorImageResize(input);
         bindEditorVideoResize(input);
         input.addEventListener("keydown", (event) => {
+        if (!toolbar.querySelector("[data-format-action=imageUpload]")) {
+          const imgBtn = document.createElement("button");
+          imgBtn.type = "button";
+          imgBtn.dataset.formatAction = "imageUpload";
+          imgBtn.title = "插入图片";
+          imgBtn.textContent = "+";
+          const fileInput = document.createElement("input");
+          fileInput.type = "file";
+          fileInput.accept = "image/*";
+          fileInput.style.display = "none";
+          document.body.appendChild(fileInput);
+          imgBtn.onclick = async () => { rememberSelection(); fileInput.value = ""; fileInput.click(); };
+          fileInput.onchange = async () => {
+            const file = fileInput.files && fileInput.files[0];
+            if (!file) return;
+            imgBtn.textContent = "...";
+            try {
+              const url = await window.XiaoLuoSupabase.uploadFile(state.userId, "post-images", file);
+              restoreEditorSelection(input, savedRange || getEditorSelectionRange(input));
+              document.execCommand("insertImage", false, url);
+              input.dispatchEvent(new Event("input", { bubbles: true }));
+            } catch (e) { alert("图片上传失败：" + (e.message || e)); }
+            imgBtn.textContent = "+";
+          };
+          toolbar.appendChild(imgBtn);
+        }
           const range = getEditorSelectionRange(input) || savedRange;
           if (event.key === "Enter" && range) {
             const heading = editorBlockAt(range, input)?.closest("h1, h2, h3, h4, h5");
