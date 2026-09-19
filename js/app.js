@@ -7859,7 +7859,7 @@
     window.__xiaoluoPresenceTimer = window.setInterval(() => {
       api.heartbeatPresence(location.pathname + location.search).catch(() => {});
       checkDeviceRevoked();
-      if (pageName() === "dashboard" && state.isAdmin) renderDashboardStats();
+      // 设备列表仅在进后台或点刷新时加载，心跳不再自动刷新
     }, 8000);
   }
 
