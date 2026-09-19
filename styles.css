@@ -4846,3 +4846,34 @@ body.article-touch-reading .article-outline a {
 }
 
 
+
+.media-gallery-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 14px; margin-top: 14px; }
+.media-total-card:active { transform: scale(.98); }
+
+/* 后台导航：仅手机端显示右侧抽屉，电脑端不显示 */
+.admin-fab, .admin-nav-drawer { display: none; }
+@media (max-width: 768px) {
+  .admin-fab { display: grid; place-items: center; position: fixed; right: 14px; bottom: 90px; z-index: 1100; width: 48px; height: 48px; border-radius: 50%; border: 0; background: var(--blue); color: #fff; font-size: 20px; box-shadow: 0 4px 14px rgba(0,0,0,.3); }
+  .admin-nav-drawer { display: block; position: fixed; inset: 0; z-index: 1200; }
+  .admin-nav-drawer[hidden] { display: none; }
+  .admin-nav-mask { position: absolute; inset: 0; background: rgba(0,0,0,.45); }
+  .admin-nav-panel { position: absolute; right: 0; top: 0; bottom: 0; width: 74%; max-width: 300px; background: var(--card); padding: 24px 20px; overflow-y: auto; box-shadow: -4px 0 20px rgba(0,0,0,.2); }
+  .admin-nav-panel h3 { margin: 0 0 16px; font-size: 18px; }
+  .admin-nav-panel a { display: block; padding: 12px 8px; border-radius: 8px; color: var(--text); text-decoration: none; font-size: 15px; }
+  .admin-nav-panel a:hover { background: rgba(0,0,0,.06); }
+}
+
+.device-session-list { display: flex; flex-direction: column; gap: 12px; margin-top: 14px; }
+.device-session-row { display: flex; align-items: center; justify-content: space-between; gap: 14px; padding: 14px 16px; border: 1px solid var(--line); border-radius: 14px; background: var(--card); }
+.device-session-row.is-current { border-color: var(--blue); box-shadow: 0 0 0 1px var(--blue) inset; }
+.device-session-title { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.device-session-title strong { font-size: 15px; }
+.device-type-tag { font-size: 11px; padding: 2px 8px; border-radius: 999px; background: rgba(99,140,255,.15); color: var(--blue); font-weight: 700; }
+.device-current-tag { font-size: 11px; padding: 2px 8px; border-radius: 999px; background: rgba(46,204,113,.18); color: #27ae60; font-weight: 700; }
+.device-session-meta { margin: 4px 0 0; font-size: 13px; color: var(--muted); }
+.device-session-time { margin: 2px 0 0; font-size: 12px; color: var(--muted); }
+.device-session-note { margin: 10px 0 0; font-size: 13px; color: var(--muted); }
+@media (max-width: 768px) {
+  .device-session-row { flex-direction: column; align-items: stretch; }
+  .device-session-row .danger-button { align-self: flex-end; }
+}

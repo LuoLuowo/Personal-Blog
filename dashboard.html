@@ -44,6 +44,7 @@
       <a class="active" href="#dashboard">仪表盘</a>
       <a href="#visitor-monitor">登录日志</a>
       <a href="#users">注册用户</a>
+      <a href="#device-sessions">设备登录管理</a>
       <button type="button" data-placeholder-action="logout">退出登录</button>
     </aside>
 
@@ -89,6 +90,7 @@
           <p>小罗注意用量，数据库内存不多😊</p>
         </article>
       </section>
+
 
       <section class="admin-panel glass-card visitor-monitor-panel" id="visitor-monitor">
         <div class="section-heading compact">
@@ -234,7 +236,38 @@
         <div class="registered-users-list" data-registered-users></div>
       </section>
 
+      <section class="admin-panel glass-card" id="device-sessions">
+        <div class="section-heading compact">
+          <div>
+            <p class="mini-title">DEVICE SESSIONS</p>
+            <h2>设备登录管理</h2>
+            <p>当前账号所有已登录设备，可单独下线或一键退出其他设备。</p>
+          </div>
+          <button class="danger-button small" type="button" data-device-revoke-others>退出其他所有设备</button>
+        </div>
+        <div class="device-session-list" data-device-list>
+          <p class="empty-state">点击下方按钮加载设备列表…</p>
+        </div>
+        <p class="device-session-note" data-device-note></p>
+      </section>
+
     </section>
+
+  <button class="admin-fab" data-admin-nav-open aria-label="后台导航">☰</button>
+  <div class="admin-nav-drawer" data-admin-nav hidden>
+    <div class="admin-nav-mask" data-admin-nav-close></div>
+    <div class="admin-nav-panel">
+      <h3>后台导航</h3>
+      <a href="#dashboard">仪表盘概览</a>
+      <a href="#visitor-monitor">登录日志</a>
+      <a href="#tags">标签管理</a>
+      <a href="#project-settings">个人项目</a>
+      <a href="#home-settings">首页设置</a>
+      <a href="#about-settings">关于我设置</a>
+      <a href="#users">注册用户</a>
+      <a href="#device-sessions">设备登录管理</a>
+    </div>
+  </div>
   </main>
 </body>
 

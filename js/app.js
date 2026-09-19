@@ -7424,6 +7424,15 @@
           } else {
             await api.signInWithEmail(form.email.value, form.password.value);
             await refreshAuthState();
+            try {
+              const dev = await parseDeviceInfo();
+              await api.registerCurrentDevice({
+                deviceName: `${dev.os} · ${dev.browser}`,
+                deviceType: dev.device === "电脑" ? "desktop" : (dev.device === "平板" ? "tablet" : "mobile"),
+                os: dev.os,
+                browser: dev.browser
+              });
+            } catch (_) {}
             msg.textContent = state.isAdmin ? "登录成功，正在进入后台..." : "登录成功，正在进入博客...";
             window.location.href = nextPage || (state.isAdmin ? "./dashboard.html" : "./index.html");
           }
@@ -7725,6 +7734,18 @@
       confirmPublish("确认删除这篇文章？", "删除后无法恢复。", "确认删除").then(async (confirmed) => {
         if (!confirmed) return;
         try {
+          const post = data.posts.find((p) => p.id === button.dataset.deletePost);
+          if (post) {
+            const urls = [];
+            if (post.cover_url) urls.push(post.cover_url);
+            if (post.content) {
+              const h = document.createElement("div");
+              h.innerHTML = Array.isArray(post.content) ? post.content.map((b) => typeof b === "string" ? b : (b?.html || b?.text || "")).join("") : String(post.content || "");
+              h.querySelectorAll("img").forEach((img) => urls.push(img.src));
+            }
+            if (post.attachments?.length) post.attachments.forEach((f) => f.url && urls.push(f.url));
+            if (urls.length) await window.XiaoLuoSupabase.deleteFilesByPublicUrls(urls);
+          }
           await window.XiaoLuoSupabase.deleteContent("posts", button.dataset.deletePost, state.userId);
           data.posts = data.posts.filter((post) => post.id !== button.dataset.deletePost);
           renderAdminPosts();
@@ -7741,7 +7762,24 @@
       ...data.projects.map((item) => `${item.title || ""}${item.description || ""}`)
     ].reduce((count, value) => count + value.replace(/\s/g, "").length, 0);
     const totalAttachments = data.posts.reduce((count, post) => count + (post.attachments?.length || 0), 0) + data.projects.reduce((count, project) => count + (project.attachments?.length || 0), 0);
-    const totalImages = [...data.moments, ...data.progress].reduce((count, item) => count + (item.images?.length || 0), 0) + data.projects.filter((project) => project.coverUrl).length;
+    const allImageKeys = new Set();
+    const addImg = (url) => {
+      if (!url || typeof url !== "string") return;
+      try { const u = new URL(url); allImageKeys.add(u.origin + u.pathname.replace(/\/+$/, "").toLowerCase()); } catch (_) {}
+    };
+    (data.posts || []).forEach((post) => {
+      if (post.cover_url) addImg(post.cover_url);
+      if (post.content) {
+        const h = document.createElement("div");
+        h.innerHTML = Array.isArray(post.content) ? post.content.map((b) => typeof b === "string" ? b : (b?.html || b?.text || "")).join("") : String(post.content || "");
+        h.querySelectorAll("img").forEach((img) => addImg(img.src));
+      }
+    });
+    (data.projects || []).forEach((p) => { if (p.coverUrl) addImg(p.coverUrl); });
+    (data.moments || []).forEach((m) => (m.images || []).forEach(addImg));
+    (data.progress || []).forEach((p) => (p.images || []).forEach(addImg));
+    if (data.site && data.site.avatarDataUrl) addImg(data.site.avatarDataUrl);
+    const totalImages = allImageKeys.size;
     const stats = {
       "[data-stat-total-words]": totalWords,
       "[data-stat-total-attachments]": totalAttachments,
@@ -7767,13 +7805,61 @@
       if (online) online.textContent = metrics.onlineVisitors.toLocaleString("zh-CN");
       if (today) today.textContent = metrics.todayVisitors.toLocaleString("zh-CN");
     }).catch((error) => console.warn("Site metrics load failed; run supabase/site-visitor-stats.sql:", error.message));
+    initAdminNav();
+    renderDeviceSessions();
+    initDeviceSessions();
+  }
+  function initAdminNav() {
+    const open = $("[data-admin-nav-open]");
+    const drawer = $("[data-admin-nav]");
+    if (!drawer) return;
+    if (open) open.addEventListener("click", () => { drawer.hidden = false; });
+    $all("[data-admin-nav-close]", drawer).forEach((el) => el.addEventListener("click", () => { drawer.hidden = true; }));
+    $all("a", drawer).forEach((a) => a.addEventListener("click", () => { if (window.innerWidth <= 768) drawer.hidden = true; }));
+    const links = $all('a[href^="#"]', drawer);
+    const sections = links.map((a) => document.querySelector(a.getAttribute("href"))).filter(Boolean);
+    const onScroll = () => {
+      let current = sections[0];
+      const y = window.scrollY + 140;
+      sections.forEach((sec) => { if (sec.offsetTop <= y) current = sec; });
+      links.forEach((a) => a.classList.toggle("active", current && a.getAttribute("href") === "#" + current.id));
+    };
+    window.addEventListener("scroll", onScroll, { passive: true });
+    onScroll();
+  }
+    const sections = links.map((a) => document.querySelector(a.getAttribute("href"))).filter(Boolean);
+
+  async function ensureCurrentDeviceRegistered(api) {
+    try {
+      const session = await api.getSession?.();
+      if (!session) return;
+      const dev = await parseDeviceInfo();
+      await api.registerCurrentDevice?.({
+        deviceName: `${dev.os} · ${dev.browser}`,
+        deviceType: dev.device === "电脑" ? "desktop" : (dev.device === "平板" ? "tablet" : "mobile"),
+        os: dev.os,
+        browser: dev.browser
+      }, false);
+    } catch (_) {}
   }
 
   function initPresenceHeartbeat() {
     const api = window.XiaoLuoSupabase;
     if (!api?.heartbeatPresence || window.__xiaoluoPresenceTimer) return;
+    ensureCurrentDeviceRegistered(api);
+    const checkDeviceRevoked = async () => {
+      try {
+        const revoked = await api.touchCurrentDevice?.();
+        if (revoked) {
+          await api.signOut();
+          alert("这台设备已被下线，请重新登录。");
+          window.location.href = "./login.html";
+        }
+      } catch (_) {}
+    };
     window.__xiaoluoPresenceTimer = window.setInterval(() => {
       api.heartbeatPresence(location.pathname + location.search).catch(() => {});
+      checkDeviceRevoked();
       if (pageName() === "dashboard" && state.isAdmin) renderDashboardStats();
     }, 30000);
   }
@@ -7795,6 +7881,72 @@
       wrap.innerHTML = '<p class="empty-state">无法读取注册用户，请确认已执行用户列表权限脚本。</p>';
       console.warn("Registered users load failed:", error.message);
     });
+  }
+
+  function deviceTypeLabel(type) {
+    return type === "mobile" ? "手机" : type === "tablet" ? "平板" : "电脑";
+  }
+
+  function renderDeviceSessions(isRetry = false) {
+    const wrap = $("[data-device-list]");
+    if (!wrap || !state.isAdmin) return;
+    const api = window.XiaoLuoSupabase;
+    if (!api?.listMyDevices) return;
+    wrap.innerHTML = '<p class="empty-state">正在加载设备列表…</p>';
+    api.listMyDevices().then((devices) => {
+      const currentKey = api.getDeviceKey();
+      const note = $("[data-device-note]");
+      if (note) note.textContent = `共 ${devices.length} 台设备在线`;
+      if (!devices.length) { wrap.innerHTML = '<p class="empty-state">暂无已登录设备。</p>'; return; }
+      wrap.innerHTML = devices.map((d) => {
+        const isCurrent = d.device_key === currentKey;
+        const name = escapeHtml(d.device_name || [d.os, d.browser].filter(Boolean).join(" · ") || "未知设备");
+        const ipLoc = escapeHtml([d.ip, d.location].filter(Boolean).join(" · ") || "IP 未知");
+        return `<article class="device-session-row${isCurrent ? " is-current" : ""}">
+          <div class="device-session-info">
+            <div class="device-session-title"><strong>${name}</strong>
+              <span class="device-type-tag">${deviceTypeLabel(d.device_type)}</span>
+              ${isCurrent ? '<span class="device-current-tag">当前设备</span>' : ""}
+            </div>
+            <p class="device-session-meta">${ipLoc}</p>
+            <p class="device-session-time">登录：${formatVisitorTime(d.logged_in_at)}　最后活跃：${formatVisitorTime(d.last_active_at)}</p>
+          </div>
+          ${isCurrent ? "" : `<button class="danger-button small" type="button" data-device-revoke="${d.id}">下线</button>`}
+        </article>`;
+      }).join("");
+    }).catch((error) => {
+      if (!isRetry) { setTimeout(() => renderDeviceSessions(true), 1500); return; }
+      wrap.innerHTML = '<p class="empty-state">无法读取设备列表，请确认已执行 device-session-management.sql。</p>';
+      console.warn("Device list load failed:", error.message);
+    });
+  }
+  function initDeviceSessions() {
+    const panel = $("[data-device-list]");
+    if (!panel || panel.dataset.bound) return;
+    panel.dataset.bound = "true";
+    panel.addEventListener("click", async (event) => {
+      const btn = event.target.closest("[data-device-revoke]");
+      if (!btn) return;
+      const ok = await confirmPublish("确认下线这台设备？", "该设备会立即退出登录，需要重新登录才能访问。", "确认下线");
+      if (!ok) return;
+      try {
+        await runWithLoading("正在下线设备…", async () => { await window.XiaoLuoSupabase.revokeDevice(btn.dataset.deviceRevoke); });
+        renderDeviceSessions();
+      } catch (error) { showCloudError(error); }
+    });
+    const others = $("[data-device-revoke-others]");
+    if (others && !others.dataset.bound) {
+      others.dataset.bound = "true";
+      others.addEventListener("click", async () => {
+        const ok = await confirmPublish("退出其他所有设备？", "除当前设备外，其他设备都会立即退出登录。", "确认退出");
+        if (!ok) return;
+        try {
+          const count = await runWithLoading("正在退出其他设备…", async () => window.XiaoLuoSupabase.revokeOtherDevices());
+          renderDeviceSessions();
+          alert(`已退出 ${count} 台其他设备。`);
+        } catch (error) { showCloudError(error); }
+      });
+    }
   }
 
   function formatVisitorTime(iso) {
@@ -8621,6 +8773,18 @@
         if (!confirmed) return;
         try {
           await window.XiaoLuoSupabase.deleteContent("posts", id, state.userId);
+          const post = data.posts.find((p) => p.id === id);
+          if (post) {
+            const urls = [];
+            if (post.cover_url) urls.push(post.cover_url);
+            if (post.content) {
+              const h = document.createElement("div");
+              h.innerHTML = Array.isArray(post.content) ? post.content.map((b) => typeof b === "string" ? b : (b?.html || b?.text || "")).join("") : String(post.content || "");
+              h.querySelectorAll("img").forEach((img) => urls.push(img.src));
+            }
+            if (post.attachments?.length) post.attachments.forEach((f) => f.url && urls.push(f.url));
+            if (urls.length) await window.XiaoLuoSupabase.deleteFilesByPublicUrls(urls);
+          }
           data.posts = data.posts.filter((post) => post.id !== id);
           renderCurrentPage();
         } catch (error) { showCloudError(error); }
@@ -8639,6 +8803,18 @@
         if (!confirmed) return;
         try {
           await window.XiaoLuoSupabase.deleteContent("posts", button.dataset.deletePost, state.userId);
+          const post = data.posts.find((p) => p.id === button.dataset.deletePost);
+          if (post) {
+            const urls = [];
+            if (post.cover_url) urls.push(post.cover_url);
+            if (post.content) {
+              const h = document.createElement("div");
+              h.innerHTML = Array.isArray(post.content) ? post.content.map((b) => typeof b === "string" ? b : (b?.html || b?.text || "")).join("") : String(post.content || "");
+              h.querySelectorAll("img").forEach((img) => urls.push(img.src));
+            }
+            if (post.attachments?.length) post.attachments.forEach((f) => f.url && urls.push(f.url));
+            if (urls.length) await window.XiaoLuoSupabase.deleteFilesByPublicUrls(urls);
+          }
           data.posts = data.posts.filter((post) => post.id !== button.dataset.deletePost);
           navigate("./articles.html");
         } catch (error) { showCloudError(error); }

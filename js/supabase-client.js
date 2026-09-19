@@ -1,4 +1,4 @@
-(function () {
+﻿(function () {
   const config = window.XiaoLuoSupabaseConfig || {};
   const isConfigured = Boolean(config.url && config.anonKey && window.supabase);
   const client = isConfigured ? window.supabase.createClient(config.url, config.anonKey) : null;
@@ -361,6 +361,60 @@
       return data.session;
     },
 
+    // ===== 设备登录管理 =====
+    getDeviceKey() {
+      let key = localStorage.getItem("xiaoluo_device_key");
+      if (!key) {
+        key = (crypto.randomUUID ? crypto.randomUUID() : (Date.now() + "-" + Math.random().toString(16).slice(2)));
+        localStorage.setItem("xiaoluo_device_key", key);
+      }
+      return key;
+    },
+
+    async registerCurrentDevice(meta = {}, resetLogin = true) {
+      if (!client) return;
+      const ipInfo = await fetchIpInfo().catch(() => ({ ip: "", location: "" }));
+      const { error } = await client.rpc("register_device", {
+        p_device_key: this.getDeviceKey(),
+        p_device_name: meta.deviceName || null,
+        p_device_type: meta.deviceType || null,
+        p_os: meta.os || null,
+        p_browser: meta.browser || null,
+        p_ip: ipInfo.ip || null,
+        p_location: ipInfo.location || null,
+        p_user_agent: navigator.userAgent || null,
+        p_reset_login: resetLogin
+      });
+      if (error && error.code !== "PGRST202") console.warn("register_device failed:", error.message);
+    },
+
+    // 心跳：更新活跃时间，返回该设备是否已被管理员下线
+    async touchCurrentDevice() {
+      if (!client) return false;
+      const { data, error } = await client.rpc("touch_device", { p_device_key: this.getDeviceKey() });
+      if (error) return false;
+      return data === true;
+    },
+
+    async listMyDevices() {
+      if (!client) return [];
+      const { data, error } = await client.rpc("list_my_devices");
+      if (error) throw error;
+      return data || [];
+    },
+
+    async revokeDevice(deviceId) {
+      if (!client) return;
+      const { error } = await client.rpc("revoke_device", { p_device_id: deviceId });
+      if (error) throw error;
+    },
+
+    async revokeOtherDevices() {
+      if (!client) return 0;
+      const { data, error } = await client.rpc("revoke_other_devices", { p_keep_device_key: this.getDeviceKey() });
+      if (error) throw error;
+      return Number(data || 0);
+    },
     async ensureProfile(user, email, displayName = "") {
       if (!client || !user) return;
       const resolvedDisplayName = String(displayName || user.user_metadata?.display_name || "").trim();
