@@ -1,4 +1,4 @@
--- ============================================================
+﻿-- ============================================================
 -- 设备登录管理：记录每个账号在各设备上的登录会话，支持远程下线
 -- 在 Supabase SQL Editor 中运行一次即可。
 -- 说明：
@@ -75,7 +75,7 @@ begin
           logged_in_at = case when p_reset_login then now() else s.logged_in_at end,
           last_active_at = now(),
           revoked = false
-    where s.user_id = v_user and s.ip = p_ip and s.revoked = false
+    where s.user_id = v_user and s.ip = p_ip
     returning s.id into v_id;
     if v_id is not null then
       return v_id;
