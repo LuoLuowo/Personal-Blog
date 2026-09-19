@@ -7815,7 +7815,19 @@
     if (!drawer) return;
     if (open) open.addEventListener("click", () => { drawer.hidden = false; });
     $all("[data-admin-nav-close]", drawer).forEach((el) => el.addEventListener("click", () => { drawer.hidden = true; }));
-    $all("a", drawer).forEach((a) => a.addEventListener("click", () => { if (window.innerWidth <= 768) drawer.hidden = true; }));
+    $all("a", drawer).forEach((a) => a.addEventListener("click", (e) => {
+      const href = a.getAttribute("href");
+      if (href && href.startsWith("#")) {
+        const target = document.querySelector(href);
+        if (target) {
+          e.preventDefault();
+          drawer.hidden = true;
+          setTimeout(() => target.scrollIntoView({ behavior: "smooth", block: "start" }), 50);
+          return;
+        }
+      }
+      if (window.innerWidth <= 768) drawer.hidden = true;
+    }));
     const links = $all('a[href^="#"]', drawer);
     const sections = links.map((a) => document.querySelector(a.getAttribute("href"))).filter(Boolean);
     const onScroll = () => {

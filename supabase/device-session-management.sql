@@ -62,25 +62,6 @@ begin
     raise exception 'invalid device key';
   end if;
 
-  -- 同一 IP 视为同一设备：先合并同 IP 的有效记录
-  if p_ip is not null and length(trim(p_ip)) > 0 then
-    update public.auth_device_sessions s
-      set device_key = p_device_key,
-          device_name = p_device_name,
-          device_type = p_device_type,
-          os = p_os,
-          browser = p_browser,
-          location = p_location,
-          user_agent = left(p_user_agent, 500),
-          logged_in_at = case when p_reset_login then now() else s.logged_in_at end,
-          last_active_at = now(),
-          revoked = false
-    where s.user_id = v_user and s.ip = p_ip
-    returning s.id into v_id;
-    if v_id is not null then
-      return v_id;
-    end if;
-  end if;
 
   insert into public.auth_device_sessions
     (user_id, device_key, device_name, device_type, os, browser, ip, location, user_agent,
