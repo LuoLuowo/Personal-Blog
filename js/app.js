@@ -1053,6 +1053,17 @@
       if (window.matchMedia("(max-width: 720px)").matches && toolbar.parentElement !== document.body) {
         document.body.appendChild(toolbar);
       }
+      // 用visualViewport动态把工具栏贴在键盘上方（兼容不支持interactive-widget的浏览器）
+      if (window.visualViewport) {
+        const vv = window.visualViewport;
+        const updateToolbarPos = () => {
+          const keyboardH = Math.max(0, window.innerHeight - vv.height - vv.offsetTop);
+          toolbar.style.bottom = keyboardH + "px";
+        };
+        vv.addEventListener("resize", updateToolbarPos);
+        vv.addEventListener("scroll", updateToolbarPos);
+        updateToolbarPos();
+      }
       if (!input) return;
       let savedRange = null;
       const rememberSelection = () => {
