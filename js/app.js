@@ -8905,7 +8905,18 @@
     const bar = wrap.querySelector(".home-search-progress-bar");
     if (_searchProgTimer) { clearInterval(_searchProgTimer); _searchProgTimer = null; }
     wrap.hidden = false;
-    wrap.classList.add("is-visible");
+    // 如果当前不在顶部（手机端从下方点文章），先不显示，等滚到顶部再淡入
+    const nearTop = window.scrollY <= 80;
+    if (nearTop) wrap.classList.add("is-visible");
+    else {
+      const showAtTop = () => {
+        if (window.scrollY <= 80) {
+          wrap.classList.add("is-visible");
+          window.removeEventListener("scroll", showAtTop);
+        }
+      };
+      window.addEventListener("scroll", showAtTop, { passive: true });
+    }
     let p = 0;
     if (bar) { bar.style.transition = "none"; bar.style.transform = "scaleX(0)"; }
     // 500ms 内快速冲到 30%
