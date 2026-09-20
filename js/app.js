@@ -8684,7 +8684,10 @@
     $("[data-game-fullscreen-target].is-game-immersive")?.__closeGameImmersive?.();
     document.body.classList.remove("game-immersive-open");
     state.navigating = true;
-    startSearchProgress();
+    // 点击首页不显示加载进度条，其他页面正常
+    const _navUrl = new URL(url, location.href);
+    const _isHome = /(^|\/)(index\.html)?$/.test(_navUrl.pathname) || _navUrl.pathname.endsWith("/index.html");
+    if (!_isHome) startSearchProgress();
 
     let response;
     try {
