@@ -8933,6 +8933,44 @@
     }, 300);
   }
 
+  // 等文章真正渲染出来（"加载中~"占位消失、出现真实标题/正文）
+  function waitForArticleContent(timeout = 5000) {
+    return new Promise((resolve) => {
+      const start = performance.now();
+      const tick = () => {
+        const main = document.querySelector("main");
+        if (!main) { if (performance.now() - start > timeout) resolve(); else requestAnimationFrame(tick); return; }
+        const loading = main.querySelector(".loading, .article-loading, [data-article-loading]");
+        const hasRealTitle = main.querySelector("article h1, .article-detail h1, .article-title, h1");
+        const hasRealContent = main.querySelector("article p, .article-content p, .post-content p");
+        const stillLoading = loading && (!hasRealTitle || !hasRealContent);
+        if (!stillLoading && (hasRealTitle || hasRealContent || main.querySelector(".article-detail, article"))) { resolve(); return; }
+        if (performance.now() - start > timeout) { resolve(); return; }
+        setTimeout(tick, 120);
+      };
+      tick();
+    });
+  }
+  // 等当前 main 内主要图片加载完成（带超时兜底）
+  function waitForMainImages(timeout = 3000) {
+    return new Promise((resolve) => {
+      const main = document.querySelector("main");
+      if (!main) { resolve(); return; }
+      const imgs = [...main.querySelectorAll("img")].filter((img) => !img.complete || img.naturalWidth === 0);
+      if (!imgs.length) { resolve(); return; }
+      let done = false;
+      const finish = () => { if (!done) { done = true; resolve(); } };
+      const t = setTimeout(finish, timeout);
+      let pending = imgs.length;
+      imgs.forEach((img) => {
+        const on = () => { pending--; if (pending <= 0) { clearTimeout(t); finish(); } };
+        img.addEventListener("load", on, { once: true });
+        img.addEventListener("error", on, { once: true });
+        if (img.complete) on();
+      });
+    });
+  }
+
   function initWebSearch() {
     if (document.body.dataset.webSearchBound) return;
     document.body.dataset.webSearchBound = "true";
