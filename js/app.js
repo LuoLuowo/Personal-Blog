@@ -8884,6 +8884,7 @@
 
   // 搜索进度条：模拟进度算法（scaleX 丝滑）
   let _searchProgTimer = null;
+  let _searchProgFailsafe = null;
   function startSearchProgress() {
     let wrap = $("[data-search-progress]");
     if (!wrap) {
@@ -8911,12 +8912,16 @@
       p = Math.min(89, p + step);
       if (bar) bar.style.transform = "scaleX(" + (p / 100) + ")";
     }, 160);
+    // 兜底：最多 8 秒强制结束，防止因任何异常卡住
+    if (_searchProgFailsafe) clearTimeout(_searchProgFailsafe);
+    _searchProgFailsafe = setTimeout(() => { finishSearchProgress(); }, 8000);
   }
   function finishSearchProgress() {
     const wrap = $("[data-search-progress]");
     if (!wrap) return;
     const bar = wrap.querySelector(".home-search-progress-bar");
     if (_searchProgTimer) { clearInterval(_searchProgTimer); _searchProgTimer = null; }
+    if (_searchProgFailsafe) { clearTimeout(_searchProgFailsafe); _searchProgFailsafe = null; }
     // 无缝过渡到 100%
     if (bar) {
       bar.style.transition = "transform .22s cubic-bezier(.2,.8,.2,1)";
