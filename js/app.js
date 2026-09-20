@@ -243,6 +243,7 @@
           if (Number.isFinite(width) && width > 20 && width <= 4000) image.width = width;
           if (Number.isFinite(height) && height > 20 && height <= 4000) image.height = height;
           image.loading = "lazy";
+          ["align-left", "align-center", "align-right"].forEach((cls) => { if (node.classList.contains(cls)) image.classList.add(cls); });
           parent.append(image);
         }
         return;
