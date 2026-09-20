@@ -2741,6 +2741,36 @@
     `;
   }
 
+  function highlightSearchMatches(root, query) {
+    if (!root || !query) return;
+    const q = query.trim().toLowerCase();
+    if (!q) return;
+    const walk = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, null);
+    const nodes = [];
+    let n;
+    while ((n = walk.nextNode())) nodes.push(n);
+    const esc = q.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const re = new RegExp(esc, "gi");
+    nodes.forEach((node) => {
+      const parent = node.parentElement;
+      if (!parent || parent.closest("mark, a, script, style")) return;
+      const text = node.nodeValue || "";
+      if (!re.test(text)) return;
+      re.lastIndex = 0;
+      const frag = document.createDocumentFragment();
+      let last = 0; let m;
+      while ((m = re.exec(text))) {
+        if (m.index > last) frag.appendChild(document.createTextNode(text.slice(last, m.index)));
+        const mark = document.createElement("mark");
+        mark.textContent = m[0];
+        frag.appendChild(mark);
+        last = m.index + m[0].length;
+      }
+      if (last < text.length) frag.appendChild(document.createTextNode(text.slice(last)));
+      node.parentNode.replaceChild(frag, node);
+    });
+  }
+
   function populateFilters() {
     $all("[data-category-filter]").forEach((select) => {
       const selected = select.value;
@@ -3460,17 +3490,20 @@
     if (!section) return;
 
     const rerender = () => renderHome();
-    // 月份折叠展开
-    $all("[data-date-month-toggle]", section).forEach((button) => {
-      button.onclick = () => {
+    // 月份折叠展开（document 级委托，兼容搜索后动态生成的按钮）
+    if (!document.body.dataset.dateMonthBound) {
+      document.body.dataset.dateMonthBound = "true";
+      document.addEventListener("click", (event) => {
+        const button = event.target.closest("[data-date-month-toggle]");
+        if (!button) return;
         const key = button.dataset.dateMonthToggle;
-        const list = $(`[data-date-month-list="${key}"]`, section);
+        const list = document.querySelector(`[data-date-month-list="${key}"]`);
         if (!list) return;
         const expanded = !list.hidden;
         list.hidden = expanded;
         button.classList.toggle("expanded", !expanded);
-      };
-    });
+      });
+    }
     $all("[data-home-category]", section).forEach((button) => {
       button.onclick = () => {
         section.dataset.homeStateCategory = button.dataset.homeCategory || "";
@@ -8651,6 +8684,7 @@
     $("[data-game-fullscreen-target].is-game-immersive")?.__closeGameImmersive?.();
     document.body.classList.remove("game-immersive-open");
     state.navigating = true;
+    startSearchProgress();
 
     let response;
     try {
@@ -8729,7 +8763,9 @@
         restoreMusic();
         state.navigating = false;
         state.navigationController = null;
-      }, 600);
+        // 先等文章真正渲染出来（"加载中~"占位消失），再等主图，最后结束进度条
+        waitForArticleContent(5000).then(() => waitForMainImages(3000)).then(() => finishSearchProgress());
+      }, 300);
       // A notes modal can only be created through the admin-only entry. Its
       // existing owner marker is sufficient here and also makes restoration
       // independent of a slow auth refresh after returning home.
@@ -8846,6 +8882,57 @@
     });
   }
 
+  // 搜索进度条：模拟进度算法（scaleX 丝滑）
+  let _searchProgTimer = null;
+  function startSearchProgress() {
+    let wrap = $("[data-search-progress]");
+    if (!wrap) {
+      // PJAX 替换 main 后进度条可能丢失，自动重建到 body
+      wrap = document.createElement("div");
+      wrap.className = "home-search-progress";
+      wrap.setAttribute("data-search-progress", "");
+      wrap.hidden = true;
+      wrap.innerHTML = '<span class="home-search-progress-bar"></span>';
+      document.body.appendChild(wrap);
+    }
+    const bar = wrap.querySelector(".home-search-progress-bar");
+    if (_searchProgTimer) { clearInterval(_searchProgTimer); _searchProgTimer = null; }
+    wrap.hidden = false;
+    wrap.classList.add("is-visible");
+    let p = 0;
+    if (bar) { bar.style.transition = "none"; bar.style.transform = "scaleX(0)"; }
+    // 500ms 内快速冲到 30%
+    requestAnimationFrame(() => { if (bar) { bar.style.transition = "transform .5s cubic-bezier(.2,.8,.2,1)"; bar.style.transform = "scaleX(.3)"; } });
+    p = 30;
+    // 随后缓慢逼近 90%
+    _searchProgTimer = setInterval(() => {
+      const remaining = 90 - p;
+      const step = Math.max(0.4, remaining * 0.08); // 越接近90越慢
+      p = Math.min(89, p + step);
+      if (bar) bar.style.transform = "scaleX(" + (p / 100) + ")";
+    }, 160);
+  }
+  function finishSearchProgress() {
+    const wrap = $("[data-search-progress]");
+    if (!wrap) return;
+    const bar = wrap.querySelector(".home-search-progress-bar");
+    if (_searchProgTimer) { clearInterval(_searchProgTimer); _searchProgTimer = null; }
+    // 无缝过渡到 100%
+    if (bar) {
+      bar.style.transition = "transform .22s cubic-bezier(.2,.8,.2,1)";
+      bar.style.transform = "scaleX(1)";
+    }
+    // 停 300ms 后淡出，再重置
+    setTimeout(() => {
+      wrap.classList.remove("is-visible");
+      if (bar) bar.style.opacity = "0";
+      setTimeout(() => {
+        wrap.hidden = true;
+        if (bar) { bar.style.transition = "none"; bar.style.transform = "scaleX(0)"; bar.style.opacity = "1"; }
+      }, 350);
+    }, 300);
+  }
+
   function initWebSearch() {
     if (document.body.dataset.webSearchBound) return;
     document.body.dataset.webSearchBound = "true";
@@ -8903,12 +8990,98 @@
         bing: `https://www.bing.com/search?q=${encodeURIComponent(query)}`
       };
       if (currentEngine === "site") {
-        const siteUrl = new URL("./articles.html", window.location.href);
-        siteUrl.searchParams.set("q", query);
-        navigate(siteUrl.href).catch(() => { window.location.href = siteUrl.href; });
+        if (pageName() !== "home") {
+          const siteUrl = new URL("./articles.html", window.location.href);
+          siteUrl.searchParams.set("q", query);
+          navigate(siteUrl.href).catch(() => { window.location.href = siteUrl.href; });
+          return;
+        }
+        const list = $("[data-latest-posts]");
+        startSearchProgress();
+        setTimeout(() => {
+          try {
+            const q = query.toLowerCase();
+            const matched = data.posts.filter((post) => {
+              const postTags = parseCommaTags(post.tags);
+              return [post.title, post.excerpt, post.category, postTags.join(" ")].join(" ").toLowerCase().includes(q);
+            });
+            if (!list) return;
+            const mainCol = list.closest(".home-main-column");
+            mainCol?.classList.add("is-searching");
+            const pagination = $("[data-home-pagination]", mainCol);
+            const dateView = $("[data-home-date-view]", mainCol);
+            const emptyHtml = '<p class="empty-state">没有找到相关文章。</p><div style="text-align:center"><button type="button" class="home-search-clear" data-search-clear style="border:none;background:rgba(79,124,255,.15);color:#4f7cff;padding:8px 18px;border-radius:99px;cursor:pointer">✕ 清除搜索</button></div>';
+            // 判断当前是否日历视图：dateView 可见即视为日历视图
+            const isDatesView = !!(dateView && !dateView.hidden);
+
+            if (isDatesView) {
+              // 日历视图：严格按 matched 重新分组
+              list.hidden = true;
+              if (dateView) { dateView.hidden = false; dateView.innerHTML = ""; }
+              const years = [...new Set(matched.map((post) => String(post.publishedAt || "").slice(0, 4)).filter((y) => /^\d{4}$/.test(y)))].sort((a, b) => Number(b) - Number(a));
+              let firstMonthRendered = false;
+              const yearGroups = years.map((year) => {
+                const yearPosts = matched.filter((post) => String(post.publishedAt).startsWith(year)).sort((a, b) => new Date(b.publishedAt) - new Date(a.publishedAt));
+                const months = [...new Set(yearPosts.map((post) => String(post.publishedAt).slice(5, 7)))].sort((a, b) => Number(b) - Number(a));
+                const monthHtml = months.map((month) => {
+                  const monthPosts = yearPosts.filter((post) => String(post.publishedAt).slice(5, 7) === month);
+                  const monthKey = year + "-" + month;
+                  const isFirst = !firstMonthRendered;
+                  if (isFirst) firstMonthRendered = true;
+                  const items = monthPosts.map((post) => {
+                    const tags = parseCommaTags(post.tags);
+                    const day = escapeHtml(String(post.publishedAt).slice(8, 10) || "--");
+                    const cat = escapeHtml(post.category || "未分类");
+                    const title = escapeHtml(post.title);
+                    const tagHtml = tags.slice(0, 3).map((tag) => "<em>#" + escapeHtml(tag) + "</em>").join("") + (tags.length > 3 ? '<em class="home-date-tags-more">+' + (tags.length - 3) + "</em>" : "");
+                    return '<a class="home-date-item" href="./article-detail.html?id=' + post.id + '"><time>' + day + '</time><span class="home-date-dot"></span><span class="home-date-cat">' + cat + '</span><strong>' + title + '</strong><span class="home-date-tags">' + tagHtml + '</span></a>';
+                  }).join("");
+                  return '<div class="home-date-month" data-date-month-group="' + monthKey + '"><button class="home-date-month-toggle' + (isFirst ? " expanded" : "") + '" type="button" data-date-month-toggle="' + monthKey + '"><span>' + year + "年" + Number(month) + "月</span><small>" + monthPosts.length + " 篇</small><i class=\"home-date-month-arrow\">›</i></button><div class=\"home-date-month-list\" data-date-month-list=\"" + monthKey + "\"" + (isFirst ? "" : " hidden") + ">" + items + "</div></div>";
+                }).join("");
+                return '<section class="home-date-group"><header><h3>' + year + "</h3><span>" + yearPosts.length + " 篇文章</span></header><div class=\"home-date-months\">" + monthHtml + "</div></section>";
+              }).join("");
+              if (dateView) dateView.innerHTML = yearGroups || emptyHtml;
+              if (pagination) pagination.hidden = true;
+              try { if (dateView) highlightSearchMatches(dateView, query); } catch (e) {}
+            } else {
+              // 卡片视图：分页
+              if (dateView) dateView.hidden = true;
+              const pageSize = 4;
+              const totalPages = Math.max(1, Math.ceil(matched.length / pageSize));
+              const drawPage = (page) => {
+                const cur = Math.min(Math.max(1, page), totalPages);
+                const pagePosts = matched.slice((cur - 1) * pageSize, cur * pageSize);
+                list.innerHTML = pagePosts.map(postCard).join("");
+                try { highlightSearchMatches(list, query); } catch (e) {}
+                loadPostCardEngagement(pagePosts, list);
+                if (pagination) {
+                  pagination.hidden = totalPages <= 1;
+                  pagination.innerHTML = Array.from({ length: totalPages }, (_, i) =>
+                    '<button type="button" class="' + (i + 1 === cur ? "active" : "") + '" data-search-page="' + (i + 1) + '">' + (i + 1) + "</button>"
+                  ).join("");
+                  pagination.querySelectorAll("[data-search-page]").forEach((btn) => {
+                    btn.addEventListener("click", () => drawPage(Number(btn.dataset.searchPage)));
+                  });
+                }
+              };
+              list.innerHTML = matched.length ? "" : emptyHtml;
+              if (matched.length) drawPage(1);
+            }
+          } catch (err) { console.error("search render error", err); }
+          finishSearchProgress();
+        }, 900);
         return;
       }
       window.open(urls[currentEngine] || urls.baidu, "_blank");
+    });
+    // 清除首页本站搜索结果，恢复原文章列表
+    document.addEventListener("click", (event) => {
+      const clearBtn = event.target.closest("[data-search-clear]");
+      if (!clearBtn) return;
+      const inputEl = document.querySelector("[data-web-search] input[name='q']");
+      if (inputEl) inputEl.value = "";
+      renderHome();
+      window.scrollTo({ top: 0, behavior: "smooth" });
     });
   }
 
