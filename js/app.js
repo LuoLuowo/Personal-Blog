@@ -8759,13 +8759,16 @@
       setTimeout(restoreMusic, 100);
       setTimeout(restoreMusic, 300);
       setTimeout(() => {
-        if (navigationVersion !== state.navigationVersion) return;
         restoreMusic();
         state.navigating = false;
         state.navigationController = null;
-        // 先等文章真正渲染出来（"加载中~"占位消失），再等主图，最后结束进度条
-        waitForArticleContent(5000).then(() => waitForMainImages(3000)).then(() => finishSearchProgress());
-      }, 300);
+        if (navigationVersion !== state.navigationVersion) return;
+        // 先等文章真正渲染出来，再等主图，最后结束；任何异常都强制结束
+        waitForArticleContent(3000)
+          .then(() => waitForMainImages(2000))
+          .then(() => finishSearchProgress())
+          .catch(() => finishSearchProgress());
+      }, 200);
       // A notes modal can only be created through the admin-only entry. Its
       // existing owner marker is sufficient here and also makes restoration
       // independent of a slow auth refresh after returning home.
