@@ -1098,17 +1098,23 @@
             else if (action === "unorderedList") document.execCommand("insertUnorderedList");
             else if (action === "alignLeft") {
               const selectedCard = input.querySelector(".editor-video-preview.is-selected");
+              const selectedImg = input.querySelector("img.is-selected");
               if (selectedCard) { selectedCard.classList.remove("align-center", "align-right"); selectedCard.classList.add("align-left"); }
+              else if (selectedImg) { selectedImg.classList.remove("align-center", "align-right"); selectedImg.classList.add("align-left"); }
               else document.execCommand("justifyLeft");
             }
             else if (action === "alignCenter") {
               const selectedCard = input.querySelector(".editor-video-preview.is-selected");
+              const selectedImg = input.querySelector("img.is-selected");
               if (selectedCard) { selectedCard.classList.remove("align-left", "align-right"); selectedCard.classList.add("align-center"); }
+              else if (selectedImg) { selectedImg.classList.remove("align-left", "align-right"); selectedImg.classList.add("align-center"); }
               else document.execCommand("justifyCenter");
             }
             else if (action === "alignRight") {
               const selectedCard = input.querySelector(".editor-video-preview.is-selected");
+              const selectedImg = input.querySelector("img.is-selected");
               if (selectedCard) { selectedCard.classList.remove("align-left", "align-center"); selectedCard.classList.add("align-right"); }
+              else if (selectedImg) { selectedImg.classList.remove("align-left", "align-center"); selectedImg.classList.add("align-right"); }
               else document.execCommand("justifyRight");
             }
             else if (action === "quote") {

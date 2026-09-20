@@ -4881,3 +4881,7 @@ body.article-touch-reading .article-outline a {
 .device-actions { display: flex; gap: 10px; align-items: center; }
 .ghost-button.small { padding: 6px 14px; border-radius: 10px; border: 1px solid var(--line); background: transparent; color: var(--text); font-size: 13px; cursor: pointer; }
 .ghost-button.small:hover { background: rgba(0,0,0,.06); }
+
+.post-content img.align-center, .rich-text-input img.align-center { display: block; margin-left: auto; margin-right: auto; }
+.post-content img.align-left, .rich-text-input img.align-left { display: block; margin-right: auto; }
+.post-content img.align-right, .rich-text-input img.align-right { display: block; margin-left: auto; }
