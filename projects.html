@@ -1,9 +1,9 @@
-﻿<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>个人项目 | 小罗的Life</title>
+  <title>小罗工坊 | 小罗的Life</title>
   <link rel="stylesheet" href="./styles.css" />
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="./js/supabase-config.js" defer></script>
@@ -17,14 +17,37 @@
     <a class="brand" href="./index.html"><span class="brand-mark" data-site-logo>罗</span><span data-site-name>小罗Blog</span></a>
     <button class="nav-toggle" type="button" data-nav-toggle aria-label="打开导航">☰</button>
     <nav class="top-nav" data-nav aria-label="主导航">
-      <a href="./index.html">首页</a><a href="./articles.html">所有文章</a><a href="./whispers.html">留言墙</a><a class="active" href="./projects.html">个人项目</a><a href="./about.html">关于我</a><a href="./dashboard.html" data-admin-only hidden>后台</a>
+      <a href="./index.html">首页</a><a href="./articles.html">所有文章</a><a href="./whispers.html">留言墙</a><a class="active" href="./projects.html">小罗工坊</a><a href="./about.html">关于我</a><a href="./dashboard.html" data-admin-only hidden>后台</a>
     </nav>
     <div class="header-actions"><button class="icon-button" type="button" data-theme-toggle aria-label="切换日夜模式">◐</button><a class="ghost-button" href="./login.html" data-guest-only>登录</a><a class="primary-button small" href="./register.html" data-guest-only>注册</a><a class="user-entry" href="./dashboard.html" hidden><span class="user-avatar" data-profile-avatar>罗</span></a></div>
   </header>
-  <main class="sub-page projects-page">
-    <section class="page-title"><p class="eyebrow">PERSONAL PROJECTS</p><h1>个人项目</h1><p>这里收录小罗正在做、已经完成和想继续打磨的项目。</p></section>
-    <section class="project-list" data-project-list></section>
+
+  <main class="sub-page workshop-page">
+    <section class="workshop-sign">
+      <a class="portal-back-home" href="./index.html" data-portal-home>← 返回主页</a>
+      <button class="workshop-theme-toggle" type="button" data-theme-toggle aria-label="切换日夜模式">◐</button>
+      <div class="workshop-sign-plate">
+        <p class="workshop-sign-eyebrow">XIAOLUO WORKSHOP · EST. 2026</p>
+        <h1 class="workshop-sign-title">小罗工坊</h1>
+        <p class="workshop-sign-sub">一件件亲手打造，工具、网页、小应用，都从这张工作台出发。</p>
+      </div>
+      <div class="workshop-sign-deco" aria-hidden="true">
+        <span class="ws-gear">⚙</span>
+        <span class="ws-hammer">🔨</span>
+        <span class="ws-wrench">🔧</span>
+      </div>
+      <canvas class="workshop-blacksmith-canvas" width="190" height="128" aria-hidden="true"></canvas>
+    </section>
+
+    <section class="workshop-shelf">
+      <div class="workshop-shelf-head">
+        <h2><span class="shelf-line"></span>小罗的工坊陈列架<span class="shelf-line"></span></h2>
+        <p>每一件都能点开看看</p>
+      </div>
+      <div class="workshop-groups" data-project-list></div>
+    </section>
   </main>
-  <footer class="site-footer"><p>© 2026 小罗Blog</p></footer>
+
+  <footer class="site-footer"><p>© 2026 小罗Blog · 小罗工坊</p></footer>
 </body>
 </html>

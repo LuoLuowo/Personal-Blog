@@ -1,4 +1,4 @@
-﻿:root {
+:root {
   --bg: #eef3f8;
   --ink: #1f2a3d;
   --text: #2f3b4d;
@@ -31,7 +31,10 @@ body {
   background:
     radial-gradient(circle at 16% 8%, rgba(79, 124, 255, 0.13), transparent 24rem),
     radial-gradient(circle at 84% 12%, rgba(216, 140, 87, 0.14), transparent 22rem),
-    linear-gradient(135deg, #edf4f8 0%, #f7efe8 52%, #e8eef7 100%);
+    repeating-linear-gradient(0deg, rgba(31, 42, 61, 0.02) 0 1px, transparent 1px 4px),
+    repeating-linear-gradient(90deg, rgba(31, 42, 61, 0.02) 0 1px, transparent 1px 4px),
+    linear-gradient(135deg, #edf4f8 0%, #f2f6ff 52%, #eef1f9 100%);
+  background-size: auto, auto, 4px 4px, 4px 4px, auto;
 }
 
 body.dark-mode {
@@ -45,7 +48,10 @@ body.dark-mode {
   background:
     radial-gradient(circle at 16% 8%, rgba(79, 124, 255, 0.18), transparent 24rem),
     radial-gradient(circle at 84% 12%, rgba(216, 140, 87, 0.16), transparent 22rem),
-    linear-gradient(135deg, #121926 0%, #1f2937 48%, #172033 100%);
+    repeating-linear-gradient(0deg, rgba(255, 255, 255, 0.014) 0 1px, transparent 1px 4px),
+    repeating-linear-gradient(90deg, rgba(255, 255, 255, 0.014) 0 1px, transparent 1px 4px),
+    linear-gradient(135deg, #121926 0%, #1d2939 48%, #172033 100%);
+  background-size: auto, auto, 4px 4px, 4px 4px, auto;
 }
 
 body::before {
@@ -4896,3 +4902,492 @@ body.dark-mode .home-search-progress { background: rgba(120,150,255,.22); box-sh
 body.dark-mode .home-search-progress-bar { background: linear-gradient(90deg,#6b9aff,#8aa8ff,#a98aff); box-shadow: 0 0 14px rgba(140,160,255,.7), 0 0 5px rgba(180,150,255,.5); }
 .home-search-progress-bar::after { content: ""; position: absolute; top: 0; right: 0; width: 60px; height: 100%; background: linear-gradient(90deg, transparent, rgba(255,255,255,.55)); filter: blur(1px); border-radius: 0 99px 99px 0; }
 .article-card mark, .home-main-column mark { background: linear-gradient(transparent 55%, rgba(255,213,79,.55) 55%); color: inherit; padding: 0 1px; border-radius: 3px; }
+
+/* 首页大标题打字机效果 */
+[data-hero-title].typewriter-active {
+  border-right: 2px solid currentColor;
+  padding-right: 4px;
+  animation: twicaret 0.8s steps(1) infinite;
+}
+@keyframes twicaret { 50% { border-color: transparent; } }
+
+/* ============================================================
+   小罗工坊（工匠风格）
+   ============================================================ */
+.workshop-page { padding-top: 8px; }
+.workshop-page .workshop-sign { width: calc(100vw - 48px); margin-left: calc(50% - 50vw + 24px); margin-right: calc(50% - 50vw + 24px); }
+@media (max-width: 768px) { .workshop-page .workshop-sign { width: 100%; margin-left: auto; margin-right: auto; } }
+
+/* 工坊门牌 */
+.workshop-sign {
+  position: relative;
+  margin: 6px 0 24px;
+  border-radius: 20px;
+  padding: 40px 30px;
+  background:
+    radial-gradient(circle at 14px 14px, rgba(79,124,255,.65) 2.5px, transparent 3.5px),
+    radial-gradient(circle at calc(100% - 14px) 14px, rgba(79,124,255,.65) 2.5px, transparent 3.5px),
+    radial-gradient(circle at 14px calc(100% - 14px), rgba(79,124,255,.65) 2.5px, transparent 3.5px),
+    radial-gradient(circle at calc(100% - 14px) calc(100% - 14px), rgba(79,124,255,.65) 2.5px, transparent 3.5px),
+    radial-gradient(circle at 18% 22%, rgba(255,255,255,.65), transparent 18rem),
+    radial-gradient(circle at 82% 78%, rgba(122,92,255,.14), transparent 16rem),
+    repeating-linear-gradient(0deg, rgba(79,124,255,.035) 0 1px, transparent 1px 8px),
+    repeating-linear-gradient(45deg, rgba(122,92,255,.045) 0 12px, transparent 12px 24px),
+    linear-gradient(135deg, #eef4ff 0%, #e4edff 55%, #f2efff 100%);
+  border: 1px solid rgba(79,124,255,.28);
+  overflow: hidden;
+  box-shadow: 0 14px 44px rgba(79,124,255,.20), inset 0 1px 0 rgba(255,255,255,.6);
+}
+.workshop-sign-plate {
+  width: 100%;
+  border-left: 4px solid #4f7cff;
+  padding-left: 20px;
+}
+.workshop-sign-eyebrow {
+  font-size: 11px; letter-spacing: 3px; color: #7a5cff; font-weight: 700;
+}
+.workshop-sign-title {
+  position: relative;
+  font-size: 46px; line-height: 1.1; margin: 10px 0 26px; padding-bottom: 10px;
+  background: linear-gradient(90deg,#3b6bff,#8a5cff);
+  -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent;
+}
+.workshop-sign-title::after {
+  content: ""; position: absolute; left: 20px; bottom: 0;
+  width: 130px; height: 4px; border-radius: 4px;
+  background: repeating-linear-gradient(90deg, #7a5cff 0 8px, rgba(122,92,255,.25) 8px 13px);
+}
+.workshop-sign-sub { color: var(--muted, #6b7794); font-size: 15px; line-height: 1.7; }
+.workshop-sign-deco {
+  position: absolute; right: 33px; top: 24px;
+  display: flex; gap: 16px; font-size: 27px; opacity: .62;
+  filter: drop-shadow(0 4px 8px rgba(79,124,255,.35));
+}
+.workshop-sign-deco .ws-gear { animation: wsspin 8s linear infinite; }
+@keyframes wsspin { to { transform: rotate(360deg); } }
+
+/* 工坊统计 */
+.workshop-stats {
+  display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; margin-bottom: 30px;
+}
+.workshop-stat {
+  background: var(--card, #fff); border: 1px solid var(--line, #e3e9f7);
+  border-radius: 16px; padding: 20px; text-align: center;
+  box-shadow: 0 6px 20px rgba(79,124,255,.06);
+}
+.workshop-stat strong {
+  display: block; font-size: 30px;
+  background: linear-gradient(90deg,#4f7cff,#7a5cff);
+  -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent;
+}
+.workshop-stat span { font-size: 13px; color: var(--muted, #6b7794); }
+
+/* 陈列架标题 */
+.workshop-shelf-head { text-align: center; margin-bottom: 22px; }
+.workshop-shelf-head h2 {
+  display: flex; align-items: center; justify-content: center; gap: 16px;
+  font-size: 22px; color: var(--ink, #1a2238);
+}
+.workshop-shelf-head .shelf-line { width: 60px; height: 2px; border-radius: 2px;
+  background: linear-gradient(90deg, transparent, #4f7cff); }
+.workshop-shelf-head h2 .shelf-line:last-child {
+  background: linear-gradient(90deg, #7a5cff, transparent); }
+.workshop-shelf-head p { color: var(--muted, #6b7794); font-size: 13px; margin-top: 6px; }
+
+/* 作品网格 */
+.workshop-grid {
+  display: grid; grid-template-columns: repeat(4, 1fr); gap: 22px;
+}
+.workshop-card {
+  position: relative; background: var(--card, #fff);
+  border: 1px solid var(--line, #e3e9f7); border-radius: 16px; overflow: hidden;
+  cursor: pointer; transition: transform .25s ease, box-shadow .25s ease;
+  box-shadow: 0 8px 24px rgba(79,124,255,.08);
+}
+.workshop-card:hover {
+  transform: translateY(-6px);
+  box-shadow: 0 18px 40px rgba(79,124,255,.18);
+}
+.workshop-card-cover {
+  position: relative; height: 170px; overflow: hidden;
+  background: linear-gradient(135deg, rgba(79,124,255,.12), rgba(122,92,255,.12));
+}
+.workshop-card-cover img { width: 100%; height: 100%; object-fit: cover; transition: transform .4s ease; }
+.workshop-card:hover .workshop-card-cover img { transform: scale(1.06); }
+.workshop-card-cover .project-cover-placeholder {
+  display: flex; align-items: center; justify-content: center; height: 100%; font-size: 46px; opacity: .5;
+}
+/* 铆钉 */
+.workshop-card-rivet {
+  position: absolute; width: 8px; height: 8px; border-radius: 50%;
+  background: radial-gradient(circle at 30% 30%, #b8c4e0, #6b7794);
+  box-shadow: 0 1px 2px rgba(0,0,0,.25);
+}
+.ws-rivet-tl { top: 10px; left: 10px; }
+.ws-rivet-tr { top: 10px; right: 10px; }
+
+.workshop-card-body { padding: 18px 18px 16px; }
+.workshop-card-mini { font-size: 10px; letter-spacing: 2px; color: #7a5cff; font-weight: 700; }
+.workshop-card-body h3 { font-size: 19px; margin: 8px 0 10px; color: var(--ink, #1a2238); }
+.workshop-card-desc {
+  font-size: 14px; color: var(--muted, #6b7794); line-height: 1.6;
+  display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden;
+  min-height: 66px;
+}
+.workshop-card-foot {
+  display: flex; align-items: center; justify-content: space-between;
+  margin-top: 14px; padding-top: 14px; border-top: 1px dashed var(--line, #e3e9f7);
+}
+.ws-card-tag {
+  font-size: 11px; color: #4f7cff; background: rgba(79,124,255,.1);
+  padding: 3px 10px; border-radius: 99px; margin-right: 6px;
+}
+.workshop-card-go { font-size: 13px; color: #7a5cff; font-weight: 600; }
+.workshop-tool-card { border-style: dashed; }
+.workshop-tool-cover {
+  display: flex; align-items: center; justify-content: center;
+  background:
+    repeating-linear-gradient(45deg, rgba(122,92,255,.08) 0 10px, transparent 10px 20px),
+    linear-gradient(135deg, rgba(79,124,255,.14), rgba(122,92,255,.1));
+}
+.workshop-tool-emoji { font-size: 56px; filter: drop-shadow(0 6px 10px rgba(79,124,255,.35)); }
+.workshop-empty {
+  grid-column: 1 / -1; text-align: center; padding: 60px 20px;
+  background: var(--card, #fff); border: 2px dashed var(--line, #e3e9f7);
+  border-radius: 16px; color: var(--muted, #6b7794); font-size: 15px;
+}
+
+/* 夜间模式 */
+body.dark-mode .workshop-sign {
+  background:
+    radial-gradient(circle at 14px 14px, rgba(122,150,255,.6) 2.5px, transparent 3.5px),
+    radial-gradient(circle at calc(100% - 14px) 14px, rgba(122,150,255,.6) 2.5px, transparent 3.5px),
+    radial-gradient(circle at 14px calc(100% - 14px), rgba(122,150,255,.6) 2.5px, transparent 3.5px),
+    radial-gradient(circle at calc(100% - 14px) calc(100% - 14px), rgba(122,150,255,.6) 2.5px, transparent 3.5px),
+    radial-gradient(circle at 18% 22%, rgba(122,92,255,.16), transparent 18rem),
+    repeating-linear-gradient(0deg, rgba(0,0,0,.24) 0 2px, transparent 2px 9px),
+    repeating-linear-gradient(45deg, rgba(122,92,255,.06) 0 12px, transparent 12px 24px),
+    linear-gradient(135deg, #242e40 0%, #1b2332 55%, #2b2537 100%);
+  border-color: #31405f;
+  box-shadow: 0 14px 44px rgba(0,0,0,.45), inset 0 1px 0 rgba(255,255,255,.06);
+}
+body.dark-mode .workshop-stat,
+body.dark-mode .workshop-card { background: #171e31; border-color: #26304d; }
+body.dark-mode .ws-card-tag { background: rgba(120,150,255,.18); color: #9ab4ff; }
+
+/* 手机端 */
+@media (max-width: 768px) {
+  .workshop-sign { padding: 28px 20px; }
+  .workshop-sign-title { font-size: 34px; }
+  .workshop-sign-deco { display: none; }
+  .workshop-sign-plate { padding-left: 14px; }
+  .workshop-grid { grid-template-columns: 1fr 1fr; gap: 14px; }
+  .workshop-stats { gap: 10px; }
+  .workshop-stat { padding: 14px 8px; }
+  .workshop-stat strong { font-size: 24px; }
+}
+
+@media (max-width: 480px) {
+  .workshop-grid { grid-template-columns: 1fr; }
+}
+
+/* 后台工坊管理弹窗 */
+.project-manager-modal .project-manager-card { max-width: 640px; }
+.project-manager-list { display: flex; flex-direction: column; gap: 10px; margin-top: 16px; max-height: 60vh; overflow-y: auto; }
+.project-manager-list .manager-row {
+  display: flex; align-items: center; gap: 12px;
+  background: var(--bg, #f4f7ff); border: 1px solid var(--line, #e3e9f7);
+  border-radius: 12px; padding: 10px 14px;
+}
+.project-manager-list .pm-thumb {
+  width: 44px; height: 44px; border-radius: 8px; overflow: hidden; flex-shrink: 0;
+  background: rgba(79,124,255,.1); display: flex; align-items: center; justify-content: center;
+  font-size: 20px; color: var(--muted, #6b7794);
+}
+.project-manager-list .pm-thumb img { width: 100%; height: 100%; object-fit: cover; }
+.project-manager-list .manager-row strong { flex-shrink: 0; font-size: 14px; }
+.project-manager-list .pm-desc {
+  flex: 1; min-width: 0; font-size: 12px; color: var(--muted, #6b7794);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.project-manager-list .manager-row > div { display: flex; gap: 8px; }
+.project-manager-list .manager-row button {
+  border: 1px solid var(--line, #e3e9f7); background: var(--card, #fff); color: var(--ink, #1a2238);
+  padding: 5px 12px; border-radius: 8px; cursor: pointer; font-size: 12px;
+}
+.project-manager-list .manager-row button:hover { border-color: #4f7cff; color: #4f7cff; }
+body.dark-mode .project-manager-list .manager-row { background: #121a2c; border-color: #26304d; }
+.project-manager-actions { margin-top: 14px; }
+
+/* 穿越工坊作品管理 */
+.project-manager-list .pm-group-head {
+  font-weight: 700; font-size: 13px; color: #4f7cff;
+  display: flex; align-items: baseline; gap: 10px;
+  margin: 14px 0 4px; padding-bottom: 6px; border-bottom: 1px dashed var(--line, #e3e9f7);
+}
+.project-manager-list .pm-group-head:first-child { margin-top: 0; }
+.project-manager-list .pm-group-head small { font-weight: 400; color: var(--muted, #6b7794); font-size: 11px; }
+.project-manager-list .pm-url {
+  font-family: Consolas, Menlo, monospace; font-size: 11px;
+  color: #4f7cff; direction: ltr; unicode-bidi: embed;
+}
+.pm-tool-row .pm-thumb { font-size: 22px; background: rgba(122,92,255,.12); }
+.pm-hidden-row { font-size: 12px; color: var(--muted, #6b7794); margin: 8px 0 0; display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.pm-hidden-row button {
+  border: 1px dashed var(--line, #e3e9f7); background: transparent; color: var(--muted, #6b7794);
+  padding: 3px 10px; border-radius: 999px; cursor: pointer; font-size: 12px;
+}
+.pm-hidden-row button:hover { border-color: #4f7cff; color: #4f7cff; }
+.pm-add-row { margin-top: 14px; text-align: center; }
+.pm-add-row button {
+  width: 100%; padding: 10px; border-radius: 12px; cursor: pointer;
+  border: 1px dashed #4f7cff; color: #4f7cff; background: rgba(79,124,255,.06);
+  font-size: 14px; font-weight: 600;
+}
+.pm-add-row button:hover { background: rgba(79,124,255,.14); }
+.tool-editor-modal .tool-editor-card { max-width: 440px; }
+.tool-editor-modal form { display: flex; flex-direction: column; gap: 12px; margin-top: 16px; }
+.tool-editor-modal label { display: flex; flex-direction: column; gap: 6px; font-size: 13px; color: var(--muted, #6b7794); }
+.tool-editor-modal input,
+.tool-editor-modal textarea {
+  border: 1px solid var(--line, #e3e9f7); background: var(--bg, #f4f7ff); color: var(--ink, #1a2238);
+  border-radius: 10px; padding: 10px 12px; font-size: 14px; font-family: inherit; resize: vertical;
+}
+.tool-editor-modal input:focus, .tool-editor-modal textarea:focus { outline: none; border-color: #4f7cff; }
+.project-detail-cover .tool-cover-emoji { font-size: 64px; }
+body.dark-mode .project-manager-list .pm-group-head { border-color: #26304d; }
+
+.tool-editor-cover-current {
+  display: flex; align-items: center; gap: 10px; font-size: 12px; color: var(--muted, #6b7794);
+}
+.tool-editor-cover-current img {
+  width: 64px; height: 64px; border-radius: 10px; object-fit: cover;
+  border: 1px solid var(--line, #e3e9f7);
+}
+.tool-editor-cover-current button {
+  border: 1px solid var(--line, #e3e9f7); background: transparent; color: #e05260;
+  padding: 4px 10px; border-radius: 8px; cursor: pointer; font-size: 12px;
+}
+
+/* 工坊分组 */
+.workshop-group { margin-bottom: 34px; }
+.workshop-group-title {
+  display: flex; align-items: center; gap: 10px;
+  font-size: 18px; font-weight: 700; color: var(--ink, #1a2238);
+  margin: 0 0 16px;
+}
+.workshop-group-title::before {
+  content: ""; width: 6px; height: 18px; border-radius: 3px;
+  background: linear-gradient(180deg, #4f7cff, #8a5cff);
+}
+.workshop-group-title::after {
+  content: ""; flex: 1; height: 1px;
+  background: linear-gradient(90deg, rgba(79,124,255,.35), transparent);
+}
+body.dark-mode .workshop-group-title { color: #e6ecff; }
+
+/* 工坊分组外层容器（纵向排列分组，分组内部才是网格） */
+.workshop-groups { display: flex; flex-direction: column; gap: 34px; }
+.workshop-group { margin-bottom: 0; }
+
+/* 分类标签配色 */
+.ws-tag-tool { color: #8a5cff; background: rgba(138,92,255,.12); }
+.ws-tag-project { color: #4f7cff; background: rgba(79,124,255,.12); }
+body.dark-mode .ws-tag-tool { background: rgba(150,110,255,.2); color: #c3a6ff; }
+body.dark-mode .ws-tag-project { background: rgba(90,135,255,.2); color: #9ab4ff; }
+
+/* 简介弹窗按钮美化 */
+.project-detail-actions { display: flex; flex-wrap: wrap; gap: 10px; margin: 14px 0 20px; }
+.project-detail-actions .jump-button {
+  display: inline-flex; align-items: center; gap: 6px;
+  background: linear-gradient(135deg, #4f7cff, #8a5cff);
+  color: #fff; border: none; padding: 9px 20px; border-radius: 999px;
+  font-size: 13px; font-weight: 600; text-decoration: none;
+  box-shadow: 0 6px 16px rgba(79,124,255,.32);
+  transition: transform .15s ease, box-shadow .15s ease;
+}
+.project-detail-actions .jump-button:hover { transform: translateY(-1px); box-shadow: 0 8px 22px rgba(79,124,255,.45); }
+.project-detail-actions .project-url-button {
+  display: inline-flex; align-items: center;
+  border: 1px solid var(--line, #e3e9f7); color: var(--ink, #1a2238); background: var(--card, #fff);
+  padding: 9px 20px; border-radius: 999px; font-size: 13px; text-decoration: none;
+  transition: border-color .15s ease, color .15s ease;
+}
+.project-detail-actions .project-url-button:hover { border-color: #4f7cff; color: #4f7cff; }
+body.dark-mode .project-detail-actions .project-url-button { border-color: #26304d; color: #c6d2f2; }
+body.dark-mode .project-detail-actions .project-url-button:hover { border-color: #4f7cff; color: #9ab4ff; }
+
+/* ===== 全局滚动条美化（工坊等长内容区域） ===== */
+::-webkit-scrollbar { width: 8px; height: 8px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb {
+  background: linear-gradient(180deg, #4f7cff, #8a5cff);
+  border-radius: 99px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+::-webkit-scrollbar-thumb:hover { background: linear-gradient(180deg, #3b6bff, #7a4cff); background-clip: padding-box; }
+body.dark-mode ::-webkit-scrollbar-thumb { background: linear-gradient(180deg, #3a5bd0, #6a4fd0); background-clip: padding-box; }
+
+/* 弹窗内容过长时内部滚动，滚动条更细 */
+.project-detail-card,
+.project-manager-card,
+.tool-editor-card,
+.project-editor-card { max-height: 84vh; overflow-y: auto; scrollbar-width: thin; scrollbar-color: #7a5cff transparent; }
+.project-detail-card::-webkit-scrollbar,
+.project-manager-card::-webkit-scrollbar,
+.tool-editor-card::-webkit-scrollbar,
+.project-editor-card::-webkit-scrollbar { width: 5px; }
+
+/* ===== 穿越模式（小罗工坊） ===== */
+.portal-mode .site-header { display: none !important; }
+.portal-mode .workshop-page { padding-top: 6px; }
+/* 返回主页按钮：门牌左上角，常驻显示，纯绝对定位不挤压门牌布局 */
+.portal-back-home {
+  position: absolute; left: 30px; top: 14px; z-index: 6;
+  display: inline-flex; align-items: center; gap: 5px;
+  color: #4f7cff; font-size: 13px; font-weight: 500; text-decoration: none;
+  padding: 4px 8px; border-radius: 8px;
+  background: rgba(79,124,255,.08);
+  transition: background .15s ease, color .15s ease;
+}
+.portal-back-home:hover { background: rgba(79,124,255,.16); color: #3b6bff; }
+body.dark-mode .portal-back-home { color: #9db9ff; background: rgba(122,92,255,.14); }
+body.dark-mode .portal-back-home:hover { background: rgba(122,92,255,.26); color: #b9cdff; }
+/* 右上角日夜间切换按钮：与齿轮图标同一行、留出合适间距 */
+.workshop-theme-toggle {
+  position: absolute; right: 182px; top: 23px; z-index: 6;
+  width: 34px; height: 34px; border-radius: 50%;
+  border: 1px solid rgba(79,124,255,.35);
+  background: rgba(255,255,255,.55);
+  color: #4f7cff; font-size: 16px; cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  box-shadow: 0 4px 12px rgba(79,124,255,.25);
+  transition: transform .15s ease, background .15s ease;
+}
+.workshop-theme-toggle:hover { transform: scale(1.08); }
+body.dark-mode .workshop-theme-toggle {
+  background: rgba(30,42,66,.75); color: #9db9ff; border-color: rgba(122,92,255,.5);
+}
+
+/* 穿越确认弹窗 */
+.portal-confirm-card { max-width: 420px; text-align: center; }
+.portal-confirm-text { color: var(--muted); line-height: 1.7; }
+.portal-confirm-actions { display: flex; gap: 10px; justify-content: center; margin-top: 20px; }
+
+/* 穿越动画遮罩 */
+.portal-overlay {
+  position: fixed; inset: 0; z-index: 9999; display: none;
+  align-items: center; justify-content: center;
+  background:
+    radial-gradient(circle at 50% 42%, rgba(79,124,255,.32), transparent 44%),
+    radial-gradient(circle at 50% 50%, #1c2540 0%, #0e1426 72%);
+}
+.portal-overlay.active { display: flex; animation: portalFade .35s ease; }
+.portal-tunnel {
+  position: relative; width: 300px; height: 300px;
+  display: flex; align-items: center; justify-content: center;
+}
+.portal-tunnel-rings {
+  position: absolute; inset: 0; border-radius: 50%;
+  background: repeating-conic-gradient(from 0deg, rgba(110,140,255,.17) 0deg 4deg, transparent 4deg 24deg);
+  animation: portalRings 0.9s linear infinite;
+  -webkit-mask-image: radial-gradient(circle, #000 0 30%, transparent 74%);
+  mask-image: radial-gradient(circle, #000 0 30%, transparent 74%);
+}
+.portal-tunnel-core {
+  position: absolute; inset: 32%;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(200,215,255,.95), rgba(125,145,255,.4) 45%, transparent 72%);
+  animation: portalCore 0.85s ease-in-out infinite;
+  filter: blur(1px);
+  box-shadow: 0 0 40px 18px rgba(120,145,255,.35);
+}
+.portal-tunnel p {
+  position: relative; z-index: 2; margin-top: 108px;
+  letter-spacing: 4px; font-size: 15px; color: #c3ccff;
+  animation: portalPulse 1s ease-in-out infinite;
+  text-shadow: 0 0 12px rgba(120,150,255,.6);
+}
+@keyframes portalRings { to { transform: rotate(360deg); } }
+@keyframes portalCore {
+  0%, 100% { transform: scale(.72); opacity: .75; }
+  50% { transform: scale(1.18); opacity: 1; }
+}
+@keyframes portalPulse { 50% { opacity: .5; } }
+@keyframes portalFade { from { opacity: 0; } }
+
+/* 铁匠打铁动画 */
+.workshop-blacksmith {
+  position: absolute; right: 28px; bottom: 22px;
+  width: 92px; height: 78px;
+  opacity: .9;
+}
+.bs-scene { position: absolute; inset: 0; }
+.bs-figure { position: absolute; left: 0; bottom: 6px; width: 46px; height: 56px; }
+.bs-head { position: absolute; top: 0; left: 10px; font-size: 27px; line-height: 1; }
+.bs-arm {
+  position: absolute; top: 24px; left: 24px;
+  transform-origin: 4px 3px;
+  animation: bsHit .68s ease-in-out infinite;
+}
+.bs-arm .bs-hammer { display: inline-block; font-size: 21px; }
+.bs-spark {
+  position: absolute; right: 22px; bottom: 20px;
+  color: #ffd27a; font-size: 13px; opacity: 0;
+  animation: bsSpark .68s ease-out infinite;
+  text-shadow: 0 0 6px rgba(255,180,60,.8);
+}
+.bs-anvil {
+  position: absolute; right: 2px; bottom: 0;
+  width: 32px; height: 15px;
+  background: linear-gradient(180deg, #8494b2, #46536e);
+  border-radius: 4px 4px 0 0;
+  box-shadow: inset 0 -4px 0 rgba(0,0,0,.28);
+  animation: bsShake .68s ease-in-out infinite;
+}
+.bs-anvil::before {
+  content: ""; position: absolute; left: -5px; top: -7px;
+  width: 0; height: 0;
+  border-left: 11px solid transparent; border-right: 11px solid transparent;
+  border-bottom: 9px solid #93a3c0;
+}
+@keyframes bsHit {
+  0%, 100% { transform: rotate(-52deg); }
+  50% { transform: rotate(34deg); }
+}
+@keyframes bsSpark {
+  0%, 38% { opacity: 0; transform: scale(.5); }
+  48% { opacity: 1; transform: scale(1.3); }
+  66%, 100% { opacity: 0; transform: scale(.7); }
+}
+@keyframes bsShake {
+  0%, 44%, 100% { transform: translateY(0); }
+  50% { transform: translateY(1.5px); }
+  56% { transform: translateY(0); }
+}
+body.dark-mode .bs-anvil { background: linear-gradient(180deg, #7d8fb2, #3c4a68); }
+body.dark-mode .bs-anvil::before { border-bottom-color: #8fa0c6; }
+@media (max-width: 768px) {
+  .workshop-blacksmith { display: none; }
+}
+
+/* Canvas 铁匠打铁动画 */
+.workshop-blacksmith-canvas {
+  position: absolute; right: 24px; bottom: 14px;
+  width: 190px; height: 128px;
+}
+@media (max-width: 768px) {
+  .workshop-blacksmith-canvas { display: none; }
+}
+
+/* 手机端：工坊门牌按钮简化 */
+@media (max-width: 768px) {
+  .workshop-sign-deco { display: none; }
+  .portal-back-home {
+    left: 30px; top: 10px; width: 28px; height: 28px; padding: 0;
+    border-radius: 50%; justify-content: center; font-size: 0;
+  }
+  .portal-back-home::before { content: "←"; font-size: 12px; }
+  .workshop-theme-toggle { right: 30px; top: 10px; width: 28px; height: 28px; font-size: 14px; }
+}

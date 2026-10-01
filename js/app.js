@@ -2093,7 +2093,24 @@
     $all("[data-about-title]").forEach((el) => { el.textContent = data.site.aboutTitle; });
     $all("[data-about-bio]").forEach((el) => { el.textContent = data.site.aboutBio; });
     $all("[data-about-side-bio]").forEach((el) => { el.textContent = data.site.aboutSideBio; });
-    $all("[data-hero-title]").forEach((el) => { el.textContent = data.site.heroTitle; });
+    $all("[data-hero-title]").forEach((el) => {
+      el.textContent = data.site.heroTitle;
+      // 首页进入时打字机效果
+      if (pageName() === "home" && !document.body.dataset.typewriterDone) {
+        document.body.dataset.typewriterDone = "true";
+        const full = el.textContent;
+        el.textContent = "";
+        el.classList.add("typewriter-active");
+        let i = 0;
+        const tick = () => {
+          i++;
+          el.textContent = full.slice(0, i);
+          if (i < full.length) setTimeout(tick, 140);
+          else setTimeout(() => el.classList.remove("typewriter-active"), 600);
+        };
+        setTimeout(tick, 300);
+      }
+    });
     $all("[data-hero-subtitle]").forEach((el) => { el.textContent = data.site.heroSubtitle; });
 
     const hero = $("[data-hero-cover]");
@@ -2551,7 +2568,7 @@
       const lockedMoments = lockedMomentTeasers.filter((item) => !visibleMoments.some((moment) => moment.id === item.id)).map((item) => ({ id: item.id, title: "生活圈内容已锁定", date: item.entry_date, text: "登录后活跃值达到50可以解锁内容", images: [], isLocked: true, isPublic: false }));
       data.moments = sortTimelineByDate([...visibleMoments, ...lockedMoments]);
       data.progress = sortTimelineByDate(progress.map((item) => ({ id: item.id, title: item.title, date: item.entry_date, text: item.body || "", images: item.image_urls || [] })));
-      data.projects = projects.map((item) => ({ id: item.id, title: item.title, description: item.description || "", coverUrl: item.cover_url || "", projectUrl: item.project_url || "", attachments: item.attachments || [], createdAt: item.created_at || "" }));
+      data.projects = projects.map((item) => ({ id: item.id, title: item.title, description: item.description || "", coverUrl: item.cover_url || "", projectUrl: item.project_url || "", jumpUrl: item.jump_url || "", attachments: item.attachments || [], category: item.category || "project", createdAt: item.created_at || "" }));
       data.mediaReviews = mediaReviews.map((item) => ({ id: item.id, mediaItemId: item.media_item_id, title: item.review_title || "观后感", review: item.review || "", isPublic: item.is_public !== false }));
       const reviewsByItem = new Map(data.mediaReviews.map((item) => [item.mediaItemId, item]));
       data.mediaItems = mediaItems.map((item) => { const review = reviewsByItem.get(item.id); return { id: item.id, title: item.title, reviewTitle: review?.title || "观后感", review: review?.review || "", reviewPublic: item.review_is_public !== false, noteUrl: item.note_url || "", coverUrl: item.cover_url || "", rating: Number(item.rating) || 0, mediaType: item.media_type || "未分类", tags: Array.isArray(item.tags) ? item.tags : [], people: item.people || "", watchedYear: Number(item.watched_year) || 0, watchedMonth: Number(item.watched_month) || 0, watchedDay: Number(item.watched_day) || 0, createdAt: item.created_at || "" }; });
@@ -2604,15 +2621,7 @@
   }
 
   function ensureFunctionNav() {
-    $all(".top-nav").forEach((nav) => {
-      const projectLink = $("a[href='./projects.html']", nav);
-      if (!projectLink || projectLink.closest(".nav-menu-group")) return;
-      const group = document.createElement("div");
-      group.className = "nav-menu-group";
-      group.dataset.functionMenu = "";
-      group.innerHTML = '<button class="nav-menu-trigger" type="button" data-function-menu-toggle aria-expanded="false"><span>功能块</span><i class="nav-menu-chevron" aria-hidden="true"></i></button><div class="nav-submenu"><a href="./projects.html">个人项目</a><a href="./media-list.html">书籍影单</a></div>';
-      projectLink.replaceWith(group);
-    });
+    // 顶部导航直接显示「小罗工坊」链接，不再包裹功能块二级菜单
   }
 
   function syncThemeAppearance() {
@@ -5128,15 +5137,36 @@
   }
 
   function renderProjects() {
+    initBlacksmithCanvas();
     $all("[data-project-list]").forEach((wrap) => {
-      wrap.innerHTML = data.projects.map((project) => `<button class="project-row glass-card" type="button" data-open-project="${escapeHtml(project.id)}"><span class="project-cover">${projectCoverHtml(project)}</span><span class="project-row-content"><span class="mini-title">PERSONAL PROJECT</span><strong>${escapeHtml(project.title)}</strong><span class="project-description">${escapeHtml(project.description || "暂时没有项目简介。")}</span><span class="project-row-meta">${project.projectUrl ? "含项目网址" : "项目详情"}${project.attachments?.length ? ` · ${project.attachments.length} 个附件` : ""}</span></span><span class="project-row-arrow" aria-hidden="true">›</span></button>`).join("") || '<article class="glass-card project-empty">个人项目正在整理中。</article>';
+      const cardFor = (project) => {
+        const isTool = (project.category || "project") === "tool";
+        const catTag = '<span class="ws-card-tag ' + (isTool ? "ws-tag-tool" : "ws-tag-project") + '">' + (isTool ? "工坊作品" : "项目作品") + '</span>';
+        return '<article class="workshop-card" data-open-project="' + escapeHtml(project.id) + '">' +
+          '<div class="workshop-card-cover">' + projectCoverHtml(project) +
+            '<span class="workshop-card-rivet ws-rivet-tl"></span><span class="workshop-card-rivet ws-rivet-tr"></span>' +
+          '</div>' +
+          '<div class="workshop-card-body">' +
+            '<p class="workshop-card-mini">HANDMADE BY 小罗</p>' +
+            '<h3>' + escapeHtml(project.title) + '</h3>' +
+            '<p class="workshop-card-desc">' + escapeHtml(project.description || "暂时没有作品简介。") + '</p>' +
+            '<div class="workshop-card-foot">' + catTag + '<span class="workshop-card-go">看看 ›</span></div>' +
+          '</div></article>';
+      };
+      const groupFor = (title, items) => items.length
+        ? '<section class="workshop-group"><h3 class="workshop-group-title">' + title + '</h3><div class="workshop-grid">' + items.map(cardFor).join("") + '</div></section>'
+        : "";
+      const toolGroup = groupFor("工坊作品", data.projects.filter((p) => (p.category || "project") === "tool"));
+      const projectGroup = groupFor("项目作品", data.projects.filter((p) => (p.category || "project") !== "tool"));
+      wrap.innerHTML = toolGroup + projectGroup || '<article class="workshop-empty">🔨 工作台还空着，作品正在打磨中…</article>';
     });
     if (document.body.dataset.projectListBound) return;
     document.body.dataset.projectListBound = "true";
     document.addEventListener("click", (event) => {
-      const button = event.target.closest("[data-open-project]");
-      if (!button) return;
-      const project = data.projects.find((item) => item.id === button.dataset.openProject);
+      const card = event.target.closest("[data-open-project]");
+      if (!card) return;
+      const id = card.dataset.openProject;
+      const project = data.projects.find((item) => item.id === id);
       if (project) openProjectDetail(project);
     });
   }
@@ -6745,13 +6775,42 @@
     {
       id: "builtin-word-frequency",
       toolKey: "word-frequency",
-      title: "英语高频词",
-      url: "./tools/word-frequency/",
+      title: "英语高频站",
+      emoji: "📖",
+      url: "./tools/word-frequency/index.html",
       description: "1000 个高频单词与 360 个高频词组记忆卡片。",
+      iconUrl: "",
+      builtIn: true
+    },
+    {
+      id: "builtin-file-converter",
+      toolKey: "file-converter",
+      title: "文件格式转换器",
+      emoji: "🔄",
+      url: "./tools/file-converter/index.html",
+      description: "JPG / PNG / WEBP 图片互转，纯本地处理，文件不上传。",
       iconUrl: "",
       builtIn: true
     }
   ];
+
+  const WORKSHOP_TOOLS_KEY = "xl-workshop-tools";
+
+  function getWorkshopToolsStore() {
+    try { return JSON.parse(localStorage.getItem(WORKSHOP_TOOLS_KEY) || "{}"); } catch (_) { return {}; }
+  }
+
+  function saveWorkshopToolsStore(store) {
+    try { localStorage.setItem(WORKSHOP_TOOLS_KEY, JSON.stringify(store)); } catch (_) {}
+  }
+
+  // 读取有效工具列表：合并管理员在后台编辑的覆盖项，过滤被隐藏的
+  function effectiveWorkshopTools() {
+    const store = getWorkshopToolsStore();
+    return BUILT_IN_COMMON_SITES
+      .filter((tool) => !(store[tool.toolKey] && store[tool.toolKey].hidden))
+      .map((tool) => ({ ...tool, ...(store[tool.toolKey] || {}) }));
+  }
 
   function mapCommonSiteRow(item) {
     const storedDescription = String(item.description || "");
@@ -6913,11 +6972,237 @@
       modal.innerHTML = '<button class="modal-backdrop" type="button" data-project-detail-close aria-label="关闭"></button><section class="modal-card glass-card project-detail-card" role="dialog" aria-modal="true"><button class="modal-close" type="button" data-project-detail-close aria-label="关闭">×</button><div data-project-detail-content></div></section>';
       document.body.appendChild(modal);
     }
-    const attachments = (project.attachments || []).map((file) => `<a href="${escapeHtml(file.url)}" data-protected-download download="${escapeHtml(file.name || "项目附件")}" class="project-attachment">下载：${escapeHtml(file.name || "项目附件")}</a>`).join("") || '<p class="comment-empty">这个项目暂时没有附件。</p>';
-    const url = /^https?:\/\//i.test(project.projectUrl || "") ? `<a class="primary-button small" href="${escapeHtml(project.projectUrl)}" target="_blank" rel="noopener">访问项目网址</a>` : "";
-    $("[data-project-detail-content]", modal).innerHTML = `<div class="project-detail-cover">${projectCoverHtml(project)}</div><p class="mini-title">PERSONAL PROJECT</p><h2>${escapeHtml(project.title)}</h2><p class="project-detail-description">${linkifyText(project.description || "暂时没有项目简介。")}</p><div class="project-detail-actions">${url}</div><section class="project-attachments"><h3>项目附件</h3>${attachments}</section>`;
+    const attachments = (project.attachments || []).map((file) => `<a href="${escapeHtml(file.url)}" data-protected-download download="${escapeHtml(file.name || "项目附件")}" class="project-attachment">下载：${escapeHtml(file.name || "项目附件")}</a>`).join("") || (project.isTool ? "" : '<p class="comment-empty">这个项目暂时没有附件。</p>');
+    const projectBtn = project.projectUrl ? `<a class="project-url-button" href="${escapeHtml(project.projectUrl)}" target="_blank" rel="noopener">项目网址</a>` : "";
+    const jumpBtn = project.jumpUrl ? `<a class="jump-button" href="${escapeHtml(project.jumpUrl)}" target="_blank" rel="noopener">穿越此工坊 ›</a>` : "";
+    const actionsHtml = (jumpBtn || projectBtn) ? `<div class="project-detail-actions">${jumpBtn}${projectBtn}</div>` : "";
+    const coverHtml = project.coverUrl
+      ? `<img src="${escapeHtml(project.coverUrl)}" alt="${escapeHtml(project.title)} 项目封面">`
+      : (project.emoji ? `<span class="project-cover-placeholder tool-cover-emoji">${escapeHtml(project.emoji)}</span>` : '<span class="project-cover-placeholder" aria-hidden="true">✦</span>');
+    $("[data-project-detail-content]", modal).innerHTML = `<div class="project-detail-cover">${coverHtml}</div><p class="mini-title">XIAOLUO WORKSHOP</p><h2>${escapeHtml(project.title)}</h2>${actionsHtml}<p class="project-detail-description">${linkifyText(project.description || "暂时没有作品简介。")}</p>${attachments ? `<section class="project-attachments"><h3>项目附件</h3>${attachments}</section>` : ""}`;
     $all("[data-project-detail-close]", modal).forEach((button) => { button.onclick = () => modal.classList.remove("open"); });
     modal.classList.add("open");
+  }
+
+  function initBlacksmithCanvas() {
+    const canvas = $("canvas.workshop-blacksmith-canvas");
+    if (!canvas || canvas.dataset.bsInit) return;
+    canvas.dataset.bsInit = "true";
+    const ctx = canvas.getContext("2d");
+    const W = canvas.width, H = canvas.height;
+    const CYCLE = 1500; // 缓慢打铁周期
+    let sparks = [];
+    const t0 = performance.now();
+    const easeInOutCubic = (x) => x < .5 ? 4 * x * x * x : 1 - Math.pow(-2 * x + 2, 3) / 2;
+    const easeInCubic = (x) => x * x * x;
+
+    // 锤击进度 swing：0=锤头举在手上方，1=锤头垂直砸到下方铁件
+    function hammerSwing(phase) {
+      if (phase < 0.55) return 0;
+      if (phase < 0.72) return easeInCubic((phase - 0.55) / 0.17);
+      return 1;
+    }
+
+    function roundRect(x, y, w, h, r) {
+      ctx.beginPath();
+      ctx.moveTo(x + r, y);
+      ctx.arcTo(x + w, y, x + w, y + h, r);
+      ctx.arcTo(x + w, y + h, x, y + h, r);
+      ctx.arcTo(x, y + h, x, y, r);
+      ctx.arcTo(x, y, x + w, y, r);
+      ctx.closePath();
+    }
+
+    function drawAnvil(x, groundY, shake) {
+      // 金属铁砧（砧在左）
+      const g = ctx.createLinearGradient(x - 30, 0, x + 30, 0);
+      g.addColorStop(0, "#3b4250");
+      g.addColorStop(.35, "#7d8696");
+      g.addColorStop(.5, "#aab3c2");
+      g.addColorStop(.65, "#5a6373");
+      g.addColorStop(1, "#2c333f");
+      ctx.fillStyle = g;
+      // 砧面
+      roundRect(x - 30 + shake, groundY - 36, 60, 10, 3); ctx.fill();
+      // 锥腰
+      ctx.beginPath();
+      ctx.moveTo(x - 12 + shake, groundY - 26);
+      ctx.lineTo(x - 18 + shake, groundY - 6);
+      ctx.lineTo(x + 18 + shake, groundY - 6);
+      ctx.lineTo(x + 12 + shake, groundY - 26);
+      ctx.closePath(); ctx.fill();
+      // 底座
+      roundRect(x - 26 + shake, groundY - 8, 52, 10, 3); ctx.fill();
+      return shake;
+    }
+
+    function drawHotIron(x, topY, glow) {
+      // 砧面上烧红的铁件
+      const r = 14 + glow * 12;
+      const halo = ctx.createRadialGradient(x, topY, 2, x, topY, r);
+      halo.addColorStop(0, `rgba(255,${200 - glow * 60},120,${0.55 + glow * .4})`);
+      halo.addColorStop(1, "rgba(255,120,40,0)");
+      ctx.fillStyle = halo;
+      ctx.fillRect(x - r, topY - r, r * 2, r * 2);
+      const g = ctx.createLinearGradient(x - 14, topY - 4, x + 14, topY + 4);
+      g.addColorStop(0, "#c2471a");
+      g.addColorStop(.5, glow > .5 ? "#ffe9a8" : "#ffb347");
+      g.addColorStop(1, "#c2471a");
+      ctx.fillStyle = g;
+      roundRect(x - 14, topY - 4, 28, 7, 2); ctx.fill();
+    }
+
+    function drawBlacksmith(lean, swing, isDark) {
+      // 侧面：人在右，单手挥锤，锤从左上方弧线砸向左下方砧
+      const cx = 120;
+      const groundY = 104;
+      const pose = lean > 0 ? 4 : (swing === 0 ? -2 : 0);
+      const bodyX = cx + pose;
+      const headX = bodyX + 2;
+      const headY = groundY - 86;
+      // 腿
+      ctx.fillStyle = isDark ? "#332a22" : "#4a3b2c";
+      roundRect(cx - 14, groundY - 34, 10, 34, 4); ctx.fill();
+      roundRect(cx + 4, groundY - 34, 10, 34, 4); ctx.fill();
+      // 鞋
+      ctx.fillStyle = "#1f242c";
+      roundRect(cx - 18, groundY - 6, 14, 6, 3); ctx.fill();
+      roundRect(cx + 4, groundY - 6, 14, 6, 3); ctx.fill();
+      // 身体
+      const bg = ctx.createLinearGradient(bodyX - 22, 0, bodyX + 22, 0);
+      bg.addColorStop(0, "#6b4a2f");
+      bg.addColorStop(.5, "#8a6340");
+      bg.addColorStop(1, "#5a3d27");
+      ctx.fillStyle = bg;
+      roundRect(bodyX - 20, groundY - 68, 40, 38, 9); ctx.fill();
+      // 围裙
+      ctx.fillStyle = isDark ? "#26334a" : "#3d4b63";
+      roundRect(bodyX - 15, groundY - 58, 30, 32, 6); ctx.fill();
+      // 围裙肩带
+      ctx.strokeStyle = isDark ? "#3a4c6e" : "#2e3a50";
+      ctx.lineWidth = 4;
+      ctx.beginPath(); ctx.moveTo(bodyX - 12, groundY - 68); ctx.lineTo(bodyX - 8, groundY - 58); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(bodyX + 12, groundY - 68); ctx.lineTo(bodyX + 8, groundY - 58); ctx.stroke();
+      // 肩（右手）
+      const SX = bodyX - 10, SY = groundY - 62;
+      ctx.fillStyle = "#8a6340";
+      ctx.beginPath(); ctx.arc(SX, SY, 7, 0, 7); ctx.fill();
+      // 左臂叉腰（辅助）
+      ctx.strokeStyle = "#8a6340";
+      ctx.lineWidth = 8; ctx.lineCap = "round";
+      ctx.beginPath(); ctx.moveTo(bodyX + 14, groundY - 62); ctx.quadraticCurveTo(bodyX + 22, groundY - 46, bodyX + 12, groundY - 40); ctx.stroke();
+      ctx.fillStyle = "#d8a877";
+      ctx.beginPath(); ctx.arc(bodyX + 12, groundY - 40, 4, 0, 7); ctx.fill();
+      // 手腕沿弧线挥动：从肩右前(举起)扫到左前下方(砸下)
+      const arcBump = 12 * Math.sin(Math.PI * swing);
+      const handX = 122 - 48 * swing + arcBump;
+      const handY = 38 + 21 * swing + 8 * Math.sin(Math.PI * swing);
+      // 锤头：从左上方(举过头顶)缓动砸到左下方砧
+      const hammerX = 120 - 80 * swing;
+      const hammerY = 8 + 58 * swing;
+      // 肘部：屈肘（举起时肘下垂后屈），砸下时前推伸直
+      const midX = (SX + handX) / 2, midY = (SY + handY) / 2;
+      const elbowX = midX + (swing < 0.5 ? 8 : 3);
+      const elbowY = midY + (swing < 0.5 ? 10 : 2);
+      // 上臂（肩->肘）
+      ctx.strokeStyle = "#8a6340";
+      ctx.lineWidth = 9; ctx.lineCap = "round";
+      ctx.beginPath(); ctx.moveTo(SX, SY); ctx.lineTo(elbowX, elbowY); ctx.stroke();
+      // 前臂（肘->手）
+      ctx.beginPath(); ctx.moveTo(elbowX, elbowY); ctx.lineTo(handX, handY); ctx.stroke();
+      // 手
+      ctx.fillStyle = "#d8a877";
+      ctx.beginPath(); ctx.arc(handX, handY, 4.5, 0, 7); ctx.fill();
+      // 锤柄
+      ctx.strokeStyle = "#7a4f28";
+      ctx.lineWidth = 4;
+      ctx.beginPath(); ctx.moveTo(handX, handY); ctx.lineTo(hammerX, hammerY); ctx.stroke();
+      // 锤头（横放，锤面朝下）
+      const hg = ctx.createLinearGradient(hammerX - 12, 0, hammerX + 12, 0);
+      hg.addColorStop(0, "#4a5260");
+      hg.addColorStop(.5, "#c2cad8");
+      hg.addColorStop(1, "#3a4250");
+      ctx.fillStyle = hg;
+      roundRect(hammerX - 11, hammerY - 8, 22, 16, 3); ctx.fill();
+      ctx.fillStyle = "rgba(255,255,255,.25)";
+      roundRect(hammerX - 8, hammerY - 6, 12, 2, 1); ctx.fill();
+      // 头（侧面）
+      ctx.fillStyle = "#c89968";
+      ctx.fillRect(headX - 4, headY + 12, 8, 8);
+      const fg = ctx.createRadialGradient(headX - 4, headY - 4, 2, headX, headY, 15);
+      fg.addColorStop(0, "#e8bd92");
+      fg.addColorStop(1, "#c98f5e");
+      ctx.fillStyle = fg;
+      ctx.beginPath(); ctx.arc(headX, headY, 13, 0, 7); ctx.fill();
+      // 帽子
+      ctx.fillStyle = "#5a3a2c";
+      ctx.beginPath(); ctx.arc(headX, headY - 4, 12, Math.PI, 0); ctx.fill();
+      ctx.fillRect(headX - 13, headY - 5, 26, 4);
+      ctx.fillStyle = "#3f2a20";
+      roundRect(headX - 15, headY - 4, 30, 4, 2); ctx.fill();
+      // 白眉毛
+      ctx.strokeStyle = "#f0eadc"; ctx.lineWidth = 2.5;
+      ctx.beginPath(); ctx.moveTo(headX - 9, headY - 1); ctx.lineTo(headX - 3, headY - 2); ctx.stroke();
+      // 眼
+      ctx.fillStyle = "#241a12";
+      ctx.beginPath(); ctx.arc(headX - 6, headY + 1, 1.6, 0, 7); ctx.fill();
+      // 鼻
+      ctx.fillStyle = "#bd8456";
+      ctx.beginPath(); ctx.arc(headX - 4, headY + 5, 2.2, 0, 7); ctx.fill();
+      // 嘴
+      ctx.strokeStyle = "#8a5a38"; ctx.lineWidth = 1.5;
+      ctx.beginPath(); ctx.moveTo(headX - 6, headY + 11); ctx.lineTo(headX + 1, headY + 11); ctx.stroke();
+      // 大白胡子
+      ctx.fillStyle = "#f2ede0";
+      ctx.beginPath();
+      ctx.moveTo(headX - 12, headY + 4);
+      ctx.quadraticCurveTo(headX - 14, headY + 19, headX - 2, headY + 22);
+      ctx.quadraticCurveTo(headX + 4, headY + 20, headX + 10, headY + 4);
+      ctx.quadraticCurveTo(headX + 6, headY + 11, headX, headY + 10);
+      ctx.quadraticCurveTo(headX - 6, headY + 11, headX - 12, headY + 4);
+      ctx.fill();
+      // 腮红
+      ctx.fillStyle = "rgba(255,130,60,.25)";
+      ctx.beginPath(); ctx.arc(headX - 10, headY + 6, 3.5, 0, 7); ctx.fill();
+    }
+
+    function frame(now) {
+      const isDark = document.body.classList.contains("dark-mode");
+      let phase = ((now - t0) % CYCLE) / CYCLE;
+      const swing = hammerSwing(phase);
+      const strike = phase >= 0.72 && phase < 0.78;
+      if (phase >= 0.72 && phase < 0.722 && sparks.length === 0) {
+        for (let i = 0; i < 14; i++) {
+          sparks.push({ x: 40, y: 72, vx: -3 + Math.random() * 5, vy: -4.5 - Math.random() * 2, life: 0.5 + Math.random() * .35, age: 0 });
+        }
+      }
+      if (phase >= 0.85) sparks = [];
+      ctx.clearRect(0, 0, W, H);
+      // 地面
+      ctx.strokeStyle = isDark ? "rgba(180,200,255,.15)" : "rgba(60,50,40,.25)";
+      ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.moveTo(8, 105); ctx.lineTo(180, 105); ctx.stroke();
+      // 砧震动
+      const shake = strike ? (Math.random() < .5 ? -1 : 1) : 0;
+      drawAnvil(40, 104, shake);
+      const glow = strike ? 1 : 0.25 + 0.2 * Math.sin(now / 200);
+      drawHotIron(40, 66 + shake, glow);
+      // 蓄力：举起后段身体后仰，砸下前扑
+      const lean = phase > 0.55 && phase < 0.72 ? easeInCubic((phase - 0.55) / 0.17) : 0;
+      drawBlacksmith(lean, swing, isDark);
+      // 火星
+      const dt = 1 / 60;
+      sparks = sparks.filter((s) => s.age < s.life);
+      sparks.forEach((s) => {
+        s.age += dt;
+        s.x += s.vx; s.y += s.vy; s.vy += 0.22;
+        const a = 1 - s.age / s.life;
+        ctx.fillStyle = `rgba(255,${190 + Math.random() * 50},90,${a})`;
+        ctx.beginPath(); ctx.arc(s.x, s.y, 1.6, 0, 7); ctx.fill();
+      });
+      requestAnimationFrame(frame);
+    }
+    requestAnimationFrame(frame);
   }
 
   function initProjectManagement() {
@@ -6929,7 +7214,7 @@
         if (!state.isAdmin) return showAdminOnlyNotice();
         const title = form.title.value.trim();
         if (!title) return;
-        if (!await confirmPublish("确认发布个人项目？", "项目详情、封面和附件会立即保存并对访客可见。")) return;
+        if (!await confirmPublish("确认发布工坊作品？", "作品详情、封面和附件会立即保存并对访客可见。")) return;
         try {
           await runWithLoading("正在上传项目资料，请稍候…", async (cancelled) => {
             const coverFile = form.cover?.files?.[0];
@@ -6938,19 +7223,58 @@
             const files = Array.from(form.attachments?.files || []);
             const attachments = await Promise.all(files.map(async (file) => ({ name: file.name, url: await window.XiaoLuoSupabase.uploadFile(state.userId, "project-attachments", file) })));
             if (cancelled()) return;
-            const row = await window.XiaoLuoSupabase.addContent("projects", { user_id: state.userId, title, description: form.description.value.trim(), cover_url: coverUrl || null, project_url: form.projectUrl.value.trim() || null, attachments });
-            data.projects.unshift({ id: row.id, title: row.title, description: row.description || "", coverUrl: row.cover_url || "", projectUrl: row.project_url || "", attachments: row.attachments || [], createdAt: row.created_at || "" });
+            const row = await window.XiaoLuoSupabase.addContent("projects", { user_id: state.userId, title, description: form.description.value.trim(), cover_url: coverUrl || null, project_url: form.projectUrl.value.trim() || null, jump_url: form.jumpUrl?.value.trim() || null, attachments, category: form.category?.value || "project" });
+            data.projects.unshift({ id: row.id, title: row.title, description: row.description || "", coverUrl: row.cover_url || "", projectUrl: row.project_url || "", jumpUrl: row.jump_url || "", attachments: row.attachments || [], category: row.category || "project", createdAt: row.created_at || "" });
             form.reset();
             renderProjects();
             renderContentManagers();
+            renderProjectManagerModal();
             alert("已保存。");
           });
         } catch (error) { showCloudError(error); }
       });
     }
+    // 后台「管理工坊作品」弹窗
+    const manageBtn = $("[data-manage-projects]");
+    if (manageBtn && !manageBtn.dataset.bound) {
+      manageBtn.dataset.bound = "true";
+      manageBtn.addEventListener("click", () => openProjectManagerModal());
+    }
     if (document.body.dataset.projectManagementBound) return;
     document.body.dataset.projectManagementBound = "true";
     document.addEventListener("click", async (event) => {
+      const editTool = event.target.closest("[data-edit-tool]");
+      if (editTool) { openToolEditor(editTool.dataset.editTool); return; }
+      const removeTool = event.target.closest("[data-remove-tool]");
+      if (removeTool) {
+        if (!state.isAdmin) return;
+        if (!await confirmPublish("确认删除该穿越工坊作品？", "只会在工坊中隐藏，可随时在下方「已隐藏」中恢复。", "确认删除")) return;
+        const store = getWorkshopToolsStore();
+        store[removeTool.dataset.removeTool] = { ...(store[removeTool.dataset.removeTool] || {}), hidden: true };
+        saveWorkshopToolsStore(store);
+        renderProjectManagerModal();
+        renderProjects();
+        return;
+      }
+      const restoreTool = event.target.closest("[data-restore-tool]");
+      if (restoreTool) {
+        const store = getWorkshopToolsStore();
+        const patch = { ...(store[restoreTool.dataset.restoreTool] || {}) };
+        delete patch.hidden;
+        store[restoreTool.dataset.restoreTool] = patch;
+        saveWorkshopToolsStore(store);
+        renderProjectManagerModal();
+        renderProjects();
+        return;
+      }
+      const pmAdd = event.target.closest("[data-pm-add]");
+      if (pmAdd) {
+        const managerModal = $("[data-project-manager-modal]");
+        managerModal?.classList.remove("open");
+        const form = $("[data-project-form]");
+        if (form) { form.scrollIntoView({ behavior: "smooth", block: "center" }); setTimeout(() => form.title?.focus(), 400); }
+        return;
+      }
       const remove = event.target.closest("[data-remove-project]");
       const edit = event.target.closest("[data-edit-project]");
       if (!remove && !edit) return;
@@ -6959,18 +7283,104 @@
       if (!project || !state.isAdmin) return;
       try {
         if (remove) {
-          if (!await confirmPublish("确认删除个人项目？", "封面和附件也会一并删除，且无法恢复。", "确认删除")) return;
+          if (!await confirmPublish("确认删除工坊作品？", "封面和附件也会一并删除，且无法恢复。", "确认删除")) return;
           const urls = [project.coverUrl, ...(project.attachments || []).map((item) => item.url)].filter(Boolean);
           if (urls.length) await window.XiaoLuoSupabase.deleteFilesByPublicUrls(urls);
           await window.XiaoLuoSupabase.deleteContent("projects", id, state.userId);
           data.projects = data.projects.filter((item) => item.id !== id);
           renderProjects();
           renderContentManagers();
+          renderProjectManagerModal();
           return;
         }
         openProjectEditor(project);
       } catch (error) { showCloudError(error); }
     });
+  }
+
+  function openProjectManagerModal() {
+    let modal = $("[data-project-manager-modal]");
+    if (!modal) {
+      modal = document.createElement("div");
+      modal.className = "modal project-manager-modal";
+      modal.dataset.projectManagerModal = "";
+      modal.innerHTML = '<button class="modal-backdrop" type="button" data-project-manager-close aria-label="关闭"></button><section class="modal-card glass-card project-manager-card" role="dialog" aria-modal="true"><button class="modal-close" type="button" data-project-manager-close aria-label="关闭">×</button><p class="mini-title">XIAOLUO WORKSHOP</p><h2>管理工坊作品</h2><div class="project-manager-list" data-project-manager-list></div></section>';
+      document.body.appendChild(modal);
+      $all("[data-project-manager-close]", modal).forEach((button) => { button.onclick = () => modal.classList.remove("open"); });
+    }
+    renderProjectManagerModal();
+    modal.classList.add("open");
+  }
+
+  function renderProjectManagerModal() {
+    const modal = $("[data-project-manager-modal]");
+    if (!modal) return;
+    const list = $("[data-project-manager-list]", modal);
+    if (!list) return;
+    const projectsHtml = data.projects.map((project) =>
+      '<div class="manager-row project-manager-row">' +
+        '<span class="pm-thumb">' + (project.coverUrl ? '<img src="' + escapeHtml(project.coverUrl) + '" alt="">' : "◌") + '</span>' +
+        '<strong>' + escapeHtml(project.title) + '</strong>' +
+        '<span class="pm-desc">' + escapeHtml((project.description || "暂无简介").slice(0, 40)) + '</span>' +
+        '<div><button type="button" data-edit-project="' + escapeHtml(project.id) + '">编辑</button><button type="button" data-remove-project="' + escapeHtml(project.id) + '">删除</button></div>' +
+      '</div>'
+    ).join("");
+    list.innerHTML =
+      '<div class="pm-group-head">我的作品<small>点开看简介，有链接的作品可在简介里「穿越」进入；可添加、编辑、删除</small></div>' +
+      (projectsHtml || '<p class="comment-empty">还没有工坊作品，点下方按钮发布第一个。</p>') +
+      '<p class="pm-add-row"><button type="button" data-pm-add>＋ 发布新作品</button></p>';
+  }
+
+  function openToolEditor(toolKey) {
+    const tool = BUILT_IN_COMMON_SITES.find((item) => item.toolKey === toolKey);
+    if (!tool) return;
+    const store = getWorkshopToolsStore();
+    const merged = { ...tool, ...(store[toolKey] || {}) };
+    let modal = $("[data-tool-editor-modal]");
+    if (!modal) {
+      modal = document.createElement("div");
+      modal.className = "modal tool-editor-modal";
+      modal.dataset.toolEditorModal = "";
+      modal.innerHTML = '<button class="modal-backdrop" type="button" data-tool-editor-close aria-label="关闭"></button><section class="modal-card glass-card tool-editor-card" role="dialog" aria-modal="true"><button class="modal-close" type="button" data-tool-editor-close aria-label="关闭">×</button><p class="mini-title">XIAOLUO WORKSHOP</p><h2>设置工坊作品</h2><form data-tool-editor-form><label>作品名称<input name="title" required></label><label>穿越链接（跳转地址）<input name="url" required placeholder="./tools/xxx/index.html 或 https://…"></label><label>作品简介<textarea name="description" rows="4"></textarea></label><label class="upload-field"><span>上传封面（可选）</span><input name="cover" type="file" accept="image/*"></label><p class="tool-editor-cover" data-tool-editor-cover></p><button class="primary-button" type="submit">保存设置</button></form></section>';
+      document.body.appendChild(modal);
+      $all("[data-tool-editor-close]", modal).forEach((button) => { button.onclick = () => modal.classList.remove("open"); });
+    }
+    const form = $("[data-tool-editor-form]", modal);
+    form.title.value = merged.title || "";
+    form.url.value = merged.url || "";
+    form.description.value = merged.description || "";
+    let removeCover = false;
+    const drawCover = () => {
+      const wrap = $("[data-tool-editor-cover]", form);
+      if (!wrap) return;
+      if (merged.coverUrl && !removeCover) {
+        wrap.innerHTML = '<span class="tool-editor-cover-current">当前封面 <img src="' + escapeHtml(merged.coverUrl) + '" alt=""> <button type="button" data-tool-remove-cover>移除封面</button></span>';
+        $("[data-tool-remove-cover]", form).onclick = () => { removeCover = true; drawCover(); };
+      } else {
+        wrap.innerHTML = removeCover && merged.coverUrl ? '<span class="tool-editor-cover-current">保存后将移除封面。</span>' : "";
+      }
+    };
+    drawCover();
+    form.onsubmit = async (event) => {
+      event.preventDefault();
+      try {
+        await runWithLoading("正在保存设置…", async () => {
+          let coverUrl = removeCover ? "" : (merged.coverUrl || "");
+          if (form.cover.files?.[0]) {
+            coverUrl = await uploadOptimizedImage(state.userId, "project-covers", form.cover.files[0]);
+          }
+          const next = { ...(store[toolKey] || {}), title: form.title.value.trim(), url: form.url.value.trim(), description: form.description.value.trim() };
+          next.coverUrl = coverUrl || "";
+          store[toolKey] = next;
+          saveWorkshopToolsStore(store);
+          renderProjectManagerModal();
+          renderProjects();
+          modal.classList.remove("open");
+          alert("已保存设置。");
+        });
+      } catch (error) { showCloudError(error); }
+    };
+    modal.classList.add("open");
   }
 
   function openProjectEditor(project) {
@@ -6979,12 +7389,14 @@
       modal = document.createElement("div");
       modal.className = "modal project-editor-modal";
       modal.dataset.projectEditorModal = "";
-      modal.innerHTML = '<button class="modal-backdrop" type="button" data-project-editor-close aria-label="关闭"></button><section class="modal-card glass-card project-editor-card" role="dialog" aria-modal="true"><button class="modal-close" type="button" data-project-editor-close aria-label="关闭">×</button><p class="mini-title">EDIT PROJECT</p><h2>编辑个人项目</h2><form data-project-editor-form><input name="title" required><input name="projectUrl" type="url" placeholder="项目网址"><textarea name="description" rows="5" placeholder="项目简介"></textarea><label class="upload-field"><span>替换项目封面（可选）</span><input name="cover" type="file" accept="image/*"></label><label class="upload-field"><span>追加附件（可多选）</span><input name="attachments" type="file" multiple></label><div class="project-editor-existing" data-project-editor-existing></div><button class="primary-button" type="submit">保存修改</button></form></section>';
+      modal.innerHTML = '<button class="modal-backdrop" type="button" data-project-editor-close aria-label="关闭"></button><section class="modal-card glass-card project-editor-card" role="dialog" aria-modal="true"><button class="modal-close" type="button" data-project-editor-close aria-label="关闭">×</button><p class="mini-title">EDIT PROJECT</p><h2>编辑工坊作品</h2><form data-project-editor-form><input name="title" required><select name="category"><option value="project">项目作品</option><option value="tool">工坊作品</option></select><input name="projectUrl" type="text" placeholder="项目网址（可选）"><input name="jumpUrl" type="text" placeholder="穿越链接（可选，跳转到此工坊/工具站）"><textarea name="description" rows="5" placeholder="项目简介"></textarea><label class="upload-field"><span>替换项目封面（可选）</span><input name="cover" type="file" accept="image/*"></label><label class="upload-field"><span>追加附件（可多选）</span><input name="attachments" type="file" multiple></label><div class="project-editor-existing" data-project-editor-existing></div><button class="primary-button" type="submit">保存修改</button></form></section>';
       document.body.appendChild(modal);
     }
     const form = $("[data-project-editor-form]", modal);
     form.title.value = project.title || "";
+    form.category.value = project.category || "project";
     form.projectUrl.value = project.projectUrl || "";
+    form.jumpUrl.value = project.jumpUrl || "";
     form.description.value = project.description || "";
     let editableAttachments = [...(project.attachments || [])];
     let removeCover = false;
@@ -7007,13 +7419,14 @@
           }
           const added = await Promise.all(Array.from(form.attachments.files || []).map(async (file) => ({ name: file.name, url: await window.XiaoLuoSupabase.uploadFile(state.userId, "project-attachments", file) })));
           const removedAttachments = (project.attachments || []).filter((file) => !editableAttachments.some((item) => item.url === file.url));
-          const payload = { title: form.title.value.trim(), description: form.description.value.trim(), project_url: form.projectUrl.value.trim() || null, cover_url: coverUrl || null, attachments: [...editableAttachments, ...added] };
+          const payload = { title: form.title.value.trim(), description: form.description.value.trim(), project_url: form.projectUrl.value.trim() || null, jump_url: form.jumpUrl?.value.trim() || null, cover_url: coverUrl || null, attachments: [...editableAttachments, ...added], category: form.category?.value || "project" };
           await window.XiaoLuoSupabase.updateContent("projects", project.id, state.userId, payload);
           const staleUrls = [...removedAttachments.map((file) => file.url), ...(oldCoverUrl && oldCoverUrl !== coverUrl ? [oldCoverUrl] : [])];
           if (staleUrls.length) await window.XiaoLuoSupabase.deleteFilesByPublicUrls(staleUrls);
-          Object.assign(project, { title: payload.title, description: payload.description, projectUrl: payload.project_url || "", coverUrl: payload.cover_url || "", attachments: payload.attachments });
+          Object.assign(project, { title: payload.title, description: payload.description, projectUrl: payload.project_url || "", jumpUrl: payload.jump_url || "", coverUrl: payload.cover_url || "", attachments: payload.attachments, category: payload.category || "project" });
           renderProjects();
           renderContentManagers();
+          renderProjectManagerModal();
           modal.classList.remove("open");
           alert("已保存。");
         });
@@ -8329,7 +8742,7 @@
     if (albumWrap) albumWrap.innerHTML = data.albums.map((album) => `<div class="manager-row"><strong>${escapeHtml(album.title)}</strong><span>${escapeHtml(album.meta)}</span><div><button type="button" data-edit-content data-type="album" data-id="${escapeHtml(album.id)}">编辑</button><button type="button" data-remove-content data-type="album" data-id="${escapeHtml(album.id)}">删除</button></div></div>`).join("");
     if (momentWrap) momentWrap.innerHTML = "";
     if (progressWrap) progressWrap.innerHTML = "";
-    if (projectWrap) projectWrap.innerHTML = data.projects.map((project) => `<div class="manager-row project-manager-row"><strong>${escapeHtml(project.title)}</strong><span>${escapeHtml(project.description || "暂无简介")}</span><div><button type="button" data-edit-project="${escapeHtml(project.id)}">编辑</button><button type="button" data-remove-project="${escapeHtml(project.id)}">删除</button></div></div>`).join("") || '<p class="comment-empty">还没有个人项目。</p>';
+    if (projectWrap) projectWrap.innerHTML = data.projects.map((project) => `<div class="manager-row project-manager-row"><strong>${escapeHtml(project.title)}</strong><span>${escapeHtml(project.description || "暂无简介")}</span><div><button type="button" data-edit-project="${escapeHtml(project.id)}">编辑</button><button type="button" data-remove-project="${escapeHtml(project.id)}">删除</button></div></div>`).join("") || '<p class="comment-empty">还没有工坊作品。</p>';
   }
 
   async function protectDashboard() {
@@ -8750,6 +9163,11 @@
     requestAnimationFrame(() => {
       if (navigationVersion !== state.navigationVersion) return;
       renderCurrentPage();
+      // 离开工坊页时清除穿越模式（返回主页按钮随导航消失）
+      if (pageName() !== "projects") {
+        document.body.classList.remove("portal-mode");
+        $("[data-portal-home]")?.remove();
+      }
       // The home cards are data-driven. After a PJAX main replacement, give
       // the new home container one extra frame to settle before hydrating it.
       if (pageName() === "home") {
@@ -8824,6 +9242,92 @@
       });
     });
     window.addEventListener("popstate", () => navigate(location.href, false));
+  }
+
+  function initWorkshopPortal() {
+    // 工坊页穿越模式：隐藏顶部导航，左上角显示「返回主页」
+    if (pageName() === "projects" && sessionStorage.getItem("xl-portal") === "1") {
+      document.body.classList.add("portal-mode");
+    }
+    // 返回主页按钮：事件委托，PJAX 替换后依然有效
+    document.addEventListener("click", (event) => {
+      const btn = event.target.closest("[data-portal-home]");
+      if (!btn) return;
+      event.preventDefault();
+      sessionStorage.removeItem("xl-portal");
+      window.location.href = "./index.html";
+    });
+    // 其他页面点击小罗工坊导航：先确认，再穿越动画
+    document.addEventListener("click", (event) => {
+      const link = event.target.closest("a[href]");
+      if (!link) return;
+      const url = new URL(link.href, location.href);
+      if (url.origin !== location.origin) return;
+      if (!url.pathname.endsWith("projects.html")) return;
+      if (pageName() === "projects") return;
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      showPortalConfirm();
+    }, true);
+  }
+
+  function showPortalConfirm() {
+    let modal = $("[data-portal-confirm-modal]");
+    if (!modal) {
+      modal = document.createElement("div");
+      modal.className = "modal portal-confirm-modal";
+      modal.dataset.portalConfirmModal = "";
+      modal.innerHTML = '<button class="modal-backdrop" type="button" data-portal-cancel aria-label="关闭"></button><section class="modal-card glass-card portal-confirm-card" role="dialog" aria-modal="true"><button class="modal-close" type="button" data-portal-cancel aria-label="关闭">×</button><p class="mini-title">XIAOLUO WORKSHOP</p><h2>即将穿越小罗工坊</h2><p class="portal-confirm-text">准备好了吗？穿越过去，看看小罗亲手打造的工坊。</p><div class="portal-confirm-actions"><button class="primary-button" type="button" data-portal-go>确认穿越</button><button class="ghost-button" type="button" data-portal-cancel>再想想</button></div></section>';
+      document.body.appendChild(modal);
+      $all("[data-portal-cancel]", modal).forEach((button) => { button.onclick = () => modal.classList.remove("open"); });
+      $("[data-portal-go]", modal).onclick = () => { modal.classList.remove("open"); startPortalJump(); };
+    }
+    modal.classList.add("open");
+  }
+
+  function ensurePortalHome() {
+    if ($("[data-portal-home]")) return;
+    const btn = document.createElement("a");
+    btn.className = "portal-back-home";
+    btn.href = "./index.html";
+    btn.dataset.portalHome = "";
+    btn.textContent = "← 返回主页";
+    document.body.appendChild(btn);
+  }
+
+  async function startPortalJump() {
+    let overlay = $("[data-portal-overlay]");
+    if (!overlay) {
+      overlay = document.createElement("div");
+      overlay.className = "portal-overlay";
+      overlay.dataset.portalOverlay = "";
+      overlay.innerHTML = '<div class="portal-tunnel"><span class="portal-tunnel-rings"></span><span class="portal-tunnel-core"></span><p class="portal-tunnel-text">正在穿梭小罗工坊中…</p></div>';
+      document.body.appendChild(overlay);
+    }
+    const text = $(".portal-tunnel-text", overlay);
+    overlay.classList.add("active");
+    const started = Date.now();
+    let entered = false;
+    // 动画播放期间用站内平滑跳转加载并渲染工坊页，结束后直接看到成品
+    try {
+      await navigate("./projects.html");
+      entered = true;
+    } catch (_) { entered = false; }
+    if (entered) {
+      document.body.classList.add("portal-mode");
+      ensurePortalHome();
+      if (text) text.textContent = "穿梭完成，正在进入…";
+    }
+    const wait = Math.max(0, 1100 - (Date.now() - started));
+    setTimeout(() => {
+      overlay.classList.remove("active");
+      overlay.remove();
+      if (!entered) {
+        // 站内跳转失败时降级为整页跳转
+        sessionStorage.setItem("xl-portal", "1");
+        window.location.href = "./projects.html";
+      }
+    }, wait);
   }
 
   function initPostContextMenu() {
@@ -9150,6 +9654,7 @@
     initPlaceholders();
   initProtectedDownloads();
   initPjax();
+  initWorkshopPortal();
   initPostContextMenu();
   initPostDeleteActions();
   initWebSearch();
