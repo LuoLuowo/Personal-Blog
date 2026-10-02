@@ -1746,8 +1746,8 @@ body:not(.is-logged-in) .user-entry { display: none !important; }
 
 .article-card .article-cover { min-height: 0; aspect-ratio: 1; border-radius: 26px 26px 0 0; border-width: 0; }
 
-/* 文章卡片：触碰时整卡轻微上移 */
-.article-card:hover { transform: translateY(-4px); box-shadow: 0 20px 46px rgba(79, 124, 255, 0.15); }
+/* 文章卡片：触碰时整卡轻微强调（不上移） */
+.article-card:hover { transform: none; border-color: rgba(79, 124, 255, 0.38); box-shadow: 0 14px 34px rgba(79, 124, 255, 0.16); }
 
 /* 封面图 hover：出现遮罩 + 进入符号 */
 .article-card .article-cover { position: relative; overflow: hidden; }
