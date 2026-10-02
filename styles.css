@@ -4524,7 +4524,7 @@ body:not(.dark-mode).game-page .game-admin-empty { color: #60748f; }
   }
 }
 
-/* 首页分类与标签：筛选项按内容宽度排列，展开按钮紧跟在最后一个可见筛选项后。 */
+/* 首页分类与标签：标签尽可能展示（默认两行），实在放不下才在行尾出现展开按钮 */
 .home-filter-row {
   display: flex;
   align-items: flex-start;
@@ -4533,11 +4533,11 @@ body:not(.dark-mode).game-page .game-admin-empty { color: #60748f; }
 }
 .home-filter-row > strong { flex: 0 0 44px; }
 .home-filter-row > div {
-  flex: 0 1 auto;
-  width: fit-content;
+  flex: 1 1 auto;
+  width: auto;
   min-width: 0;
-  max-width: min(100%, 540px);
-  max-height: 34px;
+  max-width: 100%;
+  max-height: 68px;
   overflow: hidden;
   clip-path: inset(0);
 }
@@ -4581,7 +4581,7 @@ body:not(.dark-mode).game-page .game-admin-empty { color: #60748f; }
   .site-header .header-actions .primary-button.small { min-height: 32px; padding: 6px 8px; font-size: 12px; }
   .home-filter-row { gap: 7px; }
   .home-filter-row > strong { flex-basis: 36px; }
-  .home-filter-row > div { max-width: calc(100% - 98px); gap: 6px; }
+  .home-filter-row > div { max-width: calc(100% - 98px); gap: 6px; max-height: 68px; }
   .home-filter-more { padding-inline: 6px; }
 }
 
