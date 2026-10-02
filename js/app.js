@@ -9749,7 +9749,11 @@
   refreshAuthState()
     .then(async () => {
       renderCurrentPage();
-      await loadCloudData();
+      // 云端数据加载最多等待 15 秒，超时也继续渲染，避免一直停留在“正在整理中”
+      await Promise.race([
+        loadCloudData().catch(() => {}),
+        new Promise((resolve) => setTimeout(resolve, 15000))
+      ]);
       document.body.dataset.homeDataReady = "true";
       if (pageName() === "home") renderHome();
       const cloudLoaderEnabled = data.site.contacts?.entry_loader_enabled !== false;
