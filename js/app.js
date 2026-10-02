@@ -2151,21 +2151,32 @@
     $all("[data-about-bio]").forEach((el) => { el.textContent = data.site.aboutBio; });
     $all("[data-about-side-bio]").forEach((el) => { el.textContent = data.site.aboutSideBio; });
     $all("[data-hero-title]").forEach((el) => {
+      // 循环打字机已在运行时不打断
+      if (pageName() === "home" && el.dataset.typewriterRunning === "true") return;
       el.textContent = data.site.heroTitle;
-      // 首页进入时打字机效果
-      if (pageName() === "home" && !document.body.dataset.typewriterDone) {
-        document.body.dataset.typewriterDone = "true";
+      if (pageName() === "home") {
+        // 首页进入时打字机效果：打完停 2 秒后无限循环
+        el.dataset.typewriterRunning = "true";
         const full = el.textContent;
-        el.textContent = "";
-        el.classList.add("typewriter-active");
-        let i = 0;
-        const tick = () => {
-          i++;
-          el.textContent = full.slice(0, i);
-          if (i < full.length) setTimeout(tick, 140);
-          else setTimeout(() => { el.classList.remove("typewriter-active"); fitSingleLineTitle(el); }, 600);
+        const typeLoop = () => {
+          el.textContent = "";
+          el.classList.add("typewriter-active");
+          let i = 0;
+          const tick = () => {
+            i++;
+            el.textContent = full.slice(0, i);
+            if (i < full.length) {
+              setTimeout(tick, 140);
+            } else {
+              setTimeout(() => {
+                el.classList.remove("typewriter-active");
+                setTimeout(typeLoop, 2000);
+              }, 400);
+            }
+          };
+          setTimeout(tick, 250);
         };
-        setTimeout(tick, 300);
+        typeLoop();
       }
     });
     $all("[data-hero-subtitle]").forEach((el) => { el.textContent = data.site.heroSubtitle; });
@@ -2701,20 +2712,6 @@
         syncThemeAppearance();
       });
     });
-  }
-
-  function fitSingleLineTitle(el) {
-    if (!el || window.innerWidth > 768) return;
-    el.style.whiteSpace = "nowrap";
-    const parent = el.parentElement;
-    const maxWidth = (parent ? parent.clientWidth : window.innerWidth) - 8;
-    let size = parseFloat(window.getComputedStyle(el).fontSize) || 34;
-    el.style.fontSize = `${size}px`;
-    let guard = 0;
-    while (size > 12 && el.scrollWidth > maxWidth && guard < 40) {
-      size -= 1; guard += 1;
-      el.style.fontSize = `${size}px`;
-    }
   }
 
   function initLiveClock() {
