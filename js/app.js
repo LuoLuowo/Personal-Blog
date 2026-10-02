@@ -3454,14 +3454,19 @@
         .map((name) => ({ name, count: data.posts.filter((post) => post.category === name).length }))
         .sort((a, b) => b.count - a.count)
         .map((item) => item.name);
-      const tagNames = [...new Set(data.posts.flatMap((post) => parseCommaTags(post.tags)))]
-        .map((name) => ({ name, count: data.posts.filter((post) => parseCommaTags(post.tags).includes(name)).length }))
+      // 标签栏只展示当前分类下有文章的标签（未选分类=全部文章）
+      const categoryScopedPosts = activeCategory ? data.posts.filter((post) => post.category === activeCategory) : data.posts;
+      const tagNames = [...new Set(categoryScopedPosts.flatMap((post) => parseCommaTags(post.tags)))]
+        .map((name) => ({ name, count: categoryScopedPosts.filter((post) => parseCommaTags(post.tags).includes(name)).length }))
         .sort((a, b) => b.count - a.count)
         .map((item) => item.name);
       const activeCategory = section.dataset.homeStateCategory;
       const activeTag = section.dataset.homeStateTag;
+      // 当前选中的标签若在新分类下不存在，自动重置
+      const effectiveTag = activeTag && tagNames.includes(activeTag) ? activeTag : "";
+      if (effectiveTag !== activeTag) section.dataset.homeStateTag = "";
       const categoryHtml = [`<button type="button" class="home-filter-chip${activeCategory ? "" : " active"}" data-home-category="">全部 <small>${data.posts.length}</small></button>`, ...categoryNames.map((name) => `<button type="button" class="home-filter-chip${activeCategory === name ? " active" : ""}" data-home-category="${escapeHtml(name)}">${escapeHtml(name)} <small>${data.posts.filter((post) => post.category === name).length}</small></button>`)].join("");
-      const tagHtml = [`<button type="button" class="home-filter-chip${activeTag ? "" : " active"}" data-home-tag="">全部 <small>${data.posts.length}</small></button>`, ...tagNames.map((name) => `<button type="button" class="home-filter-chip${activeTag === name ? " active" : ""}" data-home-tag="${escapeHtml(name)}">#${escapeHtml(name)} <small>${data.posts.filter((post) => parseCommaTags(post.tags).includes(name)).length}</small></button>`)].join("");
+      const tagHtml = [`<button type="button" class="home-filter-chip${effectiveTag ? "" : " active"}" data-home-tag="">全部 <small>${categoryScopedPosts.length}</small></button>`, ...tagNames.map((name) => `<button type="button" class="home-filter-chip${effectiveTag === name ? " active" : ""}" data-home-tag="${escapeHtml(name)}">#${escapeHtml(name)} <small>${categoryScopedPosts.filter((post) => parseCommaTags(post.tags).includes(name)).length}</small></button>`)].join("");
       if (categories) categories.innerHTML = categoryHtml;
       if (tags) tags.innerHTML = tagHtml;
       const categoryMore = $("[data-home-expand='categories']", section);
@@ -3587,6 +3592,7 @@
     $all("[data-home-category]", section).forEach((button) => {
       button.onclick = () => {
         section.dataset.homeStateCategory = button.dataset.homeCategory || "";
+        section.dataset.homeStateTag = "";
         section.dataset.homeStatePage = "1";
         rerender();
       };
