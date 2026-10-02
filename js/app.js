@@ -2170,6 +2170,8 @@
             } else {
               setTimeout(() => {
                 el.classList.remove("typewriter-active");
+                // 固定标题占位高度：每轮清空时下方内容不再上移
+                if (!el.style.minHeight) el.style.minHeight = `${el.offsetHeight}px`;
                 setTimeout(typeLoop, 2000);
               }, 400);
             }
