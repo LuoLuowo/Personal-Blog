@@ -3454,14 +3454,14 @@
         .map((name) => ({ name, count: data.posts.filter((post) => post.category === name).length }))
         .sort((a, b) => b.count - a.count)
         .map((item) => item.name);
+      const activeCategory = section.dataset.homeStateCategory;
+      const activeTag = section.dataset.homeStateTag;
       // 标签栏只展示当前分类下有文章的标签（未选分类=全部文章）
       const categoryScopedPosts = activeCategory ? data.posts.filter((post) => post.category === activeCategory) : data.posts;
       const tagNames = [...new Set(categoryScopedPosts.flatMap((post) => parseCommaTags(post.tags)))]
         .map((name) => ({ name, count: categoryScopedPosts.filter((post) => parseCommaTags(post.tags).includes(name)).length }))
         .sort((a, b) => b.count - a.count)
         .map((item) => item.name);
-      const activeCategory = section.dataset.homeStateCategory;
-      const activeTag = section.dataset.homeStateTag;
       // 当前选中的标签若在新分类下不存在，自动重置
       const effectiveTag = activeTag && tagNames.includes(activeTag) ? activeTag : "";
       if (effectiveTag !== activeTag) section.dataset.homeStateTag = "";
