@@ -129,6 +129,8 @@
 
   const HIGHLIGHT_COLORS = new Set(["#ffddd8", "#d8f2e2", "#dce9ff"]);
   const PROFILE_TAGS = ["注重感情", "独处", "自由", "全球游", "世界游", "热爱阅读", "探索未知", "爱动脑子", "脑洞大", "敏感", "爱学习", "吃货一枚", "学霸一枚", "热爱生活", "热爱旅游", "喜欢美女", "喜欢帅哥", "爱音乐"];
+  // 固定头像：全站统一使用这一张，锁死不再走 Supabase/缓存的其他头像
+  const FIXED_SITE_AVATAR = "./assets/images/avatar-fixed.jpg";
   const ADMIN_PROFILE_TAGS = ["注重感情", "独处", "自由", "世界游", "热爱阅读", "探索未知"];
   const MBTI_TYPES = ["INTJ", "INTP", "ENTJ", "ENTP", "INFJ", "INFP", "ENFJ", "ENFP", "ISTJ", "ISFJ", "ESTJ", "ESFJ", "ISTP", "ISFP", "ESTP", "ESFP"];
   const WHISPER_EMOJIS = ["😀", "😂", "🥹", "😭", "😡", "🥳", "❤️", "👍", "✨", "🌈", "🍜", "☕", "🎮", "📚", "🌙", "🔥"];
@@ -2110,6 +2112,8 @@
 
   function initBrand() {
     applySavedSettings();
+    // 头像锁定为固定图（预加载、Supabase、缓存全部统一这一张）
+    data.site.avatarDataUrl = FIXED_SITE_AVATAR;
     const favicon = document.querySelector("link[rel='icon']") || document.head.appendChild(document.createElement("link"));
     favicon.rel = "icon";
     favicon.href = "./assets/images/xiaoluo-blog-icon.jpg";
@@ -2126,13 +2130,13 @@
         const image = new Image();
         image.onerror = () => {
           el.classList.remove("has-avatar-image");
-          el.style.backgroundImage = "url('./assets/images/xiaoluo-blog-icon.jpg')";
+          el.style.backgroundImage = "";
           el.textContent = fallback;
         };
         image.src = avatarUrl;
       } else if (el.classList.contains("avatar")) {
         el.classList.add("has-avatar-image");
-        el.style.backgroundImage = "url('./assets/images/xiaoluo-blog-icon.jpg')";
+        el.style.backgroundImage = `url("${FIXED_SITE_AVATAR}")`;
       }
       if (el.classList.contains("avatar") && state.adminId) {
         el.dataset.profileUserId = state.adminId;
@@ -2159,7 +2163,7 @@
           i++;
           el.textContent = full.slice(0, i);
           if (i < full.length) setTimeout(tick, 140);
-          else setTimeout(() => el.classList.remove("typewriter-active"), 600);
+          else setTimeout(() => { el.classList.remove("typewriter-active"); fitSingleLineTitle(el); }, 600);
         };
         setTimeout(tick, 300);
       }
@@ -2284,7 +2288,7 @@
       let activity = null;
       try { activity = await window.XiaoLuoSupabase.getUserActivitySummary?.(profile.id); } catch (_) {}
       const name = profile.display_name || (profile.is_admin ? "小罗" : "普通用户");
-      const avatar = profile.avatar_url || (profile.is_admin ? "./assets/images/xiaoluo-blog-icon.jpg" : "");
+      const avatar = profile.avatar_url || (profile.is_admin ? FIXED_SITE_AVATAR : "");
       const tags = profile.is_admin ? ADMIN_PROFILE_TAGS : (Array.isArray(profile.personal_tags) ? profile.personal_tags.slice(0, 4) : []);
       const isOwnEditableProfile = state.userId === profile.id;
       let whisperSummary = null;
@@ -2597,7 +2601,7 @@
       if (loadMutationVersion !== state.cloudMutationVersion) return;
       data.site.profileName = adminProfile.display_name || data.site.profileName;
       data.site.avatarText = (adminProfile.display_name || data.site.profileName).slice(0, 1);
-      data.site.avatarDataUrl = adminProfile.avatar_url || "";
+      data.site.avatarDataUrl = FIXED_SITE_AVATAR;
       data.site.heroTitle = adminProfile.home_title || data.site.heroTitle;
       data.site.profileBio = adminProfile.home_bio || data.site.profileBio;
       data.site.homeBackground.imageUrl = adminProfile.home_background_url || "";
@@ -2697,6 +2701,20 @@
         syncThemeAppearance();
       });
     });
+  }
+
+  function fitSingleLineTitle(el) {
+    if (!el || window.innerWidth > 768) return;
+    el.style.whiteSpace = "nowrap";
+    const parent = el.parentElement;
+    const maxWidth = (parent ? parent.clientWidth : window.innerWidth) - 8;
+    let size = parseFloat(window.getComputedStyle(el).fontSize) || 34;
+    el.style.fontSize = `${size}px`;
+    let guard = 0;
+    while (size > 12 && el.scrollWidth > maxWidth && guard < 40) {
+      size -= 1; guard += 1;
+      el.style.fontSize = `${size}px`;
+    }
   }
 
   function initLiveClock() {
@@ -3782,7 +3800,7 @@
     const filterUserId = params().get("user") || "";
     const profile = state.currentProfile || {};
     const ownName = isGuest ? "游客" : (profile.display_name || (state.isAdmin ? "小罗" : "普通用户"));
-    const ownAvatar = isGuest ? "" : (profile.avatar_url || (state.isAdmin ? "./assets/images/xiaoluo-blog-icon.jpg" : ""));
+    const ownAvatar = isGuest ? "" : (profile.avatar_url || (state.isAdmin ? FIXED_SITE_AVATAR : ""));
     const ownAvatarNode = $("[data-whisper-own-avatar]");
     if (ownAvatarNode && !isGuest) {
       $("[data-whisper-own-name]").textContent = ownName;
@@ -7843,7 +7861,7 @@
         data.site.announcement = profile.announcement;
         data.site.profileName = profile.display_name;
         data.site.avatarText = profile.display_name.slice(0, 1);
-        data.site.avatarDataUrl = profile.avatar_url;
+        data.site.avatarDataUrl = FIXED_SITE_AVATAR;
         data.site.homeBackground.imageUrl = profile.home_background_url || "";
         data.site.contacts = profile.contacts;
         localStorage.setItem("xiaoluo-entry-loader-enabled", String(profile.contacts.entry_loader_enabled !== false));
@@ -8970,7 +8988,7 @@
       loader = document.createElement("div");
       loader.className = "entry-loader";
       loader.dataset.entryLoader = "";
-      loader.innerHTML = '<div class="entry-loader-mark"><img src="./assets/images/xiaoluo-blog-icon.jpg" alt="小罗Blog"></div><strong>正在进入小罗Blog</strong><span>正在整理这一页的故事…</span><i></i>';
+      loader.innerHTML = '<div class="entry-loader-mark"><img src="./assets/images/avatar-fixed.jpg" alt="小罗Blog"></div><strong>正在进入小罗Blog</strong><span>正在整理这一页的故事…</span><i></i>';
       document.body.appendChild(loader);
     }
     loader.classList.add("is-visible");
