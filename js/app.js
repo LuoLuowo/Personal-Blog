@@ -2607,7 +2607,7 @@
         api.listContent("media_reviews", ownerId).catch(() => []),
         state.isAdmin ? api.listContent("notes", state.userId).catch(() => []) : Promise.resolve([]),
         api.listContent("common_sites", ownerId).catch(() => []),
-        state.isAdmin ? api.listPosts(ownerId) : api.listPublishedPosts(ownerId),
+        (state.isAdmin ? api.listPosts(ownerId) : api.listPublishedPosts(ownerId)).catch((err) => { console.error("[loadCloudData] 文章列表加载失败:", err); return []; }),
         api.listMusicTracks(ownerId),
         api.listMomentTeasers ? api.listMomentTeasers(ownerId).catch(() => []) : Promise.resolve([])
       ]);
