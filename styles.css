@@ -1746,8 +1746,8 @@ body:not(.is-logged-in) .user-entry { display: none !important; }
 
 .article-card .article-cover { min-height: 0; aspect-ratio: 1; border-radius: 26px 26px 0 0; border-width: 0; }
 
-/* 文章卡片：取消触碰上移动画 */
-.article-card:hover { transform: none; box-shadow: var(--shadow); }
+/* 文章卡片：触碰时整卡轻微上移 */
+.article-card:hover { transform: translateY(-4px); box-shadow: 0 20px 46px rgba(79, 124, 255, 0.15); }
 
 /* 封面图 hover：出现遮罩 + 进入符号 */
 .article-card .article-cover { position: relative; overflow: hidden; }
@@ -1777,6 +1777,8 @@ body:not(.is-logged-in) .user-entry { display: none !important; }
 }
 .article-card:hover .article-cover::after,
 .article-card:hover .article-cover::before { opacity: 1; transform: scale(1); }
+.article-card .article-cover img { transition: transform .45s ease; will-change: transform; }
+.article-card:hover .article-cover img { transform: scale(1.08); }
 
 .article-cover img { display: block; width: 100%; height: 100%; object-fit: cover; object-position: center; }
 .article-cover,
