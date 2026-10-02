@@ -1975,7 +1975,52 @@
   }
 
   function readSavedSettings() {
-    return {};
+    try {
+      const raw = localStorage.getItem("xiaoluo-site-cache-v1");
+      if (!raw) return {};
+      const c = JSON.parse(raw) || {};
+      return {
+        name: c.name,
+        logoText: c.logoText,
+        heroTitle: c.heroTitle,
+        heroSubtitle: c.heroSubtitle,
+        profileBio: c.profileBio,
+        profileName: c.profileName,
+        avatarText: c.avatarText,
+        avatarDataUrl: c.avatarDataUrl,
+        homeBackgroundDataUrl: c.homeBackgroundUrl,
+        aboutTitle: c.aboutTitle,
+        aboutBio: c.aboutBio,
+        aboutSideBio: c.aboutSideBio,
+        announcement: c.announcement,
+        contacts: c.contacts,
+        launchedAt: c.launchedAt
+      };
+    } catch (_) { return {}; }
+  }
+
+  function saveSiteCache() {
+    try {
+      const cache = {
+        name: data.site.name,
+        logoText: data.site.logoText,
+        heroTitle: data.site.heroTitle,
+        heroSubtitle: data.site.heroSubtitle,
+        profileBio: data.site.profileBio,
+        profileName: data.site.profileName,
+        avatarText: data.site.avatarText,
+        avatarDataUrl: data.site.avatarDataUrl,
+        homeBackgroundUrl: data.site.homeBackground?.imageUrl || "",
+        aboutTitle: data.site.aboutTitle,
+        aboutBio: data.site.aboutBio,
+        aboutSideBio: data.site.aboutSideBio,
+        announcement: data.site.announcement,
+        contacts: data.site.contacts,
+        launchedAt: data.site.launchedAt,
+        cachedAt: Date.now()
+      };
+      localStorage.setItem("xiaoluo-site-cache-v1", JSON.stringify(cache));
+    } catch (_) {}
   }
 
   function readSavedContent() {
@@ -2046,13 +2091,21 @@
 
   function applySavedSettings() {
     const saved = readSavedSettings();
+    if (saved.name) data.site.name = saved.name;
+    if (saved.logoText) data.site.logoText = saved.logoText;
     if (saved.heroTitle) data.site.heroTitle = saved.heroTitle;
+    if (saved.heroSubtitle) data.site.heroSubtitle = saved.heroSubtitle;
     if (saved.profileBio) data.site.profileBio = saved.profileBio;
     if (saved.profileName) data.site.profileName = saved.profileName;
     if (saved.avatarText) data.site.avatarText = saved.avatarText;
     if (saved.avatarDataUrl) data.site.avatarDataUrl = saved.avatarDataUrl;
     if (saved.contacts) data.site.contacts = { ...data.site.contacts, ...saved.contacts };
     if (saved.homeBackgroundDataUrl) data.site.homeBackground.imageUrl = saved.homeBackgroundDataUrl;
+    if (saved.aboutTitle) data.site.aboutTitle = saved.aboutTitle;
+    if (saved.aboutBio) data.site.aboutBio = saved.aboutBio;
+    if (saved.aboutSideBio) data.site.aboutSideBio = saved.aboutSideBio;
+    if (saved.announcement) data.site.announcement = saved.announcement;
+    if (saved.launchedAt) data.site.launchedAt = saved.launchedAt;
   }
 
   function initBrand() {
@@ -2580,6 +2633,7 @@
       data.posts = posts.map((item) => ({ id: item.id, userId: item.user_id || ownerId, title: item.title, author: data.site.profileName, category: item.category || "未分类", tags: parseCommaTags(item.tags), attachments: item.attachments || [], musicAttachment: item.music_attachment || null, status: item.status || "published", minActivityScore: Number(item.min_activity_score) || 0, publishedAt: formatPostDate(item.created_at), coverUrl: item.cover_url || "", coverClass: "gradient-a", excerpt: (item.content || "").replace(/<[^>]+>/g, "").slice(0, 110), content: [item.content || ""], featured: false }));
       if (musicTracks.length) data.music = musicTracks.map((track) => ({ id: track.id, title: track.title, artist: track.artist || "小罗Blog", category: track.category || "", src: track.file_url }));
       state.cloudOwnerId = ownerId;
+      saveSiteCache();
       initBrand();
       populateFilters();
       if (pageName() === "dashboard" && state.isAdmin) renderContentManagers();
@@ -7796,6 +7850,7 @@
         // Let a changed setting take effect on the very next homepage visit,
         // instead of being held back by this tab's previous entry marker.
         sessionStorage.removeItem("xiaoluo-home-entry-seen");
+        saveSiteCache();
         initBrand();
         alert("已保存，首页现在已经生效。");
       } catch (error) { showCloudError(error); }
@@ -7837,6 +7892,7 @@
       data.site.aboutBio = profile.about_bio;
       data.site.aboutSideBio = profile.about_side_bio;
       data.site.contacts = profile.contacts;
+      saveSiteCache();
       initBrand();
       alert("关于我内容已保存到 Supabase。");
     } catch (error) { showCloudError(error); }
