@@ -1,0 +1,227 @@
+
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>宝宝完成作业小奖励</title>
+<style>
+*{box-sizing:border-box}
+body{
+  margin:0;min-height:100vh;display:grid;place-items:center;
+  padding:20px;font-family:"Microsoft YaHei",sans-serif;
+  color:#563c59;background:linear-gradient(145deg,#fff1f6,#f1edff);
+}
+main{
+  width:min(420px,100%);text-align:center;background:#ffffffdf;
+  border:1px solid white;border-radius:28px;padding:30px 23px;
+  box-shadow:0 18px 55px #a58ab526;
+}
+.heart{font-size:48px;animation:bob 2s infinite}
+h1{font-size:27px;margin:12px 0 8px}
+.sub{font-size:14px;color:#9a829c;margin-bottom:24px}
+.gift{font-size:65px;margin:15px 0}
+h2{font-size:19px;line-height:1.7;min-height:58px;margin:0 0 18px}
+button{
+  width:100%;border:0;border-radius:15px;padding:14px;
+  margin:6px 0;font-size:16px;font-weight:bold;cursor:pointer;
+  transition:transform .15s;
+}
+button:active{transform:scale(.96)}
+.primary{
+  color:white;background:linear-gradient(120deg,#ff80ad,#a48aff);
+  box-shadow:0 8px 18px #d78cc333;
+}
+.secondary{color:#8965a0;background:#f3ebff}
+#quote{
+  min-height:75px;display:grid;place-items:center;margin:17px 0 8px;
+  padding:12px;border-radius:16px;background:#fff2f7;
+  color:#8d5f83;font-weight:bold;line-height:1.8;
+}
+#sound{
+  position:fixed;top:15px;right:15px;width:auto;
+  padding:9px 12px;font-size:13px;background:#ffffffd9;color:#8965a0;
+}
+.heartfall{
+  position:fixed;top:-30px;pointer-events:none;
+  animation:fall 1.8s linear forwards;font-size:22px;
+}
+#lockScreen{
+  position:fixed;inset:0;z-index:9999;display:flex;
+  align-items:center;justify-content:center;padding:20px;
+  background:linear-gradient(145deg,#fff4f7,#f1edff);
+}
+.lockCard{
+  width:min(360px,100%);padding:34px 25px;text-align:center;
+  background:#ffffffed;border:1px solid white;border-radius:26px;
+  box-shadow:0 18px 55px #a58ab526;
+}
+.lockIcon{font-size:48px}
+.lockCard h1{font-size:25px;color:#563c59;margin:16px 0 10px}
+.lockSub{font-size:14px;color:#9a829c;line-height:1.8}
+#passwordInput{
+  width:100%;padding:14px;border:1px solid #ead9f0;
+  border-radius:14px;text-align:center;font-size:22px;
+  letter-spacing:8px;outline-color:#ff80ad;
+}
+#passwordError{color:#ed6799;font-size:13px;min-height:18px}
+@keyframes bob{50%{transform:translateY(-6px)}}
+@keyframes fall{
+  to{transform:translateY(110vh) rotate(300deg);opacity:0}
+}
+</style>
+</head>
+<body>
+
+<!-- 密码开屏 -->
+<div id="lockScreen">
+  <div class="lockCard">
+    <div class="lockIcon">🎁</div>
+    <h1>宝宝完成作业小奖励</h1>
+    <div class="lockSub">辛苦啦，输入专属密码<br>开启今天的小惊喜 ✨</div>
+    <div style="height:22px"></div>
+    <input id="passwordInput" type="password" inputmode="numeric"
+      maxlength="4" placeholder="输入密码" autocomplete="off">
+    <p id="passwordError"></p>
+    <button class="primary" onclick="checkPassword()">开启奖励 🎀</button>
+  </div>
+</div>
+
+<!-- 奖励网站 -->
+<button id="sound">🔊 音效开</button>
+
+<main>
+  <div class="heart">🌟</div>
+  <h1>宝宝，作业完成啦！</h1>
+  <div class="sub">辛苦啦，来领取你的专属小奖励吧</div>
+
+  <div class="gift" id="gift">🎁</div>
+  <h2 id="reward">恭喜宝宝，解锁今日份快乐！</h2>
+
+  <button class="primary" id="claim">🎁 领取奖励</button>
+
+  <div id="quote">宝宝今天辛苦啦！抽一句专属鼓励语吧 ✨</div>
+  <button class="secondary" id="draw">💌 抽取鼓励语</button>
+</main>
+
+<script>
+let soundOn = true;
+let audio;
+
+function checkPassword(){
+  const input = document.getElementById("passwordInput");
+  const error = document.getElementById("passwordError");
+
+  if(input.value === "5200"){
+    document.getElementById("lockScreen").remove();
+    playSound();
+  }else{
+    error.textContent = "密码不对哦，再试一次～";
+    input.value = "";
+    input.focus();
+  }
+}
+
+document.getElementById("passwordInput").addEventListener("keydown",function(e){
+  if(e.key === "Enter") checkPassword();
+});
+
+function playSound(){
+  if(!soundOn)return;
+  try{
+    audio = audio || new (window.AudioContext || window.webkitAudioContext)();
+    if(audio.state === "suspended") audio.resume();
+
+    [523,659,784].forEach((freq,i)=>{
+      const osc = audio.createOscillator();
+      const gain = audio.createGain();
+      const start = audio.currentTime + i * 0.09;
+
+      osc.frequency.value = freq;
+      gain.gain.setValueAtTime(0.045,start);
+      gain.gain.exponentialRampToValueAtTime(0.001,start+0.18);
+
+      osc.connect(gain);
+      gain.connect(audio.destination);
+      osc.start(start);
+      osc.stop(start+0.19);
+    });
+  }catch(e){}
+}
+
+function hearts(){
+  const icons = ["💗","✨","🎀","💕","🌸","💖"];
+  for(let i=0;i<24;i++){
+    const el = document.createElement("span");
+    el.className = "heartfall";
+    el.textContent = icons[Math.floor(Math.random()*icons.length)];
+    el.style.left = Math.random()*100+"vw";
+    el.style.animationDelay = Math.random()*0.5+"s";
+    document.body.appendChild(el);
+    setTimeout(()=>el.remove(),2500);
+  }
+}
+
+document.getElementById("sound").onclick = function(){
+  soundOn = !soundOn;
+  this.textContent = soundOn ? "🔊 音效开" : "🔇 音效关";
+  if(soundOn) playSound();
+};
+
+const rewards = [
+  ["🍀","宝宝获得：今日好运 +100！"],
+  ["🛌","宝宝获得：再躺五分钟券一张！"],
+  ["✨","宝宝获得：许愿机会一次，快偷偷许愿！"],
+  ["🌈","宝宝获得：烦恼清零体验卡！"],
+  ["🍬","宝宝获得：虚拟糖果一颗，甜度拉满！"],
+  ["👑","恭喜宝宝，获得今日最棒称号！"],
+  ["🎟️","宝宝获得：理直气壮休息券一张！"],
+  ["💖","宝宝获得：专属偏爱体验卡！"],
+  ["🎮","宝宝获得：快乐游戏体验券一张！"],
+  ["🌷","宝宝获得：今天所有好事都偏向你！"],
+  ["🐣","宝宝获得：专属夸夸体验卡！"],
+  ["☁️","宝宝获得：无忧无虑十分钟！"],
+  ["🎉","恭喜宝宝，快乐值直接加满！"],
+  ["💫","宝宝获得：今天可以理直气壮地开心！"],
+  ["🧁","宝宝获得：云端小蛋糕一份！"]
+];
+
+document.getElementById("claim").onclick = function(){
+  const item = rewards[Math.floor(Math.random()*rewards.length)];
+  document.getElementById("gift").textContent = item[0];
+  document.getElementById("reward").textContent = item[1];
+  playSound();
+  hearts();
+};
+
+const quotes = [
+  "宝宝已经做得很好啦，抱抱！💗",
+  "作业通关成功！快乐时间到！🎉",
+  "认真努力的宝宝，真的很棒！",
+  "今天也要为自己骄傲一下哦 ✨",
+  "宝宝值得所有的小惊喜和偏爱。",
+  "任务完成！快去休息一下吧 🌷",
+  "慢慢来就好，宝宝一直在进步。",
+  "给努力的宝宝一个大大的赞！🌟",
+  "不管怎样，宝宝今天都值得被夸。",
+  "宝宝辛苦啦，奖励一个云亲亲！💋",
+  "烦恼暂时下线，快乐马上上线！",
+  "宝宝今天的可爱程度又超标啦！",
+  "允许自己休息，也允许自己开心。",
+  "恭喜宝宝解锁：今天也很优秀！",
+  "所有努力都值得一个小小的庆祝！"
+];
+
+document.getElementById("draw").onclick = function(){
+  let quote;
+  do{
+    quote = quotes[Math.floor(Math.random()*quotes.length)];
+  }while(quotes.length>1 && quote===document.getElementById("quote").textContent);
+
+  document.getElementById("quote").textContent = quote;
+  playSound();
+};
+</script>
+
+</body>
+</html>
